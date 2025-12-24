@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Forex Decision Engine</title>
+  <link rel="stylesheet" href="/css/styles.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎯</text></svg>">
+</head>
+<body>
+  <div id="app">
+    <!-- Header -->
+    <header class="header">
+      <div class="header-brand">
+        <span class="header-icon">🎯</span>
+        <h1>Forex Decision Engine</h1>
+      </div>
+      <nav class="header-nav">
+        <button class="nav-btn active" data-screen="results">Results</button>
+        <button class="nav-btn" data-screen="watchlist">Watchlist</button>
+        <button class="nav-btn" data-screen="settings">Settings</button>
+      </nav>
+    </header>
+
+    <!-- Main Content -->
+    <main class="main">
+      <!-- Welcome Screen (shown on first visit) -->
+      <section id="welcome-screen" class="screen welcome-screen hidden">
+        <div class="welcome-content">
+          <div class="welcome-icon">🎯</div>
+          <h2>Welcome to Forex Decision Engine</h2>
+          <p class="welcome-subtitle">Clear trade signals. No chart overload.</p>
+          
+          <div class="welcome-features">
+            <div class="feature">
+              <span class="feature-icon">📍</span>
+              <span>Exact entry zones</span>
+            </div>
+            <div class="feature">
+              <span class="feature-icon">🛡️</span>
+              <span>Stop loss levels</span>
+            </div>
+            <div class="feature">
+              <span class="feature-icon">🎯</span>
+              <span>Take profit targets (2R+)</span>
+            </div>
+            <div class="feature">
+              <span class="feature-icon">📊</span>
+              <span>Position sizing</span>
+            </div>
+          </div>
+          
+          <div class="welcome-warning">
+            <p>⚠️ <strong>Risk Disclaimer:</strong> This tool is for educational purposes only. 
+            Trading forex and crypto involves significant risk. Past signals do not guarantee future results. 
+            Always use proper risk management and never trade with money you can't afford to lose.</p>
+          </div>
+          
+          <button class="btn btn-primary btn-large" id="get-started-btn">
+            Get Started →
+          </button>
+        </div>
+      </section>
+
+      <!-- Settings Screen -->
+      <section id="settings-screen" class="screen hidden">
+        <div class="screen-header">
+          <h2>⚙️ Settings</h2>
+        </div>
+        
+        <form id="settings-form" class="settings-form">
+          <div class="form-group">
+            <label for="account-size">Account Size (USD)</label>
+            <input type="number" id="account-size" min="100" max="1000000" step="100" value="10000">
+            <span class="form-hint">Min: $100 | Max: $1,000,000</span>
+          </div>
+          
+          <div class="form-group">
+            <label for="risk-percent">Risk per Trade</label>
+            <select id="risk-percent">
+              <option value="0.25">0.25% (Conservative)</option>
+              <option value="0.5" selected>0.5% (Recommended)</option>
+              <option value="1">1% (Standard)</option>
+              <option value="2">2% (Aggressive)</option>
+            </select>
+            <span class="form-hint" id="risk-amount-hint">Risk: $50 per trade</span>
+          </div>
+          
+          <div class="form-group">
+            <label>Trading Style</label>
+            <div class="radio-group">
+              <label class="radio-option">
+                <input type="radio" name="style" value="intraday" checked>
+                <span class="radio-label">
+                  <strong>Intraday</strong>
+                  <small>H4 trend → H1 entry | Refresh: 5 min</small>
+                </span>
+              </label>
+              <label class="radio-option">
+                <input type="radio" name="style" value="swing">
+                <span class="radio-label">
+                  <strong>Swing</strong>
+                  <small>D1 trend → H4 entry | Refresh: 15 min</small>
+                </span>
+              </label>
+            </div>
+          </div>
+          
+          <div class="form-group">
+            <label for="timezone">Timezone</label>
+            <select id="timezone">
+              <option value="America/New_York">Eastern Time (ET)</option>
+              <option value="America/Chicago" selected>Central Time (CT)</option>
+              <option value="America/Denver">Mountain Time (MT)</option>
+              <option value="America/Los_Angeles">Pacific Time (PT)</option>
+              <option value="Europe/London">London (GMT/BST)</option>
+              <option value="UTC">UTC</option>
+            </select>
+          </div>
+          
+          <button type="submit" class="btn btn-primary">Save Settings</button>
+        </form>
+        
+        <div class="settings-info">
+          <p>ℹ️ Settings are saved locally in your browser.</p>
+        </div>
+      </section>
+
+      <!-- Watchlist Screen -->
+      <section id="watchlist-screen" class="screen hidden">
+        <div class="screen-header">
+          <h2>📋 Watchlist</h2>
+          <div class="search-box">
+            <input type="text" id="symbol-search" placeholder="Search symbols...">
+          </div>
+        </div>
+        
+        <div class="watchlist-container">
+          <div class="symbol-section">
+            <div class="section-header">
+              <h3>Forex (28 pairs)</h3>
+              <button class="btn btn-small" data-select="forex">Select All</button>
+            </div>
+            <div class="symbol-grid" id="forex-symbols"></div>
+          </div>
+          
+          <div class="symbol-section">
+            <div class="section-header">
+              <h3>Crypto (8 pairs)</h3>
+              <button class="btn btn-small" data-select="crypto">Select All</button>
+            </div>
+            <div class="symbol-grid" id="crypto-symbols"></div>
+          </div>
+        </div>
+        
+        <div class="watchlist-footer">
+          <div class="selection-info">
+            <span id="selected-count">0</span> symbols selected
+            <span class="scan-estimate" id="scan-estimate"></span>
+          </div>
+          <div class="watchlist-actions">
+            <button class="btn btn-secondary" id="clear-selection-btn">Clear All</button>
+            <button class="btn btn-primary" id="scan-btn" disabled>Scan Selected</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- Results Screen -->
+      <section id="results-screen" class="screen">
+        <div class="screen-header">
+          <h2>📊 Scan Results</h2>
+          <div class="results-meta">
+            <span id="last-scan-time">No scans yet</span>
+            <button class="btn btn-small" id="refresh-btn" disabled>↻ Refresh</button>
+          </div>
+        </div>
+        
+        <div class="results-filters">
+          <button class="filter-btn active" data-filter="all">All</button>
+          <button class="filter-btn" data-filter="trades">Trades Only</button>
+          <button class="filter-btn" data-filter="a+">A+ Only</button>
+          <button class="filter-btn" data-filter="no-trade">No Trade</button>
+        </div>
+        
+        <div class="results-container" id="results-container">
+          <div class="empty-state">
+            <div class="empty-icon">📋</div>
+            <p>No results yet</p>
+            <p class="empty-hint">Go to Watchlist and scan some symbols</p>
+            <button class="btn btn-primary" id="go-to-watchlist-btn">Open Watchlist</button>
+          </div>
+        </div>
+        
+        <div class="results-footer hidden" id="results-footer">
+          <button class="btn btn-secondary" id="export-btn">💾 Export JSON</button>
+          <button class="btn btn-secondary" id="copy-summary-btn">📋 Copy Summary</button>
+        </div>
+      </section>
+
+      <!-- Loading Overlay -->
+      <div id="loading-overlay" class="loading-overlay hidden">
+        <div class="loading-content">
+          <div class="spinner"></div>
+          <p class="loading-text" id="loading-text">Scanning...</p>
+          <div class="progress-bar">
+            <div class="progress-fill" id="progress-fill"></div>
+          </div>
+          <p class="progress-text" id="progress-text">0/0 complete</p>
+        </div>
+      </div>
+    </main>
+
+    <!-- Toast Notifications -->
+    <div id="toast-container" class="toast-container"></div>
+  </div>
+
+  <script src="/js/api.js"></script>
+  <script src="/js/storage.js"></script>
+  <script src="/js/ui.js"></script>
+  <script src="/js/app.js"></script>
+</body>
+</html>
