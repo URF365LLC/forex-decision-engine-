@@ -119,31 +119,4 @@ const API = {
 };
 
 // Export for use in other scripts
-window.API = API;.set('limit', options.limit);
-    if (options.grade) params.set('grade', options.grade);
-    if (options.symbol) params.set('symbol', options.symbol);
-    
-    const query = params.toString();
-    return this.request(`/api/signals${query ? '?' + query : ''}`);
-  },
-
-  /**
-   * Update signal result
-   */
-  async updateSignal(id, result, notes) {
-    return this.request(`/api/signals/${id}`, {
-      method: 'PUT',
-      body: { result, notes },
-    });
-  },
-
-  /**
-   * Get signal statistics
-   */
-  async getStats() {
-    return this.request('/api/signals/stats');
-  },
-};
-
-// Make globally available
 window.API = API;
