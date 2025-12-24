@@ -33,3 +33,8 @@ outputType = "webview"
 [[ports]]
 localPort = 5000
 externalPort = 80
+
+[deployment]
+deploymentTarget = "autoscale"
+run = ["node", "forex-decision-engine/dist/server.js"]
+build = ["bash", "-c", "cd forex-decision-engine && npm install && npm run build"]
