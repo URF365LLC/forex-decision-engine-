@@ -5,7 +5,7 @@
 
 const App = {
   // State
-  universe: { forex: [], crypto: [] },
+  universe: { forex: [], crypto: [], metals: [] },
   selectedSymbols: [],
   results: [],
   currentFilter: 'all',
@@ -68,11 +68,13 @@ const App = {
       this.universe = {
         forex: data.forex || [],
         crypto: data.crypto || [],
+        metals: data.metals || [],
       };
       
       // Render symbol grids
       UI.renderSymbolGrid('forex-symbols', this.universe.forex, this.selectedSymbols);
       UI.renderSymbolGrid('crypto-symbols', this.universe.crypto, this.selectedSymbols);
+      UI.renderSymbolGrid('metals-symbols', this.universe.metals, this.selectedSymbols);
     } catch (error) {
       console.error('Failed to load universe:', error);
       UI.toast('Failed to load symbols', 'error');
@@ -180,7 +182,9 @@ const App = {
    * Select all symbols in category
    */
   selectCategory(category) {
-    const symbols = category === 'forex' ? this.universe.forex : this.universe.crypto;
+    const symbols = category === 'forex' ? this.universe.forex : 
+                    category === 'crypto' ? this.universe.crypto : 
+                    this.universe.metals;
     const allSelected = symbols.every(s => this.selectedSymbols.includes(s));
 
     if (allSelected) {
@@ -430,6 +434,12 @@ const App = {
     });
 
     UI.$('crypto-symbols')?.addEventListener('click', (e) => {
+      e.preventDefault();
+      const item = e.target.closest('.symbol-item');
+      if (item) this.toggleSymbol(item.dataset.symbol);
+    });
+
+    UI.$('metals-symbols')?.addEventListener('click', (e) => {
       e.preventDefault();
       const item = e.target.closest('.symbol-item');
       if (item) this.toggleSymbol(item.dataset.symbol);
