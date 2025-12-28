@@ -170,7 +170,8 @@ class AlphaVantageClient {
       }
     }
 
-    const bars = this.parseOHLCV(data, assetClass);
+    const ohlcvType = assetClass === 'forex' ? 'forex' : 'crypto';
+    const bars = this.parseOHLCV(data, ohlcvType);
     
     // Cache based on interval
     const ttl = interval === 'daily' ? CACHE_TTL.D1 : CACHE_TTL.H1;

@@ -1,15 +1,12 @@
 /**
- * Crypto Indicator Service
- * Fetches OHLCV from Alpha Vantage CRYPTO_INTRADAY or KuCoin fallback
+ * Twelve Data Indicator Service
+ * Fetches OHLCV from Twelve Data API
  * Computes technical indicators locally (EMA, RSI, ADX, ATR)
- * 
- * Why separate from forex?
- * Alpha Vantage indicator endpoints (EMA, RSI, etc.) don't support crypto.
- * We must fetch raw OHLCV and calculate indicators ourselves.
+ * Used for Metals, Indices, and Energies
  */
 
-import { alphaVantage, OHLCVBar, IndicatorValue } from '../services/alphaVantageClient.js';
-import { kucoin } from '../services/kucoinClient.js';
+import { OHLCVBar, IndicatorValue } from '../services/alphaVantageClient.js';
+import { twelveData } from '../services/twelveDataClient.js';
 import { TradingStyle } from '../config/strategy.js';
 import { STRATEGY } from '../config/strategy.js';
 import { createLogger } from '../services/logger.js';
@@ -18,15 +15,11 @@ import {
   calculateRSI,
   calculateATR,
   calculateADX,
-  getLatestValue,
-  getPreviousValue,
 } from './indicatorCalculations.js';
 
-const logger = createLogger('CryptoIndicators');
+const logger = createLogger('TwelveDataIndicators');
 
-const KUCOIN_SYMBOLS = ['BNBUSD', 'BCHUSD'];
-
-export interface CryptoIndicatorData {
+export interface TwelveDataIndicatorData {
   symbol: string;
   style: TradingStyle;
   
@@ -45,15 +38,15 @@ export interface CryptoIndicatorData {
   fetchedAt: string;
 }
 
-export async function fetchCryptoIndicators(
+export async function fetchTwelveDataIndicators(
   symbol: string,
   style: TradingStyle
-): Promise<CryptoIndicatorData> {
+): Promise<TwelveDataIndicatorData> {
   const errors: string[] = [];
   
-  logger.info(`Fetching crypto indicators for ${symbol} (${style})`);
+  logger.info(`Fetching Twelve Data indicators for ${symbol} (${style})`);
   
-  const data: CryptoIndicatorData = {
+  const data: TwelveDataIndicatorData = {
     symbol,
     style,
     trendBars: [],
@@ -70,22 +63,10 @@ export async function fetchCryptoIndicators(
   };
   
   try {
-    let entryBars: OHLCVBar[];
-    let trendBars: OHLCVBar[];
-    
-    if (KUCOIN_SYMBOLS.includes(symbol)) {
-      logger.info(`${symbol}: Using KuCoin data source`);
-      [entryBars, trendBars] = await Promise.all([
-        kucoin.getOHLCV(symbol, '60min'),
-        kucoin.getOHLCV(symbol, 'daily'),
-      ]);
-    } else {
-      logger.info(`${symbol}: Using Alpha Vantage data source`);
-      [entryBars, trendBars] = await Promise.all([
-        alphaVantage.getOHLCV(symbol, '60min', 'full'),
-        alphaVantage.getOHLCV(symbol, 'daily', 'compact'),
-      ]);
-    }
+    const [entryBars, trendBars] = await Promise.all([
+      twelveData.getOHLCV(symbol, '60min', 500),
+      twelveData.getOHLCV(symbol, 'daily', 200),
+    ]);
     
     data.entryBars = entryBars;
     data.trendBars = trendBars;
@@ -105,16 +86,14 @@ export async function fetchCryptoIndicators(
     data.adx = calculateADX(entryBars, STRATEGY.trend.adx.period);
     data.atr = calculateATR(entryBars, STRATEGY.stopLoss.atr.period);
     
-    logger.info(`Crypto indicators computed for ${symbol}: ${entryBars.length} bars`);
+    logger.info(`Twelve Data indicators computed for ${symbol}: ${entryBars.length} bars`);
     
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
-    logger.error(`Failed to fetch crypto indicators for ${symbol}`, { error: message });
+    logger.error(`Failed to fetch Twelve Data indicators for ${symbol}`, { error: message });
     errors.push(message);
   }
   
   data.errors = errors;
   return data;
 }
-
-export { getLatestValue, getPreviousValue };

@@ -17,7 +17,7 @@ import cors from 'cors';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
-import { FOREX_SYMBOLS, CRYPTO_SYMBOLS, DEFAULT_WATCHLIST, SYMBOL_META } from './config/universe.js';
+import { FOREX_SYMBOLS, CRYPTO_SYMBOLS, METAL_SYMBOLS, INDEX_SYMBOLS, ENERGY_SYMBOLS, DEFAULT_WATCHLIST, SYMBOL_META, getUniverse } from './config/universe.js';
 import { DEFAULTS, RISK_OPTIONS } from './config/defaults.js';
 import { STYLE_PRESETS } from './config/strategy.js';
 import { analyzeSymbol, scanSymbols, UserSettings, Decision } from './engine/decisionEngine.js';
@@ -74,11 +74,16 @@ app.get('/api/health', (req, res) => {
  * Get trading universe
  */
 app.get('/api/universe', (req, res) => {
+  const universe = getUniverse();
   res.json({
-    forex: FOREX_SYMBOLS,
-    crypto: CRYPTO_SYMBOLS,
+    forex: universe.forex,
+    crypto: universe.crypto,
+    metals: universe.metals,
+    indices: universe.indices,
+    energies: universe.energies,
     defaultWatchlist: DEFAULT_WATCHLIST,
     metadata: SYMBOL_META,
+    counts: universe.counts,
   });
 });
 
@@ -302,8 +307,10 @@ app.use((err: Error, req: express.Request, res: express.Response, next: express.
 app.listen(PORT, () => {
   logger.info(`🎯 Forex Decision Engine v1.0.0`);
   logger.info(`📡 Server running on port ${PORT}`);
-  logger.info(`🔑 API Key: ${process.env.ALPHAVANTAGE_API_KEY ? 'Configured' : 'NOT CONFIGURED'}`);
-  logger.info(`📊 Symbols: ${FOREX_SYMBOLS.length} forex, ${CRYPTO_SYMBOLS.length} crypto`);
+  logger.info(`🔑 Alpha Vantage: ${process.env.ALPHAVANTAGE_API_KEY ? 'Configured' : 'NOT CONFIGURED'}`);
+  logger.info(`🔑 Twelve Data: ${process.env.TWELVE_DATA_API_KEY ? 'Configured' : 'NOT CONFIGURED'}`);
+  const total = FOREX_SYMBOLS.length + CRYPTO_SYMBOLS.length + METAL_SYMBOLS.length + INDEX_SYMBOLS.length + ENERGY_SYMBOLS.length;
+  logger.info(`📊 Symbols: ${FOREX_SYMBOLS.length} forex, ${CRYPTO_SYMBOLS.length} crypto, ${METAL_SYMBOLS.length} metals, ${INDEX_SYMBOLS.length} indices, ${ENERGY_SYMBOLS.length} energies (${total} total)`);
 });
 
 // Graceful shutdown
