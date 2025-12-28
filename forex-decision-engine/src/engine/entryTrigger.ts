@@ -145,9 +145,20 @@ export function analyzeEntry(
   let reason = '';
   let isStrong = false;
 
-  // Calculate entry zone
-  const entryZoneLow = emaLow;
-  const entryZoneHigh = emaHigh;
+  // Calculate entry zone based on direction and current price
+  let entryZoneLow = emaLow;
+  let entryZoneHigh = emaHigh;
+  
+  // If price has overshot the zone, adjust entry zone to reflect actual entry area
+  if (inPullbackZone) {
+    if (trendDirection === 'bullish' && price < emaLow) {
+      // Price below zone in uptrend - entry would be around current price
+      entryZoneLow = price;
+    } else if (trendDirection === 'bearish' && price > emaHigh) {
+      // Price above zone in downtrend - entry would be around current price
+      entryZoneHigh = price;
+    }
+  }
 
   if (inPullbackZone && rsiWasReset && rsiTurning) {
     status = 'ready';
