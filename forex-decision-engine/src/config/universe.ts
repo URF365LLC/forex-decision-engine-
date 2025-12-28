@@ -1,6 +1,6 @@
 /**
  * Trading Universe - All supported symbols
- * Forex: 28 pairs | Crypto: 7 pairs | Metals: 2 pairs
+ * Forex: 28 pairs | Crypto: 8 pairs
  */
 
 export const FOREX_SYMBOLS = [
@@ -14,36 +14,20 @@ export const FOREX_SYMBOLS = [
 
 export const CRYPTO_SYMBOLS = [
   'BTCUSD', 'ETHUSD', 'SOLUSD', 'XRPUSD',
-  'ADAUSD', 'BCHUSD', 'LTCUSD',
+  'ADAUSD', 'BCHUSD', 'BNBUSD', 'LTCUSD',
 ] as const;
 
-export const METAL_SYMBOLS = [
-  'XAUUSD',
-  'XAGUSD',
-] as const;
-
-export const ALL_SYMBOLS = [...FOREX_SYMBOLS, ...CRYPTO_SYMBOLS, ...METAL_SYMBOLS] as const;
+export const ALL_SYMBOLS = [...FOREX_SYMBOLS, ...CRYPTO_SYMBOLS] as const;
 
 export type ForexSymbol = typeof FOREX_SYMBOLS[number];
 export type CryptoSymbol = typeof CRYPTO_SYMBOLS[number];
-export type MetalSymbol = typeof METAL_SYMBOLS[number];
 export type Symbol = typeof ALL_SYMBOLS[number];
 
-export type AssetClass = 'forex' | 'crypto' | 'metal';
+export type AssetClass = 'forex' | 'crypto';
 
 export function getAssetClass(symbol: string): AssetClass {
   if (CRYPTO_SYMBOLS.includes(symbol as CryptoSymbol)) return 'crypto';
-  if (METAL_SYMBOLS.includes(symbol as MetalSymbol)) return 'metal';
   return 'forex';
-}
-
-export function usesForexIndicators(symbol: string): boolean {
-  const assetClass = getAssetClass(symbol);
-  return assetClass === 'forex' || assetClass === 'metal';
-}
-
-export function usesCryptoIndicators(symbol: string): boolean {
-  return getAssetClass(symbol) === 'crypto';
 }
 
 export function isValidSymbol(symbol: string): symbol is Symbol {
@@ -54,7 +38,7 @@ export function isValidSymbol(symbol: string): symbol is Symbol {
  * Default watchlist for new users
  */
 export const DEFAULT_WATCHLIST: Symbol[] = [
-  'EURUSD', 'GBPUSD', 'USDJPY', 'BTCUSD', 'ETHUSD', 'XAUUSD'
+  'EURUSD', 'GBPUSD', 'USDJPY', 'BTCUSD', 'ETHUSD'
 ];
 
 /**
@@ -104,11 +88,8 @@ export const SYMBOL_META: Record<string, {
   XRPUSD: { pipDecimals: 4, displayName: 'XRP/USD', category: 'Crypto' },
   ADAUSD: { pipDecimals: 4, displayName: 'ADA/USD', category: 'Crypto' },
   BCHUSD: { pipDecimals: 2, displayName: 'BCH/USD', category: 'Crypto' },
+  BNBUSD: { pipDecimals: 2, displayName: 'BNB/USD', category: 'Crypto' },
   LTCUSD: { pipDecimals: 2, displayName: 'LTC/USD', category: 'Crypto' },
-  
-  // Metals
-  XAUUSD: { pipDecimals: 2, displayName: 'XAU/USD (Gold)', category: 'Metal' },
-  XAGUSD: { pipDecimals: 3, displayName: 'XAG/USD (Silver)', category: 'Metal' },
 };
 
 export function getPipDecimals(symbol: string): number {
@@ -117,19 +98,4 @@ export function getPipDecimals(symbol: string): number {
 
 export function getDisplayName(symbol: string): string {
   return SYMBOL_META[symbol]?.displayName ?? symbol;
-}
-
-export function getUniverse() {
-  return {
-    forex: [...FOREX_SYMBOLS],
-    crypto: [...CRYPTO_SYMBOLS],
-    metals: [...METAL_SYMBOLS],
-    all: [...ALL_SYMBOLS],
-    counts: {
-      forex: FOREX_SYMBOLS.length,
-      crypto: CRYPTO_SYMBOLS.length,
-      metals: METAL_SYMBOLS.length,
-      total: ALL_SYMBOLS.length,
-    },
-  };
 }
