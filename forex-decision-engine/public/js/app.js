@@ -5,7 +5,7 @@
 
 const App = {
   // State
-  universe: { forex: [], crypto: [], metals: [], indices: [], energies: [] },
+  universe: { forex: [], crypto: [] },
   selectedSymbols: [],
   results: [],
   currentFilter: 'all',
@@ -68,17 +68,11 @@ const App = {
       this.universe = {
         forex: data.forex || [],
         crypto: data.crypto || [],
-        metals: data.metals || [],
-        indices: data.indices || [],
-        energies: data.energies || [],
       };
       
       // Render symbol grids
       UI.renderSymbolGrid('forex-symbols', this.universe.forex, this.selectedSymbols);
       UI.renderSymbolGrid('crypto-symbols', this.universe.crypto, this.selectedSymbols);
-      UI.renderSymbolGrid('metals-symbols', this.universe.metals, this.selectedSymbols);
-      UI.renderSymbolGrid('indices-symbols', this.universe.indices, this.selectedSymbols);
-      UI.renderSymbolGrid('energies-symbols', this.universe.energies, this.selectedSymbols);
     } catch (error) {
       console.error('Failed to load universe:', error);
       UI.toast('Failed to load symbols', 'error');
@@ -186,12 +180,14 @@ const App = {
    * Select all symbols in category
    */
   selectCategory(category) {
-    const symbols = this.universe[category] || [];
+    const symbols = category === 'forex' ? this.universe.forex : this.universe.crypto;
     const allSelected = symbols.every(s => this.selectedSymbols.includes(s));
 
     if (allSelected) {
+      // Deselect all in category
       this.selectedSymbols = this.selectedSymbols.filter(s => !symbols.includes(s));
     } else {
+      // Select all in category (up to limit)
       for (const symbol of symbols) {
         if (!this.selectedSymbols.includes(symbol)) {
           if (this.selectedSymbols.length >= 20) {
@@ -434,24 +430,6 @@ const App = {
     });
 
     UI.$('crypto-symbols')?.addEventListener('click', (e) => {
-      e.preventDefault();
-      const item = e.target.closest('.symbol-item');
-      if (item) this.toggleSymbol(item.dataset.symbol);
-    });
-
-    UI.$('metals-symbols')?.addEventListener('click', (e) => {
-      e.preventDefault();
-      const item = e.target.closest('.symbol-item');
-      if (item) this.toggleSymbol(item.dataset.symbol);
-    });
-
-    UI.$('indices-symbols')?.addEventListener('click', (e) => {
-      e.preventDefault();
-      const item = e.target.closest('.symbol-item');
-      if (item) this.toggleSymbol(item.dataset.symbol);
-    });
-
-    UI.$('energies-symbols')?.addEventListener('click', (e) => {
       e.preventDefault();
       const item = e.target.closest('.symbol-item');
       if (item) this.toggleSymbol(item.dataset.symbol);
