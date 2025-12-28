@@ -1,0 +1,346 @@
+Here's the complete prompt for Replit:
+
+---
+
+```
+TWELVE DATA INTEGRATION - COMPLETE IMPLEMENTATION PLAN
+
+Add Twelve Data as a data source for Metals, Indices, and Energies.
+
+══════════════════════════════════════════════════════════════════
+TASK 1: CREATE TWELVE DATA CLIENT
+══════════════════════════════════════════════════════════════════
+
+File: src/services/twelveDataClient.ts
+
+Base URL: https://api.twelvedata.com
+API Key: Required (add to .env as TWELVE_DATA_API_KEY)
+Rate Limit: 8 calls/minute on free tier - add 8 second delay between calls
+           or batch requests smartly
+
+Endpoint: GET /time_series
+Parameters:
+  - symbol: XAU/USD, DJI, etc.
+  - interval: 1h, 4h, 1day
+  - outputsize: 100 (or number of bars)
+  - apikey: from env
+
+Response format:
+{
+  "meta": { "symbol": "XAU/USD", ... },
+  "values": [
+    {
+      "datetime": "2024-01-15 14:00:00",
+      "open": "2045.50",
+      "high": "2048.30",
+      "low": "2044.10",
+      "close": "2047.80",
+      "volume": "12345"
+    },
+    ...
+  ]
+}
+
+Parse to OHLCVBar:
+{
+  timestamp: values[i].datetime,  // Already ISO-ish format
+  open: parseFloat(values[i].open),
+  high: parseFloat(values[i].high),
+  low: parseFloat(values[i].low),
+  close: parseFloat(values[i].close),
+  volume: parseFloat(values[i].volume || '0')
+}
+
+NOTE: Twelve Data returns newest first, may need to reverse array.
+
+══════════════════════════════════════════════════════════════════
+TASK 2: SYMBOL MAPPING
+══════════════════════════════════════════════════════════════════
+
+Inside twelveDataClient.ts:
+
+const SYMBOL_MAP: Record<string, string> = {
+  // Metals
+  'XAUUSD': 'XAU/USD',
+  'XAGUSD': 'XAG/USD',
+  
+  // Indices (E8 MT5 → Twelve Data)
+  'ASX':    'XJO',       // ASX 200
+  'DAX':    'GDAXI',     // Germany 40
+  'DOW':    'DJI',       // Dow Jones 30
+  'NIKKEI': 'NI225',     // Nikkei 225
+  'NSDQ':   'NDX',       // NASDAQ 100 (not IXIC)
+  'SP':     'SPX',       // S&P 500
+  
+  // Energies
+  'WTI':    'WTI/USD',   // WTI Crude Oil
+  'BRENT':  'BRENT/USD', // Brent Crude Oil
+};
+
+const INTERVAL_MAP: Record<string, string> = {
+  '1min':  '1min',
+  '5min':  '5min',
+  '15min': '15min',
+  '30min': '30min',
+  '60min': '1h',
+  'daily': '1day',
+};
+
+══════════════════════════════════════════════════════════════════
+TASK 3: UPDATE .env
+══════════════════════════════════════════════════════════════════
+
+Add to .env:
+TWELVE_DATA_API_KEY=your_actual_key_here
+
+Add to .env.example:
+TWELVE_DATA_API_KEY=your_twelve_data_api_key
+
+══════════════════════════════════════════════════════════════════
+TASK 4: CREATE TWELVE DATA INDICATOR SERVICE
+══════════════════════════════════════════════════════════════════
+
+File: src/engine/twelveDataIndicatorService.ts
+
+Structure (same pattern as cryptoIndicatorService.ts):
+
+1. Fetch OHLCV from Twelve Data
+2. Compute indicators locally:
+   - EMA (20, 50, 200)
+   - RSI (14)
+   - ATR (14)
+   - ADX (14)
+3. Return same IndicatorData interface
+
+Use the SAME local calculation functions from cryptoIndicatorService:
+- calculateEMA()
+- calculateRSI()
+- calculateATR()
+- calculateADX()
+
+Consider extracting these to a shared file:
+src/engine/indicatorCalculations.ts
+
+Then both cryptoIndicatorService and twelveDataIndicatorService 
+can import from it (DRY principle).
+
+══════════════════════════════════════════════════════════════════
+TASK 5: UPDATE UNIVERSE.TS
+══════════════════════════════════════════════════════════════════
+
+Add new symbol arrays:
+
+// Metals (2) - Twelve Data
+export const METAL_SYMBOLS = [
+  'XAUUSD',  // Gold
+  'XAGUSD',  // Silver
+] as const;
+
+// Indices (6) - Twelve Data
+export const INDEX_SYMBOLS = [
+  'ASX',     // Australia 200
+  'DAX',     // Germany 40
+  'DOW',     // Dow Jones 30
+  'NIKKEI',  // Nikkei 225
+  'NSDQ',    // NASDAQ 100
+  'SP',      // S&P 500
+] as const;
+
+// Energies (2) - Twelve Data
+export const ENERGY_SYMBOLS = [
+  'WTI',     // WTI Crude
+  'BRENT',   // Brent Crude
+] as const;
+
+// Update ALL_SYMBOLS
+export const ALL_SYMBOLS = [
+  ...FOREX_SYMBOLS,
+  ...CRYPTO_SYMBOLS,
+  ...METAL_SYMBOLS,
+  ...INDEX_SYMBOLS,
+  ...ENERGY_SYMBOLS,
+] as const;
+
+// Update AssetClass type
+export type AssetClass = 'forex' | 'crypto' | 'metal' | 'index' | 'energy';
+
+// Update getAssetClass()
+export function getAssetClass(symbol: string): AssetClass {
+  if (CRYPTO_SYMBOLS.includes(symbol as any)) return 'crypto';
+  if (METAL_SYMBOLS.includes(symbol as any)) return 'metal';
+  if (INDEX_SYMBOLS.includes(symbol as any)) return 'index';
+  if (ENERGY_SYMBOLS.includes(symbol as any)) return 'energy';
+  return 'forex';
+}
+
+// Add helper
+export function usesTwelveData(symbol: string): boolean {
+  const assetClass = getAssetClass(symbol);
+  return ['metal', 'index', 'energy'].includes(assetClass);
+}
+
+// Add SYMBOL_META for new symbols
+XAUUSD:  { pipDecimals: 2, displayName: 'XAU/USD (Gold)', category: 'Metal' },
+XAGUSD:  { pipDecimals: 3, displayName: 'XAG/USD (Silver)', category: 'Metal' },
+ASX:     { pipDecimals: 1, displayName: 'ASX 200', category: 'Index' },
+DAX:     { pipDecimals: 1, displayName: 'DAX 40', category: 'Index' },
+DOW:     { pipDecimals: 1, displayName: 'Dow Jones', category: 'Index' },
+NIKKEI:  { pipDecimals: 0, displayName: 'Nikkei 225', category: 'Index' },
+NSDQ:    { pipDecimals: 1, displayName: 'NASDAQ 100', category: 'Index' },
+SP:      { pipDecimals: 1, displayName: 'S&P 500', category: 'Index' },
+WTI:     { pipDecimals: 2, displayName: 'WTI Crude', category: 'Energy' },
+BRENT:   { pipDecimals: 2, displayName: 'Brent Crude', category: 'Energy' },
+
+// Update getUniverse() for API response
+export function getUniverse() {
+  return {
+    forex: [...FOREX_SYMBOLS],
+    crypto: [...CRYPTO_SYMBOLS],
+    metals: [...METAL_SYMBOLS],
+    indices: [...INDEX_SYMBOLS],
+    energies: [...ENERGY_SYMBOLS],
+    all: [...ALL_SYMBOLS],
+    counts: {
+      forex: FOREX_SYMBOLS.length,
+      crypto: CRYPTO_SYMBOLS.length,
+      metals: METAL_SYMBOLS.length,
+      indices: INDEX_SYMBOLS.length,
+      energies: ENERGY_SYMBOLS.length,
+      total: ALL_SYMBOLS.length,
+    },
+  };
+}
+
+══════════════════════════════════════════════════════════════════
+TASK 6: UPDATE INDICATOR FACTORY
+══════════════════════════════════════════════════════════════════
+
+File: src/engine/indicatorFactory.ts
+
+import { usesTwelveData, usesCryptoIndicators } from '../config/universe.js';
+import { fetchIndicators } from './indicatorService.js';
+import { fetchCryptoIndicators } from './cryptoIndicatorService.js';
+import { fetchTwelveDataIndicators } from './twelveDataIndicatorService.js';
+
+export async function getIndicators(symbol: string, style: TradingStyle) {
+  // Route to correct data source
+  if (usesTwelveData(symbol)) {
+    logger.info(`${symbol}: Using Twelve Data source`);
+    return fetchTwelveDataIndicators(symbol, style);
+  }
+  
+  if (usesCryptoIndicators(symbol)) {
+    logger.info(`${symbol}: Using Crypto service (AV + KuCoin)`);
+    return fetchCryptoIndicators(symbol, style);
+  }
+  
+  logger.info(`${symbol}: Using Alpha Vantage (Forex)`);
+  return fetchIndicators(symbol, style);
+}
+
+══════════════════════════════════════════════════════════════════
+TASK 7: UPDATE FRONTEND
+══════════════════════════════════════════════════════════════════
+
+Update public/index.html and public/js/app.js:
+
+1. Add new sections in watchlist:
+   - Metals (XAUUSD, XAGUSD)
+   - Indices (ASX, DAX, DOW, NIKKEI, NSDQ, SP)
+   - Energies (WTI, BRENT)
+
+2. Update renderSymbolGrid() to handle new categories
+
+3. Add category buttons/tabs for easy selection:
+   - All | Forex | Crypto | Metals | Indices | Energies
+
+══════════════════════════════════════════════════════════════════
+TASK 8: RATE LIMITING FOR TWELVE DATA
+══════════════════════════════════════════════════════════════════
+
+IMPORTANT: Twelve Data free tier = 8 API calls per minute
+
+Options:
+A) Add 8-second delay between Twelve Data calls (simple but slow)
+B) Create separate rate limiter for Twelve Data
+C) Batch symbols and warn user if scanning too many Twelve Data symbols
+
+Recommended: Option B - Create twelveDataRateLimiter in 
+src/services/twelveDataClient.ts with:
+- maxTokens: 8
+- refillRate: 8 per 60 seconds
+- Queue requests if limit exceeded
+
+══════════════════════════════════════════════════════════════════
+TASK 9: VALIDATION & TESTING
+══════════════════════════════════════════════════════════════════
+
+After implementation:
+
+1. npm run typecheck (must pass with 0 errors)
+
+2. npm run dev
+
+3. Test each data source:
+   
+   # Forex (Alpha Vantage)
+   Scan: EURUSD, GBPUSD
+   Expected: Working analysis
+   
+   # Crypto (Alpha Vantage + KuCoin)
+   Scan: BTCUSD, ETHUSD (Alpha Vantage)
+   Scan: BNBUSD, BCHUSD (KuCoin fallback)
+   Expected: Working analysis
+   
+   # Metals (Twelve Data)
+   Scan: XAUUSD, XAGUSD
+   Expected: Working analysis (not ERROR)
+   
+   # Indices (Twelve Data)
+   Scan: DOW, SP, NSDQ
+   Expected: Working analysis (not ERROR)
+   
+   # Energies (Twelve Data)
+   Scan: WTI, BRENT
+   Expected: Working analysis (not ERROR)
+
+4. Check logs show correct data source routing:
+   "EURUSD: Using Alpha Vantage (Forex)"
+   "BTCUSD: Using Crypto service (AV + KuCoin)"
+   "XAUUSD: Using Twelve Data source"
+   "DOW: Using Twelve Data source"
+
+══════════════════════════════════════════════════════════════════
+FINAL EXPECTED COVERAGE
+══════════════════════════════════════════════════════════════════
+
+| Asset Class | Count | Data Source          |
+|-------------|-------|----------------------|
+| Forex       | 28    | Alpha Vantage        |
+| Crypto      | 8     | Alpha Vantage/KuCoin |
+| Metals      | 2     | Twelve Data          |
+| Indices     | 6     | Twelve Data          |
+| Energies    | 2     | Twelve Data          |
+| TOTAL       | 46    | Matching E8 MT5      |
+
+══════════════════════════════════════════════════════════════════
+
+Proceed with implementation in this order:
+1. Create twelveDataClient.ts
+2. Update .env with API key
+3. Create twelveDataIndicatorService.ts
+4. Update universe.ts
+5. Update indicatorFactory.ts
+6. Update frontend
+7. Test all symbols
+
+Ready to build!
+```
+
+---
+
+**Before sending to Replit, add your Twelve Data API key:**
+
+Replace `your_actual_key_here` with your real key, or tell Replit to ask you for it via the Secrets/Environment Variables panel.
+
+🚀

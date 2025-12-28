@@ -1,0 +1,98 @@
+Good question! Let me compare:
+
+## Yahoo Finance vs Twelve Data
+
+| Factor | Twelve Data | Yahoo Finance |
+|--------|-------------|---------------|
+| **Rate Limit** | ❌ 8 calls/min (restrictive) | ✅ Unlimited (unofficial) |
+| **API Key** | Required | Not needed |
+| **Reliability** | ✅ Official API, stable | ⚠️ Unofficial, can break |
+| **Metals (XAU/XAG)** | ✅ Spot prices | ⚠️ Futures only (GC=F, SI=F) |
+| **Indices** | ✅ Real indices | ✅ Real indices (^DJI, ^GSPC) |
+| **Energies** | ✅ WTI/Brent spot | ⚠️ Futures (CL=F, BZ=F) |
+| **Intraday OHLCV** | ✅ Yes | ✅ Yes |
+| **E8 Price Match** | ✅ Better (spot CFDs) | ⚠️ Futures differ from CFDs |
+
+---
+
+## The Key Issue
+
+**E8 trades CFDs based on SPOT prices, not futures.**
+
+- Yahoo Finance metals/energies = **Futures contracts** (GC=F, CL=F)
+- Twelve Data = **Spot prices** (XAU/USD, WTI/USD)
+
+Futures prices differ from spot due to contango/backwardation. Your signals could be off.
+
+---
+
+## My Recommendation
+
+**Stick with Twelve Data**, but optimize for the rate limit:
+
+```
+OPTIMIZED TWELVE DATA STRATEGY:
+
+1. AGGRESSIVE CACHING
+   - Cache Twelve Data responses for 30 minutes (vs 5 min for Alpha Vantage)
+   - 10 symbols × 2 calls each = 20 calls for full scan
+   - With 30 min cache, you only hit API on first scan
+
+2. PRIORITIZE SCANS
+   - Scan Twelve Data symbols FIRST (before forex/crypto)
+   - Get them cached while rate limit is fresh
+
+3. BATCH WISELY
+   - If user selects all 10 Twelve Data symbols, warn:
+     "Scanning indices/metals/energies may take ~2 minutes due to API limits"
+   - Or limit to 5 Twelve Data symbols per scan
+
+4. SEPARATE RATE LIMITER
+   - twelveDataRateLimiter: 8 tokens, refill 8/minute
+   - Queue requests, don't fail them
+
+5. REQUEST 500 BARS
+   - Needed for EMA200 calculation
+   - One larger request vs multiple small ones
+```
+
+---
+
+## Tell Replit
+
+```
+Stick with Twelve Data (better spot price match for E8 CFDs).
+
+Add these optimizations for the 8 calls/min rate limit:
+
+1. AGGRESSIVE CACHING
+   - Cache TTL: 30 minutes for Twelve Data (vs 5 min for Alpha Vantage)
+   - This means first scan is slow, subsequent scans are instant
+
+2. SEPARATE RATE LIMITER
+   - Create dedicated rate limiter for Twelve Data
+   - 8 tokens max, refill 8 per minute
+   - Queue requests if limit exceeded (don't fail)
+
+3. REQUEST 500 BARS
+   - outputsize=500 for EMA200 calculation
+   - Twelve Data allows this on free tier
+
+4. USER WARNING
+   - If scanning 5+ Twelve Data symbols, show toast:
+     "Indices/Metals/Energies may take 1-2 minutes (API rate limits)"
+
+5. RETRY LOGIC
+   - If Twelve Data returns rate limit error (429), wait 60 sec and retry
+   - Max 2 retries before marking as ERROR
+
+6. ERROR HANDLING
+   - Log which symbol failed and why
+   - Show specific error message (not just "Insufficient data")
+
+Proceed with implementation!
+```
+
+---
+
+**Twelve Data is the right choice** - just needs smart caching to work around the rate limit. 🎯
