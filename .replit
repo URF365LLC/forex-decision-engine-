@@ -36,5 +36,5 @@ externalPort = 80
 
 [deployment]
 deploymentTarget = "autoscale"
-run = ["node", "forex-decision-engine/dist/server.js"]
-build = ["sh", "-c", "npm --prefix forex-decision-engine install && npm --prefix forex-decision-engine run build"]
+run = ["npx", "--prefix", "forex-decision-engine", "tsx", "forex-decision-engine/src/server.ts"]
+build = ["npm", "--prefix", "forex-decision-engine", "install"]
