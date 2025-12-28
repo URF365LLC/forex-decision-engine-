@@ -11,7 +11,8 @@ import { TradingStyle, getStyleConfig } from '../config/strategy.js';
 import { STRATEGY } from '../config/strategy.js';
 import { DEFAULTS } from '../config/defaults.js';
 import { getDisplayName, getPipDecimals } from '../config/universe.js';
-import { fetchIndicators, IndicatorData, getLatestValue, findSwingHigh, findSwingLow } from './indicatorService.js';
+import { IndicatorData, getLatestValue, findSwingHigh, findSwingLow } from './indicatorService.js';
+import { getIndicators, AnyIndicatorData } from './indicatorFactory.js';
 import { analyzeTrend, TrendAnalysis, TrendDirection } from './trendFilter.js';
 import { analyzeEntry, EntryAnalysis } from './entryTrigger.js';
 import { 
@@ -121,9 +122,9 @@ export async function analyzeSymbol(
   // 1. FETCH INDICATORS
   // ═══════════════════════════════════════════════════════════════
   
-  let indicators: IndicatorData;
+  let indicators: AnyIndicatorData;
   try {
-    indicators = await fetchIndicators(symbol, settings.style);
+    indicators = await getIndicators(symbol, settings.style);
     errors.push(...indicators.errors);
   } catch (e) {
     const error = e instanceof Error ? e.message : 'Unknown error';

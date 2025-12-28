@@ -34,6 +34,8 @@ const logger = createLogger('Server');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+let scanInProgress = false;
+
 // ═══════════════════════════════════════════════════════════════
 // MIDDLEWARE
 // ═══════════════════════════════════════════════════════════════
@@ -153,6 +155,12 @@ app.post('/api/analyze', async (req, res) => {
  * Scan multiple symbols
  */
 app.post('/api/scan', async (req, res) => {
+  if (scanInProgress) {
+    return res.status(429).json({ error: 'Scan already in progress. Please wait.' });
+  }
+  
+  scanInProgress = true;
+  
   try {
     const { symbols, settings } = req.body;
     
@@ -196,6 +204,8 @@ app.post('/api/scan', async (req, res) => {
     res.status(500).json({ 
       error: error instanceof Error ? error.message : 'Scan failed' 
     });
+  } finally {
+    scanInProgress = false;
   }
 });
 

@@ -1,0 +1,562 @@
+Here's the complete prompt and file structure:
+
+---
+
+## PROMPT FOR REPLIT (Copy/Paste This)
+
+```
+UPDATED ARCHITECTURE REQUEST - SEPARATE CRYPTO INDICATOR ENGINE
+
+Before proceeding with the 7 tasks, I need an architectural change.
+
+PROBLEM:
+Alpha Vantage indicator endpoints (EMA, RSI, ADX, ATR) only work for 
+stocks and forex. They do NOT support crypto symbols. This is an API 
+design limitation, not a permissions issue. My Premium key gives me 
+access to CRYPTO_INTRADAY for OHLCV data, but there are no crypto 
+indicator endpoints.
+
+SOLUTION:
+Instead of patching indicatorService.ts with messy if/else logic for 
+crypto, create a SEPARATE crypto indicator engine. This is cleaner 
+architecture that follows single-responsibility principle.
+
+NEW FILE STRUCTURE:
+```
+src/engine/
+├── indicatorService.ts         → Forex ONLY (Alpha Vantage endpoints)
+├── cryptoIndicatorService.ts   → Crypto ONLY (OHLCV + local calc) [NEW]
+└── indicatorFactory.ts         → Routes to correct service [NEW]
+```
+
+IMPLEMENTATION REQUIREMENTS:
+
+1. CREATE: src/engine/cryptoIndicatorService.ts
+   - Fetch OHLCV via CRYPTO_INTRADAY (symbol=BTC, market=USD format)
+   - Compute EMA locally using standard formula
+   - Compute RSI locally using Wilder's smoothing method
+   - Compute ADX locally using +DI/-DI with smoothing
+   - Compute ATR locally using true range + smoothing
+   - Export same interface shape as forex indicatorService
+
+2. CREATE: src/engine/indicatorFactory.ts
+   - Export getIndicatorService(symbol) function
+   - Returns cryptoIndicatorService for crypto symbols
+   - Returns indicatorService for forex symbols
+   - Uses getAssetClass() from universe.ts to determine type
+
+3. MODIFY: src/engine/indicatorService.ts
+   - Remove any crypto-related code
+   - Keep it clean for forex only
+   - Ensure it uses EUR/USD format for Alpha Vantage calls
+
+4. MODIFY: src/engine/decisionEngine.ts
+   - Import from indicatorFactory instead of indicatorService directly
+   - Use factory to get correct service based on symbol
+
+5. KEEP ALL 8 CRYPTO SYMBOLS in universe.ts:
+   - BTCUSD, ETHUSD, SOLUSD, XRPUSD, ADAUSD, BCHUSD, BNBUSD, LTCUSD
+   - Do NOT remove BNBUSD - it works with CRYPTO_INTRADAY
+
+INDICATOR FORMULAS (for crypto local calculation):
+
+EMA: multiplier = 2/(period+1), ema = (close - prevEma) * multiplier + prevEma
+
+RSI: Using Wilder's smoothing:
+  - gain = max(close - prevClose, 0)
+  - loss = max(prevClose - close, 0)  
+  - avgGain = ((prevAvgGain * 13) + gain) / 14
+  - avgLoss = ((prevAvgLoss * 13) + loss) / 14
+  - RS = avgGain / avgLoss
+  - RSI = 100 - (100 / (1 + RS))
+
+ATR: Using Wilder's smoothing:
+  - TR = max(high-low, abs(high-prevClose), abs(low-prevClose))
+  - ATR = ((prevATR * 13) + TR) / 14
+
+ADX: 
+  - +DM = high - prevHigh (if positive and > -DM, else 0)
+  - -DM = prevLow - low (if positive and > +DM, else 0)
+  - Smooth +DM, -DM, TR over 14 periods
+  - +DI = 100 * smoothed(+DM) / smoothed(TR)
+  - -DI = 100 * smoothed(-DM) / smoothed(TR)
+  - DX = 100 * abs(+DI - -DI) / (+DI + -DI)
+  - ADX = 14-period smoothed average of DX
+
+After creating the crypto engine, THEN proceed with the 7 tasks, 
+but SKIP Task 4 (removing BNBUSD) since it will work with the new engine.
+
+Run typecheck after implementation:
+npm run typecheck
+
+Test with both forex and crypto:
+- Forex: EURUSD, GBPUSD, USDJPY
+- Crypto: BTCUSD, ETHUSD, BNBUSD
+```
+
+---
+
+## CRYPTO INDICATOR SERVICE FILE STRUCTURE
+
+Give this to Replit as reference:
+
+```typescript
+// src/engine/cryptoIndicatorService.ts
+
+/**
+ * Crypto Indicator Service
+ * Fetches OHLCV from Alpha Vantage CRYPTO_INTRADAY
+ * Computes technical indicators locally (EMA, RSI, ADX, ATR)
+ * 
+ * Why separate from forex?
+ * Alpha Vantage indicator endpoints (EMA, RSI, etc.) don't support crypto.
+ * We must fetch raw OHLCV and calculate indicators ourselves.
+ */
+
+import { alphaVantageClient } from '../services/alphaVantageClient.js';
+import { TradingStyle, getStyleConfig } from '../config/strategy.js';
+import { STRATEGY } from '../config/strategy.js';
+import { createLogger } from '../services/logger.js';
+
+const logger = createLogger('CryptoIndicators');
+
+// ═══════════════════════════════════════════════════════════════
+// TYPES
+// ═══════════════════════════════════════════════════════════════
+
+export interface OHLCVBar {
+  timestamp: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+}
+
+export interface IndicatorValue {
+  timestamp: string;
+  value: number | null;
+}
+
+export interface CryptoIndicatorData {
+  symbol: string;
+  style: TradingStyle;
+  
+  // Price data
+  entryBars: OHLCVBar[];
+  trendBars: OHLCVBar[];
+  currentPrice: number;
+  
+  // Indicators (computed locally)
+  ema200: IndicatorValue[];
+  ema50: IndicatorValue[];
+  ema20: IndicatorValue[];
+  rsi: IndicatorValue[];
+  adx: IndicatorValue[];
+  atr: IndicatorValue[];
+  
+  // Metadata
+  errors: string[];
+  fetchedAt: string;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// OHLCV FETCHING
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * Parse crypto symbol (BTCUSD → BTC, USD)
+ */
+function parseCryptoSymbol(symbol: string): { base: string; market: string } {
+  // Handle standard format: BTCUSD, ETHUSD, etc.
+  const base = symbol.slice(0, -3);  // BTC, ETH, SOL, etc.
+  const market = symbol.slice(-3);    // USD
+  return { base, market };
+}
+
+/**
+ * Fetch OHLCV data from Alpha Vantage CRYPTO_INTRADAY
+ */
+async function fetchCryptoOHLCV(
+  symbol: string,
+  interval: '1min' | '5min' | '15min' | '30min' | '60min',
+  outputsize: 'compact' | 'full' = 'compact'
+): Promise<OHLCVBar[]> {
+  const { base, market } = parseCryptoSymbol(symbol);
+  
+  logger.debug(`Fetching crypto OHLCV: ${base}/${market} ${interval}`);
+  
+  // Call Alpha Vantage CRYPTO_INTRADAY
+  // Returns: { "Time Series Crypto (60min)": { "2024-01-01 12:00:00": { "1. open": "42000", ... } } }
+  
+  const bars = await alphaVantageClient.getCryptoIntraday(base, market, interval, outputsize);
+  
+  return bars;
+}
+
+/**
+ * Fetch daily OHLCV for trend analysis
+ */
+async function fetchCryptoDaily(symbol: string): Promise<OHLCVBar[]> {
+  const { base, market } = parseCryptoSymbol(symbol);
+  
+  logger.debug(`Fetching crypto daily: ${base}/${market}`);
+  
+  const bars = await alphaVantageClient.getCryptoDaily(base, market);
+  
+  return bars;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// LOCAL INDICATOR CALCULATIONS
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * Calculate EMA (Exponential Moving Average)
+ * Formula: EMA = (close - prevEMA) * multiplier + prevEMA
+ * Multiplier = 2 / (period + 1)
+ */
+function calculateEMA(bars: OHLCVBar[], period: number): IndicatorValue[] {
+  if (bars.length < period) return [];
+  
+  const results: IndicatorValue[] = [];
+  const multiplier = 2 / (period + 1);
+  
+  // First EMA = SMA of first 'period' bars
+  let ema = bars.slice(0, period).reduce((sum, b) => sum + b.close, 0) / period;
+  
+  // Fill nulls for bars before we have enough data
+  for (let i = 0; i < period - 1; i++) {
+    results.push({ timestamp: bars[i].timestamp, value: null });
+  }
+  
+  // First valid EMA
+  results.push({ timestamp: bars[period - 1].timestamp, value: ema });
+  
+  // Calculate remaining EMAs
+  for (let i = period; i < bars.length; i++) {
+    ema = (bars[i].close - ema) * multiplier + ema;
+    results.push({ timestamp: bars[i].timestamp, value: ema });
+  }
+  
+  return results;
+}
+
+/**
+ * Calculate RSI (Relative Strength Index) using Wilder's smoothing
+ * Period: 14 (standard)
+ */
+function calculateRSI(bars: OHLCVBar[], period: number = 14): IndicatorValue[] {
+  if (bars.length < period + 1) return [];
+  
+  const results: IndicatorValue[] = [];
+  const gains: number[] = [];
+  const losses: number[] = [];
+  
+  // Calculate price changes
+  for (let i = 1; i < bars.length; i++) {
+    const change = bars[i].close - bars[i - 1].close;
+    gains.push(change > 0 ? change : 0);
+    losses.push(change < 0 ? Math.abs(change) : 0);
+  }
+  
+  // First RSI value - simple average
+  let avgGain = gains.slice(0, period).reduce((a, b) => a + b, 0) / period;
+  let avgLoss = losses.slice(0, period).reduce((a, b) => a + b, 0) / period;
+  
+  // Fill nulls for bars before we have enough data
+  for (let i = 0; i < period; i++) {
+    results.push({ timestamp: bars[i].timestamp, value: null });
+  }
+  
+  // First RSI
+  let rs = avgLoss === 0 ? 100 : avgGain / avgLoss;
+  let rsi = 100 - (100 / (1 + rs));
+  results.push({ timestamp: bars[period].timestamp, value: rsi });
+  
+  // Subsequent RSI values using Wilder's smoothing
+  for (let i = period; i < gains.length; i++) {
+    avgGain = ((avgGain * (period - 1)) + gains[i]) / period;
+    avgLoss = ((avgLoss * (period - 1)) + losses[i]) / period;
+    
+    rs = avgLoss === 0 ? 100 : avgGain / avgLoss;
+    rsi = 100 - (100 / (1 + rs));
+    results.push({ timestamp: bars[i + 1].timestamp, value: rsi });
+  }
+  
+  return results;
+}
+
+/**
+ * Calculate ATR (Average True Range) using Wilder's smoothing
+ * Period: 14 (standard)
+ */
+function calculateATR(bars: OHLCVBar[], period: number = 14): IndicatorValue[] {
+  if (bars.length < period + 1) return [];
+  
+  const results: IndicatorValue[] = [];
+  const trueRanges: number[] = [];
+  
+  // Calculate True Range for each bar
+  for (let i = 1; i < bars.length; i++) {
+    const high = bars[i].high;
+    const low = bars[i].low;
+    const prevClose = bars[i - 1].close;
+    
+    const tr = Math.max(
+      high - low,
+      Math.abs(high - prevClose),
+      Math.abs(low - prevClose)
+    );
+    trueRanges.push(tr);
+  }
+  
+  // Fill nulls for bars before we have enough data
+  for (let i = 0; i < period; i++) {
+    results.push({ timestamp: bars[i].timestamp, value: null });
+  }
+  
+  // First ATR = simple average
+  let atr = trueRanges.slice(0, period).reduce((a, b) => a + b, 0) / period;
+  results.push({ timestamp: bars[period].timestamp, value: atr });
+  
+  // Subsequent ATR values using Wilder's smoothing
+  for (let i = period; i < trueRanges.length; i++) {
+    atr = ((atr * (period - 1)) + trueRanges[i]) / period;
+    results.push({ timestamp: bars[i + 1].timestamp, value: atr });
+  }
+  
+  return results;
+}
+
+/**
+ * Calculate ADX (Average Directional Index)
+ * This is more complex - requires +DI, -DI, then DX, then smoothed ADX
+ * Period: 14 (standard)
+ */
+function calculateADX(bars: OHLCVBar[], period: number = 14): IndicatorValue[] {
+  if (bars.length < period * 2) return [];
+  
+  const results: IndicatorValue[] = [];
+  
+  // Step 1: Calculate +DM, -DM, and TR
+  const plusDM: number[] = [];
+  const minusDM: number[] = [];
+  const trueRanges: number[] = [];
+  
+  for (let i = 1; i < bars.length; i++) {
+    const high = bars[i].high;
+    const low = bars[i].low;
+    const prevHigh = bars[i - 1].high;
+    const prevLow = bars[i - 1].low;
+    const prevClose = bars[i - 1].close;
+    
+    // True Range
+    const tr = Math.max(
+      high - low,
+      Math.abs(high - prevClose),
+      Math.abs(low - prevClose)
+    );
+    trueRanges.push(tr);
+    
+    // Directional Movement
+    const upMove = high - prevHigh;
+    const downMove = prevLow - low;
+    
+    if (upMove > downMove && upMove > 0) {
+      plusDM.push(upMove);
+    } else {
+      plusDM.push(0);
+    }
+    
+    if (downMove > upMove && downMove > 0) {
+      minusDM.push(downMove);
+    } else {
+      minusDM.push(0);
+    }
+  }
+  
+  // Step 2: Smooth +DM, -DM, TR using Wilder's method
+  let smoothedPlusDM = plusDM.slice(0, period).reduce((a, b) => a + b, 0);
+  let smoothedMinusDM = minusDM.slice(0, period).reduce((a, b) => a + b, 0);
+  let smoothedTR = trueRanges.slice(0, period).reduce((a, b) => a + b, 0);
+  
+  // Fill nulls for initial bars
+  for (let i = 0; i < period * 2 - 1; i++) {
+    results.push({ timestamp: bars[i].timestamp, value: null });
+  }
+  
+  // Step 3: Calculate +DI, -DI, DX, then smooth to ADX
+  const dxValues: number[] = [];
+  
+  for (let i = period; i < trueRanges.length; i++) {
+    // Wilder's smoothing
+    smoothedPlusDM = smoothedPlusDM - (smoothedPlusDM / period) + plusDM[i];
+    smoothedMinusDM = smoothedMinusDM - (smoothedMinusDM / period) + minusDM[i];
+    smoothedTR = smoothedTR - (smoothedTR / period) + trueRanges[i];
+    
+    // +DI and -DI
+    const plusDI = smoothedTR === 0 ? 0 : (100 * smoothedPlusDM / smoothedTR);
+    const minusDI = smoothedTR === 0 ? 0 : (100 * smoothedMinusDM / smoothedTR);
+    
+    // DX
+    const diSum = plusDI + minusDI;
+    const dx = diSum === 0 ? 0 : (100 * Math.abs(plusDI - minusDI) / diSum);
+    dxValues.push(dx);
+    
+    // ADX is smoothed DX (need 'period' DX values first)
+    if (dxValues.length >= period) {
+      const adx = dxValues.slice(-period).reduce((a, b) => a + b, 0) / period;
+      results.push({ timestamp: bars[i + 1].timestamp, value: adx });
+    }
+  }
+  
+  return results;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// MAIN EXPORT
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * Fetch all indicators for a crypto symbol
+ * This is the main entry point - matches interface of forex indicatorService
+ */
+export async function fetchCryptoIndicators(
+  symbol: string,
+  style: TradingStyle
+): Promise<CryptoIndicatorData> {
+  const styleConfig = getStyleConfig(style);
+  const errors: string[] = [];
+  
+  logger.info(`Fetching crypto indicators for ${symbol} (${style})`);
+  
+  try {
+    // Fetch OHLCV data
+    const [entryBars, trendBars] = await Promise.all([
+      fetchCryptoOHLCV(symbol, '60min', 'full'),
+      style === 'swing' 
+        ? fetchCryptoDaily(symbol)
+        : fetchCryptoOHLCV(symbol, '60min', 'full'), // Use same for intraday
+    ]);
+    
+    if (entryBars.length === 0) {
+      throw new Error(`No OHLCV data returned for ${symbol}`);
+    }
+    
+    const currentPrice = entryBars[0]?.close || 0;
+    
+    // Compute indicators locally
+    const ema200 = calculateEMA(entryBars, 200);
+    const ema50 = calculateEMA(entryBars, 50);
+    const ema20 = calculateEMA(entryBars, 20);
+    const rsi = calculateRSI(entryBars, STRATEGY.entry.rsi.period);
+    const adx = calculateADX(entryBars, STRATEGY.trend.adx.period);
+    const atr = calculateATR(entryBars, STRATEGY.stopLoss.atr.period);
+    
+    logger.info(`Crypto indicators computed for ${symbol}: ${entryBars.length} bars`);
+    
+    return {
+      symbol,
+      style,
+      entryBars,
+      trendBars,
+      currentPrice,
+      ema200,
+      ema50,
+      ema20,
+      rsi,
+      adx,
+      atr,
+      errors,
+      fetchedAt: new Date().toISOString(),
+    };
+    
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    logger.error(`Failed to fetch crypto indicators for ${symbol}`, { error: message });
+    errors.push(message);
+    
+    // Return empty data structure on error
+    return {
+      symbol,
+      style,
+      entryBars: [],
+      trendBars: [],
+      currentPrice: 0,
+      ema200: [],
+      ema50: [],
+      ema20: [],
+      rsi: [],
+      adx: [],
+      atr: [],
+      errors,
+      fetchedAt: new Date().toISOString(),
+    };
+  }
+}
+```
+
+---
+
+## INDICATOR FACTORY FILE
+
+```typescript
+// src/engine/indicatorFactory.ts
+
+/**
+ * Indicator Factory
+ * Routes to correct indicator service based on asset class
+ */
+
+import { getAssetClass } from '../config/universe.js';
+import { fetchIndicators, IndicatorData } from './indicatorService.js';
+import { fetchCryptoIndicators, CryptoIndicatorData } from './cryptoIndicatorService.js';
+import { TradingStyle } from '../config/strategy.js';
+import { createLogger } from '../services/logger.js';
+
+const logger = createLogger('IndicatorFactory');
+
+// Union type for both indicator data shapes
+export type AnyIndicatorData = IndicatorData | CryptoIndicatorData;
+
+/**
+ * Fetch indicators using the appropriate service
+ * Automatically routes to forex or crypto service based on symbol
+ */
+export async function getIndicators(
+  symbol: string,
+  style: TradingStyle
+): Promise<AnyIndicatorData> {
+  const assetClass = getAssetClass(symbol);
+  
+  logger.debug(`Routing ${symbol} to ${assetClass} indicator service`);
+  
+  if (assetClass === 'crypto') {
+    return fetchCryptoIndicators(symbol, style);
+  }
+  
+  // Default to forex
+  return fetchIndicators(symbol, style);
+}
+
+/**
+ * Check if data is from crypto service
+ */
+export function isCryptoData(data: AnyIndicatorData): data is CryptoIndicatorData {
+  return getAssetClass(data.symbol) === 'crypto';
+}
+```
+
+---
+
+## Summary
+
+Copy the **PROMPT FOR REPLIT** section into Replit's chat. The agent will use it along with the two file structures to:
+
+1. Create `cryptoIndicatorService.ts` with local indicator calculations
+2. Create `indicatorFactory.ts` to route between forex/crypto
+3. Update `decisionEngine.ts` to use the factory
+4. Keep all 8 crypto symbols working
+
+This gives you clean, maintainable architecture instead of messy if/else patches. 🎯

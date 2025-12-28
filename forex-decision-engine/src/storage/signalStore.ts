@@ -69,17 +69,22 @@ class SignalStore {
   }
 
   private persist(): void {
+    const tempPath = `${this.filePath}.tmp`;
     try {
       const dir = path.dirname(this.filePath);
       if (!fs.existsSync(dir)) {
         fs.mkdirSync(dir, { recursive: true });
       }
-      fs.writeFileSync(this.filePath, JSON.stringify({
+      fs.writeFileSync(tempPath, JSON.stringify({
         signals: this.signals,
         nextId: this.nextId,
       }, null, 2));
+      fs.renameSync(tempPath, this.filePath);
     } catch (e) {
       logger.error('Failed to save signals', e);
+      if (fs.existsSync(tempPath)) {
+        try { fs.unlinkSync(tempPath); } catch {}
+      }
     }
   }
 
