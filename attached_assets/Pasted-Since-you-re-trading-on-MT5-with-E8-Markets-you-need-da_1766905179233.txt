@@ -1,0 +1,117 @@
+Since you're trading on **MT5 with E8 Markets**, you need data that matches what your broker actually offers. Let me check what E8 typically provides:
+
+---
+
+## E8 Markets MT5 - Typical Symbols
+
+| Asset Class | E8 MT5 Symbols | Notes |
+|-------------|----------------|-------|
+| **Forex** | EURUSD, GBPUSD, etc. | ✅ Already covered |
+| **Crypto** | BTCUSD, ETHUSD, etc. | ✅ Already covered |
+| **Metals** | XAUUSD, XAGUSD | Spot gold/silver |
+| **Indices** | US30, US100, US500, GER40, JP225, UK100 | CFD indices |
+| **Energies** | USOIL, UKOIL | Crude oil CFDs |
+
+---
+
+## The Key Insight
+
+**E8's symbols are CFDs** - they track the underlying asset but have their own price feed. The best data source is one that matches CFD pricing, not futures or ETFs.
+
+**Best matches:**
+
+| E8 Symbol | What It Tracks | Best Data Source |
+|-----------|----------------|------------------|
+| XAUUSD | Spot Gold | **Twelve Data** `XAU/USD` |
+| XAGUSD | Spot Silver | **Twelve Data** `XAG/USD` |
+| US30 | Dow Jones | **Twelve Data** `DJI` |
+| US100 | NASDAQ 100 | **Twelve Data** `NDX` |
+| US500 | S&P 500 | **Twelve Data** `SPX` |
+| GER40 | DAX | **Twelve Data** `GDAXI` |
+| JP225 | Nikkei 225 | **Twelve Data** `NI225` |
+| UK100 | FTSE 100 | **Twelve Data** `FTSE` |
+| USOIL | WTI Crude | **Twelve Data** `WTI/USD` |
+
+---
+
+## My Recommendation: Twelve Data
+
+**Why Twelve Data is best for E8/MT5 traders:**
+
+1. ✅ Spot prices (not futures) - matches CFD pricing better
+2. ✅ Covers metals, indices, and energies
+3. ✅ Free tier: 800 calls/day (enough for your app)
+4. ✅ Intraday OHLCV data
+5. ✅ Clean API similar to Alpha Vantage
+
+---
+
+## Implementation Plan
+
+**Sign up:** https://twelvedata.com/pricing (free tier)
+
+**Then tell Replit:**
+
+```
+ADD TWELVE DATA AS SECONDARY DATA SOURCE
+
+For symbols not supported by Alpha Vantage (metals, indices, energies),
+use Twelve Data API.
+
+1. CREATE: src/services/twelveDataClient.ts
+   - Base URL: https://api.twelvedata.com
+   - API key required (free tier: 800 calls/day)
+   - Endpoint: GET /time_series
+   - Parameters: symbol, interval, outputsize, apikey
+
+2. ADD to .env:
+   TWELVE_DATA_API_KEY=your_key_here
+
+3. SYMBOL MAPPING (E8 MT5 → Twelve Data):
+   XAUUSD → XAU/USD
+   XAGUSD → XAG/USD
+   US30   → DJI
+   US100  → NDX
+   US500  → SPX
+   GER40  → GDAXI
+   JP225  → NI225
+   UK100  → FTSE
+   USOIL  → WTI/USD
+
+4. UPDATE universe.ts - Add new symbols:
+   export const METAL_SYMBOLS = ['XAUUSD', 'XAGUSD'] as const;
+   export const INDEX_SYMBOLS = ['US30', 'US100', 'US500', 'GER40', 'JP225', 'UK100'] as const;
+   export const ENERGY_SYMBOLS = ['USOIL'] as const;
+
+5. CREATE: src/engine/twelveDataIndicatorService.ts
+   - Fetch OHLCV from Twelve Data
+   - Compute indicators locally (like cryptoIndicatorService)
+
+6. UPDATE indicatorFactory.ts:
+   - Route metals/indices/energies to Twelve Data service
+   - Keep forex on Alpha Vantage
+   - Keep crypto on Alpha Vantage + KuCoin fallback
+
+Expected final coverage:
+- 28 Forex → Alpha Vantage
+- 8 Crypto → Alpha Vantage + KuCoin
+- 2 Metals → Twelve Data
+- 6 Indices → Twelve Data
+- 1 Energy → Twelve Data
+- TOTAL: 45 symbols matching E8 MT5
+```
+
+---
+
+## Quick Start
+
+1. **Get free API key:** https://twelvedata.com/pricing
+2. **Test it works:**
+```bash
+curl "https://api.twelvedata.com/time_series?symbol=XAU/USD&interval=1h&outputsize=100&apikey=YOUR_KEY"
+```
+3. **Share key with Replit** and paste the prompt above
+
+---
+
+Want me to draft the full `twelveDataClient.ts` file structure?
