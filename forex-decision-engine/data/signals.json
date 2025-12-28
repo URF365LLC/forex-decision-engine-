@@ -2735,7 +2735,43 @@
       "valid_until": "2025-12-28T11:34:27.488Z",
       "result": null,
       "result_notes": null
+    },
+    {
+      "id": 153,
+      "symbol": "BNBUSD",
+      "style": "intraday",
+      "direction": "short",
+      "grade": "A+",
+      "entry_low": 840.4339555659703,
+      "entry_high": 843.531,
+      "stop_loss": 847.128,
+      "take_profit": 831.691,
+      "position_lots": 0.1,
+      "risk_amount": 50,
+      "reason": "Cooldown active: 238min remaining (A+ short)",
+      "created_at": "2025-12-28T07:36:31.664Z",
+      "valid_until": "2025-12-28T11:36:31.664Z",
+      "result": null,
+      "result_notes": null
+    },
+    {
+      "id": 154,
+      "symbol": "BNBUSD",
+      "style": "intraday",
+      "direction": "short",
+      "grade": "B",
+      "entry_low": null,
+      "entry_high": null,
+      "stop_loss": null,
+      "take_profit": null,
+      "position_lots": null,
+      "risk_amount": null,
+      "reason": "Downtrend, pullback to EMA50, RSI 59→58, ADX 20",
+      "created_at": "2025-12-28T07:53:14.111Z",
+      "valid_until": "2025-12-28T11:53:14.111Z",
+      "result": null,
+      "result_notes": null
     }
   ],
-  "nextId": 153
+  "nextId": 155
 }

@@ -1,0 +1,118 @@
+**Verified.** This is a real bug and Replit's analysis is correct.
+
+## The Bug (Confirmed)
+
+```
+SHORT setup:
+- EMA Zone: 840.43 - 841.63 (strict)
+- 0.5% Tolerance: up to 845.84
+- Current Price: 843.45
+
+Current behavior:
+- Price is OUTSIDE strict zone but INSIDE tolerance
+- inPullbackZone = true (because of tolerance)
+- status = "ready" ❌ WRONG
+
+Correct behavior:
+- Price is in TOLERANCE zone, not STRICT zone
+- status should be "building"
+- reason: "Price 0.2% above EMA zone - waiting for pullback"
+```
+
+---
+
+## The Surgical Fix
+
+**One small change in entryTrigger.ts** - track whether price is in strict zone vs tolerance zone:
+
+```
+Tell Replit:
+
+SURGICAL FIX for entryTrigger.ts - minimal change:
+
+1. Add a new variable to track strict vs tolerance zone:
+
+   let inStrictZone = false;
+   let inToleranceZone = false;
+
+2. Update the zone check logic (lines 95-114):
+
+   if (trendDirection === 'bullish') {
+     if (price >= emaLow && price <= emaHigh) {
+       inStrictZone = true;
+       inPullbackZone = true;
+       pullbackDepth = price <= ema50 ? 'deep' : 'shallow';
+     } else if (price < emaLow && price >= emaLow * 0.995) {
+       inToleranceZone = true;
+       inPullbackZone = true;
+       pullbackDepth = 'deep';
+     }
+   } else {
+     if (price >= emaLow && price <= emaHigh) {
+       inStrictZone = true;
+       inPullbackZone = true;
+       pullbackDepth = price >= ema50 ? 'deep' : 'shallow';
+     } else if (price > emaHigh && price <= emaHigh * 1.005) {
+       inToleranceZone = true;
+       inPullbackZone = true;
+       pullbackDepth = 'deep';
+     }
+   }
+
+3. Update the status logic (lines 163-170):
+
+   // READY only when in STRICT zone
+   if (inStrictZone && rsiWasReset && rsiTurning) {
+     status = 'ready';
+     // ... rest unchanged
+   }
+   // BUILDING when in tolerance zone OR waiting for RSI
+   else if (inPullbackZone) {
+     status = 'building';
+     
+     const missing: string[] = [];
+     if (inToleranceZone) {
+       const overshoot = trendDirection === 'bullish'
+         ? ((emaLow - price) / price * 100).toFixed(2)
+         : ((price - emaHigh) / price * 100).toFixed(2);
+       missing.push(`Price ${overshoot}% outside EMA zone - waiting for return`);
+     }
+     if (!rsiWasReset) missing.push('RSI not reset');
+     if (!rsiTurning) missing.push('RSI not turning');
+     
+     reason = `In tolerance zone, waiting: ${missing.join(', ')}`;
+   }
+
+4. REMOVE my incorrect entry zone adjustment (delete lines 152-161):
+   
+   DELETE THIS BLOCK:
+   // If price has overshot the zone, adjust entry zone to reflect actual entry area
+   if (inPullbackZone) {
+     if (trendDirection === 'bullish' && price < emaLow) {
+       entryZoneLow = price;
+     } else if (trendDirection === 'bearish' && price > emaHigh) {
+       entryZoneHigh = price;
+     }
+   }
+
+5. Entry zone should ALWAYS be the strict EMA band:
+   entryZoneLow = emaLow;
+   entryZoneHigh = emaHigh;
+
+This is surgical - only changes status logic, preserves strategy intent.
+Entry zone = EMA band (where you place limit order)
+Ready = price IN the zone + RSI confirmed
+Building = price approaching (in tolerance) OR waiting for RSI
+```
+
+---
+
+## Summary
+
+| Scenario | Old Behavior | New Behavior |
+|----------|--------------|--------------|
+| Price IN strict EMA zone + RSI ✓ | ready ✅ | ready ✅ |
+| Price IN tolerance zone + RSI ✓ | ready ❌ | **building** ✅ |
+| Price outside tolerance | invalid ✅ | invalid ✅ |
+
+**This is minimal, surgical, and preserves your strategy.** 🎯

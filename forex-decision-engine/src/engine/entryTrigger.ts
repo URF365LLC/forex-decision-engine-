@@ -36,6 +36,8 @@ export interface EntryAnalysis {
   
   // Zone checks
   inPullbackZone: boolean;
+  inStrictZone: boolean;      // Price is within strict EMA 20/50 band
+  inToleranceZone: boolean;   // Price is in 0.5% tolerance zone (outside strict band)
   pullbackDepth: 'shallow' | 'deep' | 'none';
   
   // RSI checks
@@ -89,25 +91,31 @@ export function analyzeEntry(
   const emaLow = Math.min(ema20, ema50);
   
   let inPullbackZone = false;
+  let inStrictZone = false;
+  let inToleranceZone = false;
   let pullbackDepth: 'shallow' | 'deep' | 'none' = 'none';
   
   if (trendDirection === 'bullish') {
     // For bullish: price should pull back DOWN to EMA zone
     if (price >= emaLow && price <= emaHigh) {
+      inStrictZone = true;
       inPullbackZone = true;
       pullbackDepth = price <= ema50 ? 'deep' : 'shallow';
     } else if (price < emaLow && price >= emaLow * 0.995) {
-      // Allow slight overshoot (0.5%)
+      // Price overshot below zone (within 0.5% tolerance)
+      inToleranceZone = true;
       inPullbackZone = true;
       pullbackDepth = 'deep';
     }
   } else {
     // For bearish: price should pull back UP to EMA zone
     if (price >= emaLow && price <= emaHigh) {
+      inStrictZone = true;
       inPullbackZone = true;
       pullbackDepth = price >= ema50 ? 'deep' : 'shallow';
     } else if (price > emaHigh && price <= emaHigh * 1.005) {
-      // Allow slight overshoot (0.5%)
+      // Price overshot above zone (within 0.5% tolerance)
+      inToleranceZone = true;
       inPullbackZone = true;
       pullbackDepth = 'deep';
     }
@@ -145,22 +153,12 @@ export function analyzeEntry(
   let reason = '';
   let isStrong = false;
 
-  // Calculate entry zone based on direction and current price
-  let entryZoneLow = emaLow;
-  let entryZoneHigh = emaHigh;
-  
-  // If price has overshot the zone, adjust entry zone to reflect actual entry area
-  if (inPullbackZone) {
-    if (trendDirection === 'bullish' && price < emaLow) {
-      // Price below zone in uptrend - entry would be around current price
-      entryZoneLow = price;
-    } else if (trendDirection === 'bearish' && price > emaHigh) {
-      // Price above zone in downtrend - entry would be around current price
-      entryZoneHigh = price;
-    }
-  }
+  // Entry zone is ALWAYS the strict EMA band (strategy definition)
+  const entryZoneLow = emaLow;
+  const entryZoneHigh = emaHigh;
 
-  if (inPullbackZone && rsiWasReset && rsiTurning) {
+  // READY: Only when price is in STRICT zone AND RSI conditions met
+  if (inStrictZone && rsiWasReset && rsiTurning) {
     status = 'ready';
     isStrong = rsiResetStrength >= STRATEGY.grading.rsiResetStrength.strong && 
                pullbackDepth === 'deep';
@@ -169,27 +167,35 @@ export function analyzeEntry(
     const depthWord = pullbackDepth === 'deep' ? 'deep' : 'shallow';
     reason = `${depthWord} pullback to EMA zone, RSI reset ${rsiPrevious.toFixed(1)}→${rsi.toFixed(1)} (turning ${directionWord})`;
   } 
+  // BUILDING: In tolerance zone OR in strict zone but RSI not ready
   else if (inPullbackZone) {
     status = 'building';
     
     const missing: string[] = [];
+    
+    // If in tolerance zone, show overshoot percentage
+    if (inToleranceZone) {
+      const overshoot = trendDirection === 'bullish'
+        ? ((emaLow - price) / price * 100).toFixed(2)
+        : ((price - emaHigh) / price * 100).toFixed(2);
+      missing.push(`Price ${overshoot}% outside EMA zone - waiting for return`);
+    }
+    
     if (!rsiWasReset) missing.push('RSI not reset');
     if (!rsiTurning) missing.push('RSI not turning');
     
-    reason = `In pullback zone, waiting: ${missing.join(', ')}`;
+    reason = inToleranceZone 
+      ? `In tolerance zone: ${missing.join(', ')}`
+      : `In pullback zone, waiting: ${missing.join(', ')}`;
   }
+  // INVALID: Price not near zone at all
   else {
     status = 'invalid';
     
-    const missing: string[] = [];
-    if (!inPullbackZone) {
-      const distanceToZone = trendDirection === 'bullish' 
-        ? ((price - emaHigh) / price * 100).toFixed(2)
-        : ((emaLow - price) / price * 100).toFixed(2);
-      missing.push(`Price not in pullback zone (${distanceToZone}% away)`);
-    }
-    
-    reason = missing.join(', ') || 'No valid entry setup';
+    const distanceToZone = trendDirection === 'bullish' 
+      ? ((price - emaHigh) / price * 100).toFixed(2)
+      : ((emaLow - price) / price * 100).toFixed(2);
+    reason = `Price not in pullback zone (${distanceToZone}% away)`;
   }
 
   logger.debug(`Entry analysis for ${data.symbol}: ${status}`, {
@@ -210,6 +216,8 @@ export function analyzeEntry(
     rsi: rsi ?? 0,
     rsiPrevious: rsiPrevious ?? 0,
     inPullbackZone,
+    inStrictZone,
+    inToleranceZone,
     pullbackDepth,
     rsiWasReset,
     rsiTurning,
@@ -240,6 +248,8 @@ function createInvalidResult(
     rsi: rsi ?? 0,
     rsiPrevious: 0,
     inPullbackZone: false,
+    inStrictZone: false,
+    inToleranceZone: false,
     pullbackDepth: 'none',
     rsiWasReset: false,
     rsiTurning: false,
