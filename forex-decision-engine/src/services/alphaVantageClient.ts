@@ -102,7 +102,7 @@ class AlphaVantageClient {
    */
   private splitCryptoSymbol(symbol: string): { symbol: string; market: string } {
     // BTCUSD -> BTC, USD
-    const cryptoSymbols = ['BTC', 'ETH', 'SOL', 'XRP', 'ADA', 'BCH', 'LTC'];
+    const cryptoSymbols = ['BTC', 'ETH', 'SOL', 'XRP', 'ADA', 'BCH', 'BNB', 'LTC'];
     for (const crypto of cryptoSymbols) {
       if (symbol.startsWith(crypto)) {
         return { symbol: crypto, market: symbol.slice(crypto.length) || 'USD' };
@@ -130,7 +130,7 @@ class AlphaVantageClient {
     const assetClass = getAssetClass(symbol);
     let data: Record<string, unknown>;
 
-    if (assetClass === 'forex' || assetClass === 'metal') {
+    if (assetClass === 'forex') {
       const { from, to } = this.splitForexPair(symbol);
       
       if (interval === 'daily') {
@@ -149,7 +149,7 @@ class AlphaVantageClient {
           outputsize: outputSize,
         });
       }
-    } else if (assetClass === 'crypto') {
+    } else {
       // Crypto
       const { symbol: cryptoSym, market } = this.splitCryptoSymbol(symbol);
       
@@ -168,8 +168,6 @@ class AlphaVantageClient {
           outputsize: outputSize,
         });
       }
-    } else {
-      throw new Error(`Unsupported asset class: ${assetClass}`);
     }
 
     const bars = this.parseOHLCV(data, assetClass);
@@ -184,7 +182,7 @@ class AlphaVantageClient {
   /**
    * Parse OHLCV response from Alpha Vantage
    */
-  private parseOHLCV(data: Record<string, unknown>, assetClass: 'forex' | 'crypto' | 'metal'): OHLCVBar[] {
+  private parseOHLCV(data: Record<string, unknown>, assetClass: 'forex' | 'crypto'): OHLCVBar[] {
     // Find the time series key
     const seriesKey = Object.keys(data).find(k => 
       k.includes('Time Series') || k.includes('time series')

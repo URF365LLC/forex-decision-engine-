@@ -3,7 +3,7 @@
  * Routes to correct indicator service based on asset class
  */
 
-import { usesCryptoIndicators, usesForexIndicators, getAssetClass } from '../config/universe.js';
+import { getAssetClass } from '../config/universe.js';
 import { fetchIndicators, IndicatorData } from './indicatorService.js';
 import { fetchCryptoIndicators, CryptoIndicatorData } from './cryptoIndicatorService.js';
 import { TradingStyle } from '../config/strategy.js';
@@ -21,7 +21,7 @@ export async function getIndicators(
   
   logger.debug(`Routing ${symbol} to ${assetClass} indicator service`);
   
-  if (usesCryptoIndicators(symbol)) {
+  if (assetClass === 'crypto') {
     return fetchCryptoIndicators(symbol, style);
   }
   
@@ -29,5 +29,5 @@ export async function getIndicators(
 }
 
 export function isCryptoData(data: AnyIndicatorData): data is CryptoIndicatorData {
-  return usesCryptoIndicators(data.symbol);
+  return getAssetClass(data.symbol) === 'crypto';
 }

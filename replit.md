@@ -29,7 +29,7 @@ The core analysis pipeline processes market data through distinct stages:
 
 ### Configuration (`src/config/`)
 - **Strategy parameters** are fixed and not user-configurable (v1 design decision)
-- **Universe**: 28 Forex pairs + 7 Crypto pairs + 2 Metal pairs with metadata
+- **Universe**: 28 Forex pairs + 8 Crypto pairs with metadata
 - **Defaults**: E8 Markets prop firm rules (0.5% risk, 4% daily loss limit, 6% max drawdown)
 
 ### Services (`src/services/`)
