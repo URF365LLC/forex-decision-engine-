@@ -438,6 +438,8 @@ function createErrorDecision(
         rsi: 0,
         rsiPrevious: 0,
         inPullbackZone: false,
+        inStrictZone: false,
+        inToleranceZone: false,
         pullbackDepth: 'none',
         rsiWasReset: false,
         rsiTurning: false,
