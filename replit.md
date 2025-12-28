@@ -67,10 +67,16 @@ PUT  /api/signals/:id - Update signal result
 ## External Dependencies
 
 ### Alpha Vantage API (Required)
-- **Purpose**: Market data and technical indicators
+- **Purpose**: Market data and technical indicators for Forex and most Crypto
 - **Configuration**: `ALPHAVANTAGE_API_KEY` environment variable
 - **Rate Limit**: 150 calls/minute (Premium tier required for Forex/Crypto)
 - **Endpoints Used**: FX_INTRADAY, CRYPTO_INTRADAY, EMA, RSI, ADX, ATR
+
+### KuCoin API (Fallback for BNB/BCH)
+- **Purpose**: OHLCV data for BNBUSD and BCHUSD (not supported by Alpha Vantage)
+- **Configuration**: No API key required (public endpoints)
+- **Symbol Mapping**: BNBUSD → BNB-USDT, BCHUSD → BCH-USDT
+- **Rate Limit**: 100 requests per 10 seconds (very generous)
 
 ### Environment Variables
 - `ALPHAVANTAGE_API_KEY` - API key for market data (required)

@@ -9,11 +9,14 @@
  */
 
 import { alphaVantage, OHLCVBar, IndicatorValue } from '../services/alphaVantageClient.js';
+import { kucoin } from '../services/kucoinClient.js';
 import { TradingStyle, getStyleConfig } from '../config/strategy.js';
 import { STRATEGY } from '../config/strategy.js';
 import { createLogger } from '../services/logger.js';
 
 const logger = createLogger('CryptoIndicators');
+
+const KUCOIN_SYMBOLS = ['BNBUSD', 'BCHUSD'];
 
 export interface CryptoIndicatorData {
   symbol: string;
@@ -217,10 +220,22 @@ export async function fetchCryptoIndicators(
   };
   
   try {
-    const [entryBars, trendBars] = await Promise.all([
-      alphaVantage.getOHLCV(symbol, '60min', 'full'),
-      alphaVantage.getOHLCV(symbol, 'daily', 'compact'),
-    ]);
+    let entryBars: OHLCVBar[];
+    let trendBars: OHLCVBar[];
+    
+    if (KUCOIN_SYMBOLS.includes(symbol)) {
+      logger.info(`${symbol}: Using KuCoin data source`);
+      [entryBars, trendBars] = await Promise.all([
+        kucoin.getOHLCV(symbol, '60min'),
+        kucoin.getOHLCV(symbol, 'daily'),
+      ]);
+    } else {
+      logger.info(`${symbol}: Using Alpha Vantage data source`);
+      [entryBars, trendBars] = await Promise.all([
+        alphaVantage.getOHLCV(symbol, '60min', 'full'),
+        alphaVantage.getOHLCV(symbol, 'daily', 'compact'),
+      ]);
+    }
     
     data.entryBars = entryBars;
     data.trendBars = trendBars;
