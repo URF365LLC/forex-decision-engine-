@@ -1,0 +1,90 @@
+This is your actual E8 Markets MT5 watchlist. Now I can see the exact symbols you trade:
+
+## Your E8 MT5 Symbols
+
+| Symbol | Asset | Current Coverage |
+|--------|-------|------------------|
+| LTCUSD+ | Litecoin | ✅ Alpha Vantage |
+| SOLUSD+ | Solana | ✅ Alpha Vantage |
+| XRPUSD+ | Ripple | ✅ Alpha Vantage |
+| **BRENT+** | Brent Crude | ❌ Need Twelve Data |
+| **WTI+** | WTI Crude | ❌ Need Twelve Data |
+| **ASX+** | Australia 200 | ❌ Need Twelve Data |
+| **DAX+** | Germany 40 | ❌ Need Twelve Data |
+| **DOW+** | Dow Jones 30 | ❌ Need Twelve Data |
+| **NIKKEI+** | Japan 225 | ❌ Need Twelve Data |
+| **NSDQ+** | NASDAQ 100 | ❌ Need Twelve Data |
+| **SP+** | S&P 500 | ❌ Need Twelve Data |
+
+---
+
+## E8 Symbol → Twelve Data Mapping
+
+```typescript
+const TWELVE_DATA_SYMBOL_MAP = {
+  // Indices
+  'ASX':    'XJO',      // ASX 200
+  'DAX':    'GDAXI',    // Germany 40
+  'DOW':    'DJI',      // Dow Jones
+  'NIKKEI': 'NI225',    // Nikkei 225
+  'NSDQ':   'IXIC',     // NASDAQ Composite (or NDX for NASDAQ 100)
+  'SP':     'SPX',      // S&P 500
+  
+  // Energies
+  'WTI':    'WTI/USD',  // WTI Crude Oil
+  'BRENT':  'BRENT/USD', // Brent Crude Oil
+  
+  // Metals (for later)
+  'XAUUSD': 'XAU/USD',  // Gold
+  'XAGUSD': 'XAG/USD',  // Silver
+};
+```
+
+---
+
+## Updated Universe Plan
+
+```typescript
+// Forex (28) - Alpha Vantage ✅
+export const FOREX_SYMBOLS = [...]; // existing
+
+// Crypto (8) - Alpha Vantage + KuCoin fallback ✅
+export const CRYPTO_SYMBOLS = [
+  'BTCUSD', 'ETHUSD', 'SOLUSD', 'XRPUSD',
+  'ADAUSD', 'BCHUSD', 'BNBUSD', 'LTCUSD',
+] as const;
+
+// Indices (6) - Twelve Data 🆕
+export const INDEX_SYMBOLS = [
+  'ASX', 'DAX', 'DOW', 'NIKKEI', 'NSDQ', 'SP',
+] as const;
+
+// Energies (2) - Twelve Data 🆕
+export const ENERGY_SYMBOLS = [
+  'WTI', 'BRENT',
+] as const;
+
+// Metals (2) - Twelve Data 🆕
+export const METAL_SYMBOLS = [
+  'XAUUSD', 'XAGUSD',
+] as const;
+
+// TOTAL: 46 symbols matching E8 MT5
+```
+
+---
+
+## Next Step
+
+1. **Get Twelve Data API key:** https://twelvedata.com/pricing (free)
+
+2. **Test it works:**
+```bash
+curl "https://api.twelvedata.com/time_series?symbol=XAU/USD&interval=1h&outputsize=100&apikey=YOUR_KEY"
+```
+
+3. Once you have the key, I'll give you the full Replit prompt to add all these symbols
+
+---
+
+**Do you have a Twelve Data API key, or want me to find an alternative free source?**
