@@ -1,0 +1,144 @@
+Let me double-check the indicator formulas against the industry standards.
+
+## EMA (Exponential Moving Average)
+```typescript
+multiplier = 2 / (period + 1)
+ema = (close - prevEMA) * multiplier + prevEMA
+```
+**✅ CORRECT** - This is the standard EMA formula.
+
+---
+
+## RSI (Relative Strength Index)
+```typescript
+avgGain = ((avgGain * (period - 1)) + gains[i]) / period
+avgLoss = ((avgLoss * (period - 1)) + losses[i]) / period
+```
+**⚠️ SLIGHT ISSUE** - Wilder's smoothing should use `(period - 1)` in denominator too:
+
+```typescript
+// CORRECT Wilder's smoothing:
+avgGain = ((prevAvgGain * (period - 1)) + currentGain) / period
+```
+
+Actually looking again... **✅ CORRECT** - The formula I provided is right. Wilder's method multiplies previous average by `(period-1)`, adds current value, divides by `period`.
+
+---
+
+## ATR (Average True Range)
+```typescript
+TR = max(high - low, abs(high - prevClose), abs(low - prevClose))
+atr = ((prevATR * (period - 1)) + TR) / period
+```
+**✅ CORRECT** - True Range formula and Wilder's smoothing are both standard.
+
+---
+
+## ADX (Average Directional Index)
+**⚠️ HAS AN ISSUE**
+
+The DX smoothing to get ADX should also use Wilder's method, not a simple average:
+
+```typescript
+// WRONG (in my code):
+const adx = dxValues.slice(-period).reduce((a, b) => a + b, 0) / period;
+
+// CORRECT Wilder's smoothing for ADX:
+adx = ((prevADX * (period - 1)) + currentDX) / period
+```
+
+---
+
+## Corrected ADX Function
+
+```typescript
+function calculateADX(bars: OHLCVBar[], period: number = 14): IndicatorValue[] {
+  if (bars.length < period * 2) return [];
+  
+  const results: IndicatorValue[] = [];
+  
+  // Step 1: Calculate +DM, -DM, and TR
+  const plusDM: number[] = [];
+  const minusDM: number[] = [];
+  const trueRanges: number[] = [];
+  
+  for (let i = 1; i < bars.length; i++) {
+    const high = bars[i].high;
+    const low = bars[i].low;
+    const prevHigh = bars[i - 1].high;
+    const prevLow = bars[i - 1].low;
+    const prevClose = bars[i - 1].close;
+    
+    // True Range
+    const tr = Math.max(
+      high - low,
+      Math.abs(high - prevClose),
+      Math.abs(low - prevClose)
+    );
+    trueRanges.push(tr);
+    
+    // Directional Movement
+    const upMove = high - prevHigh;
+    const downMove = prevLow - low;
+    
+    plusDM.push(upMove > downMove && upMove > 0 ? upMove : 0);
+    minusDM.push(downMove > upMove && downMove > 0 ? downMove : 0);
+  }
+  
+  // Step 2: First smoothed values (sum of first 'period' values)
+  let smoothedPlusDM = plusDM.slice(0, period).reduce((a, b) => a + b, 0);
+  let smoothedMinusDM = minusDM.slice(0, period).reduce((a, b) => a + b, 0);
+  let smoothedTR = trueRanges.slice(0, period).reduce((a, b) => a + b, 0);
+  
+  // Fill nulls for initial bars
+  for (let i = 0; i < period * 2 - 1; i++) {
+    results.push({ timestamp: bars[i].timestamp, value: null });
+  }
+  
+  // Step 3: Calculate DX values
+  const dxValues: number[] = [];
+  
+  for (let i = period; i < trueRanges.length; i++) {
+    // Wilder's smoothing: smoothed = prev - (prev/period) + current
+    smoothedPlusDM = smoothedPlusDM - (smoothedPlusDM / period) + plusDM[i];
+    smoothedMinusDM = smoothedMinusDM - (smoothedMinusDM / period) + minusDM[i];
+    smoothedTR = smoothedTR - (smoothedTR / period) + trueRanges[i];
+    
+    // +DI and -DI
+    const plusDI = smoothedTR === 0 ? 0 : (100 * smoothedPlusDM / smoothedTR);
+    const minusDI = smoothedTR === 0 ? 0 : (100 * smoothedMinusDM / smoothedTR);
+    
+    // DX
+    const diSum = plusDI + minusDI;
+    const dx = diSum === 0 ? 0 : (100 * Math.abs(plusDI - minusDI) / diSum);
+    dxValues.push(dx);
+  }
+  
+  // Step 4: First ADX = average of first 'period' DX values
+  if (dxValues.length < period) return results;
+  
+  let adx = dxValues.slice(0, period).reduce((a, b) => a + b, 0) / period;
+  results.push({ timestamp: bars[period * 2 - 1].timestamp, value: adx });
+  
+  // Step 5: Subsequent ADX using Wilder's smoothing
+  for (let i = period; i < dxValues.length; i++) {
+    adx = ((adx * (period - 1)) + dxValues[i]) / period;
+    results.push({ timestamp: bars[period + i].timestamp, value: adx });
+  }
+  
+  return results;
+}
+```
+
+---
+
+## Summary
+
+| Indicator | Original | Status |
+|-----------|----------|--------|
+| EMA | ✅ Correct | No change needed |
+| RSI | ✅ Correct | No change needed |
+| ATR | ✅ Correct | No change needed |
+| ADX | ⚠️ Wrong smoothing | **Fixed above** |
+
+Update the prompt with the corrected ADX function before sending to Replit. The ADX final smoothing step needs Wilder's method, not a simple moving average.

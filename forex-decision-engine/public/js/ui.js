@@ -107,21 +107,28 @@ const UI = {
    * Create decision card HTML
    */
   createDecisionCard(decision) {
+    const hasErrors = decision.errors && decision.errors.length > 0;
     const isNoTrade = decision.grade === 'no-trade';
+    const isError = hasErrors && isNoTrade;
+    
     const gradeClass = decision.grade === 'A+' ? 'grade-a' : 
-                       decision.grade === 'B' ? 'grade-b' : '';
+                       decision.grade === 'B' ? 'grade-b' : 
+                       isError ? 'grade-error' : '';
     
     const directionClass = decision.direction === 'long' ? 'direction-long' :
                            decision.direction === 'short' ? 'direction-short' : 'direction-none';
     
     const directionText = decision.direction === 'long' ? '▲ LONG' :
-                          decision.direction === 'short' ? '▼ SHORT' : '— NO TRADE';
+                          decision.direction === 'short' ? '▼ SHORT' : 
+                          isError ? '⚠️ ERROR' : '— NO TRADE';
 
     const gradeDisplay = decision.grade === 'A+' ? 'A+' :
-                         decision.grade === 'B' ? 'B' : '—';
+                         decision.grade === 'B' ? 'B' : 
+                         isError ? '⚠️' : '—';
     
     const gradeBadgeClass = decision.grade === 'A+' ? 'grade-a-plus' :
-                            decision.grade === 'B' ? 'grade-b' : 'grade-no-trade';
+                            decision.grade === 'B' ? 'grade-b' : 
+                            isError ? 'grade-error' : 'grade-no-trade';
 
     // Build trade info section
     let tradeInfoHTML = '';

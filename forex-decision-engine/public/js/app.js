@@ -9,6 +9,7 @@ const App = {
   selectedSymbols: [],
   results: [],
   currentFilter: 'all',
+  isScanning: false,
 
   /**
    * Initialize the application
@@ -242,11 +243,20 @@ const App = {
    * Run scan
    */
   async runScan() {
+    if (this.isScanning) {
+      UI.toast('Scan already in progress', 'info');
+      return;
+    }
+    
     if (this.selectedSymbols.length === 0) {
       UI.toast('Select at least one symbol', 'error');
       return;
     }
 
+    this.isScanning = true;
+    UI.$('scan-btn').disabled = true;
+    UI.$('refresh-btn').disabled = true;
+    
     const settings = Storage.getSettings();
     
     UI.showLoading('Starting scan...');
@@ -262,7 +272,6 @@ const App = {
 
       // Update UI
       UI.$('last-scan-time').textContent = `Last scan: ${new Date().toLocaleString()}`;
-      UI.$('refresh-btn').disabled = false;
       
       // Switch to results screen
       UI.switchScreen('results');
@@ -272,6 +281,9 @@ const App = {
       console.error('Scan error:', error);
       UI.toast(`Scan failed: ${error.message}`, 'error');
     } finally {
+      this.isScanning = false;
+      UI.$('scan-btn').disabled = this.selectedSymbols.length === 0;
+      UI.$('refresh-btn').disabled = this.results.length === 0;
       UI.hideLoading();
     }
   },
@@ -412,11 +424,13 @@ const App = {
 
     // Watchlist
     UI.$('forex-symbols')?.addEventListener('click', (e) => {
+      e.preventDefault();
       const item = e.target.closest('.symbol-item');
       if (item) this.toggleSymbol(item.dataset.symbol);
     });
 
     UI.$('crypto-symbols')?.addEventListener('click', (e) => {
+      e.preventDefault();
       const item = e.target.closest('.symbol-item');
       if (item) this.toggleSymbol(item.dataset.symbol);
     });

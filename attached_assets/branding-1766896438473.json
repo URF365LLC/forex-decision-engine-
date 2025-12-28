@@ -1,0 +1,99 @@
+{
+  "colorScheme": "light",
+  "fonts": [
+    {
+      "family": "Helvetica Neue",
+      "count": 153
+    },
+    {
+      "family": "Helvetica",
+      "count": 153
+    },
+    {
+      "family": "Arial",
+      "count": 153
+    },
+    {
+      "family": "sans-serif",
+      "count": 153
+    },
+    {
+      "family": "Lato",
+      "count": 109
+    },
+    {
+      "family": "Raleway",
+      "count": 1
+    }
+  ],
+  "colors": {
+    "primary": "#6D5CAE",
+    "accent": "#2A3542",
+    "background": "#FFFFFF",
+    "textPrimary": "#2A3542",
+    "link": "#2A3542"
+  },
+  "typography": {
+    "fontFamilies": {
+      "primary": "Lato",
+      "heading": "Raleway"
+    },
+    "fontStacks": {
+      "body": [
+        "Lato",
+        "Helvetica Neue",
+        "Helvetica",
+        "Arial",
+        "sans-serif"
+      ],
+      "heading": [
+        "Raleway",
+        "Helvetica Neue",
+        "Helvetica",
+        "Arial",
+        "sans-serif"
+      ],
+      "paragraph": [
+        "Lato",
+        "Helvetica Neue",
+        "Helvetica",
+        "Arial",
+        "sans-serif"
+      ]
+    },
+    "fontSizes": {
+      "h1": "52px",
+      "h2": "36px",
+      "body": "21px"
+    }
+  },
+  "spacing": {
+    "baseUnit": 4,
+    "borderRadius": "3px"
+  },
+  "components": {},
+  "images": {
+    "logo": null,
+    "favicon": "File saved at: attached_assets/favicon.ico",
+    "ogImage": null
+  },
+  "__framework_hints": [],
+  "__llm_button_reasoning": {
+    "primary": {
+      "index": -1,
+      "text": "N/A",
+      "reasoning": "LLM failed"
+    },
+    "secondary": {
+      "index": -1,
+      "text": "N/A",
+      "reasoning": "LLM failed"
+    },
+    "confidence": 0
+  },
+  "confidence": {
+    "buttons": 0,
+    "colors": 0,
+    "overall": 0
+  }
+}

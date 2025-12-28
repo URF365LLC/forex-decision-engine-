@@ -396,8 +396,10 @@ body {
 .symbol-item {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: var(--spacing-sm);
-  padding: var(--spacing-sm) var(--spacing-md);
+  padding: var(--spacing-md);
+  min-height: 44px;
   background: var(--bg-tertiary);
   border: 1px solid var(--border-color);
   border-radius: var(--border-radius);
@@ -405,6 +407,9 @@ body {
   transition: all 0.2s;
   font-size: 0.8125rem;
   font-family: var(--font-mono);
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
 }
 
 .symbol-item:hover {
@@ -417,7 +422,9 @@ body {
 }
 
 .symbol-item input {
-  display: none;
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
 }
 
 .watchlist-footer {
@@ -579,6 +586,15 @@ body {
 .grade-no-trade {
   background: var(--bg-primary);
   color: var(--text-muted);
+}
+
+.grade-error {
+  background: var(--accent-red-bg);
+  color: var(--accent-red);
+}
+
+.decision-card.grade-error {
+  border-color: var(--accent-red);
 }
 
 .card-body {
