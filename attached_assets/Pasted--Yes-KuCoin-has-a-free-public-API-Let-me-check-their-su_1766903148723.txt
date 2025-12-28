@@ -1,0 +1,102 @@
+**Yes, KuCoin has a free public API!** Let me check their support:
+
+## KuCoin API Check
+
+| Symbol | KuCoin Symbol | Supported |
+|--------|---------------|-----------|
+| BNBUSD | BNB-USDT | ✅ Yes |
+| BCHUSD | BCH-USDT | ✅ Yes |
+
+**Note:** KuCoin uses USDT pairs, not USD. But USDT ≈ USD (stablecoin pegged 1:1), so it's effectively the same for trading signals.
+
+---
+
+## KuCoin API Details
+
+**Base URL:** `https://api.kucoin.com`
+
+**Klines (OHLCV) Endpoint:**
+```
+GET /api/v1/market/candles?type=1hour&symbol=BNB-USDT
+
+Response:
+[
+  [
+    "1672531200",   // timestamp (seconds)
+    "245.5",        // open
+    "248.2",        // close  
+    "249.1",        // high
+    "244.8",        // low
+    "12345.67",     // volume
+    "3045678.90"    // turnover
+  ],
+  ...
+]
+```
+
+**Rate Limits:** 
+- Public endpoints: **No API key required**
+- 100 requests per 10 seconds (very generous)
+
+---
+
+## Implementation Plan
+
+**Tell Replit:**
+
+```
+Add KuCoin as a secondary data source for BNB and BCH.
+
+1. CREATE: src/services/kucoinClient.ts
+   - Base URL: https://api.kucoin.com
+   - No API key required (public endpoints)
+   - Endpoint: GET /api/v1/market/candles
+   - Parameters: symbol=BNB-USDT, type=1hour
+
+2. Symbol mapping:
+   - BNBUSD → BNB-USDT
+   - BCHUSD → BCH-USDT
+
+3. UPDATE: src/engine/cryptoIndicatorService.ts
+   - Add fallback logic: if Alpha Vantage fails for BNB/BCH, 
+     fetch from KuCoin instead
+   - Or: always use KuCoin for BNB/BCH specifically
+
+4. KuCoin kline response format:
+   [timestamp, open, close, high, low, volume, turnover]
+   Note: KuCoin returns [open, CLOSE, high, low] - close is index 2, not 4
+
+5. Parse KuCoin response into OHLCVBar format:
+   {
+     timestamp: new Date(Number(kline[0]) * 1000).toISOString(),
+     open: parseFloat(kline[1]),
+     high: parseFloat(kline[3]),
+     low: parseFloat(kline[4]),
+     close: parseFloat(kline[2]),  // KuCoin has close at index 2
+     volume: parseFloat(kline[5])
+   }
+
+6. Intervals mapping:
+   - 60min → "1hour"
+   - 15min → "15min"
+   - 1day → "1day"
+
+After implementation, BNB and BCH will use KuCoin OHLCV + local 
+indicator calculation (same as other crypto).
+
+Test: Scan BNBUSD and BCHUSD - should show real analysis instead of ERROR.
+```
+
+---
+
+## Quick KuCoin Test
+
+Ask Replit to verify KuCoin works:
+
+```bash
+curl "https://api.kucoin.com/api/v1/market/candles?type=1hour&symbol=BNB-USDT" | head -50
+```
+
+Should return OHLCV data for BNB! 🎯
+
+Want me to draft the full `kucoinClient.ts` file?
