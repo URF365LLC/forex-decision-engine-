@@ -89,6 +89,24 @@ PUT  /api/signals/:id - Update signal result
 
 ## Recent Updates
 
+### Strategy Cache Isolation & Journal Enhancement - 2025-12-29
+- **Cache Isolation Fix**: Different strategies now get isolated decision caches
+  - Raw indicators (EMA, RSI, etc.) shared across strategies (efficient)
+  - Decisions cached per strategy: `decision:${symbol}:${strategyId}`
+  - Switching strategies forces fresh scan with new logic
+- **Strategy Analyzer Bridge** (`src/engine/strategyAnalyzer.ts`):
+  - Routes to correct strategy via registry
+  - Converts old indicator format to new strategy format
+  - Handles missing strategies gracefully
+- **Frontend Strategy Switching**:
+  - Strategy dropdown clears cached results on change
+  - Shows toast notification when strategy changes
+  - Prevents stale data from previous strategy
+- **Journal Strategy Metadata**:
+  - Added fields: `strategyId`, `strategyName`, `confidence`, `reasonCodes`
+  - Enables filtering and analytics by strategy
+  - Both quick-log and modal flows capture metadata
+
 ### Multi-Strategy System (Phase 3 Complete) - 2025-12-29
 - **8 Intraday Strategies** with varying win rates:
   1. RSI Oversold Bounce (72% WR) - Mean reversion from RSI extremes with Bollinger Band confirmation

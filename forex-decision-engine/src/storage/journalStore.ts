@@ -38,6 +38,12 @@ export interface TradeJournalEntry {
   style: TradeStyle;
   grade?: string;
   
+  // Strategy metadata (Phase 3)
+  strategyId?: string;
+  strategyName?: string;
+  confidence?: number;
+  reasonCodes?: string[];
+  
   tradeType: TradeType;
   tradeTypeNote?: string;
   
