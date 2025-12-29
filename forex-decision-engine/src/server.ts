@@ -23,6 +23,7 @@ import { STYLE_PRESETS } from './config/strategy.js';
 import { analyzeSymbol, scanSymbols, UserSettings, Decision } from './engine/decisionEngine.js';
 import { validateSettings, validateSymbol, validateSymbols } from './utils/validation.js';
 import { signalStore } from './storage/signalStore.js';
+import { journalStore, TradeJournalEntry, JournalFilters } from './storage/journalStore.js';
 import { cache } from './services/cache.js';
 import { rateLimiter } from './services/rateLimiter.js';
 import { createLogger } from './services/logger.js';
@@ -279,6 +280,189 @@ app.get('/api/signals/stats', (req, res) => {
 });
 
 // ═══════════════════════════════════════════════════════════════
+// JOURNAL API
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * Add journal entry
+ */
+app.post('/api/journal', (req, res) => {
+  try {
+    const entry = req.body;
+    
+    if (!entry.symbol || !entry.direction || !entry.action) {
+      return res.status(400).json({ 
+        error: 'Missing required fields: symbol, direction, action' 
+      });
+    }
+    
+    if (!['long', 'short'].includes(entry.direction)) {
+      return res.status(400).json({ error: 'Direction must be long or short' });
+    }
+    
+    if (!['taken', 'skipped', 'missed'].includes(entry.action)) {
+      return res.status(400).json({ error: 'Action must be taken, skipped, or missed' });
+    }
+    
+    const newEntry = journalStore.add(entry);
+    res.json({ success: true, entry: newEntry });
+  } catch (error) {
+    logger.error('Add journal entry error', { error });
+    res.status(500).json({ 
+      error: error instanceof Error ? error.message : 'Failed to add journal entry' 
+    });
+  }
+});
+
+/**
+ * Get journal entries
+ */
+app.get('/api/journal', (req, res) => {
+  try {
+    const filters: JournalFilters = {};
+    
+    if (req.query.symbol) filters.symbol = req.query.symbol as string;
+    if (req.query.status) filters.status = req.query.status as any;
+    if (req.query.result) filters.result = req.query.result as any;
+    if (req.query.action) filters.action = req.query.action as any;
+    if (req.query.tradeType) filters.tradeType = req.query.tradeType as any;
+    if (req.query.dateFrom) filters.dateFrom = req.query.dateFrom as string;
+    if (req.query.dateTo) filters.dateTo = req.query.dateTo as string;
+    
+    const entries = journalStore.getAll(Object.keys(filters).length > 0 ? filters : undefined);
+    res.json({ success: true, count: entries.length, entries });
+  } catch (error) {
+    logger.error('Get journal entries error', { error });
+    res.status(500).json({ 
+      error: error instanceof Error ? error.message : 'Failed to get journal entries' 
+    });
+  }
+});
+
+/**
+ * Get single journal entry
+ */
+app.get('/api/journal/stats', (req, res) => {
+  try {
+    const dateFrom = req.query.dateFrom as string | undefined;
+    const dateTo = req.query.dateTo as string | undefined;
+    
+    const stats = journalStore.getStats(dateFrom, dateTo);
+    res.json({ success: true, stats });
+  } catch (error) {
+    logger.error('Get journal stats error', { error });
+    res.status(500).json({ 
+      error: error instanceof Error ? error.message : 'Failed to get journal stats' 
+    });
+  }
+});
+
+/**
+ * Export journal as CSV
+ */
+app.get('/api/journal/export', (req, res) => {
+  try {
+    const filters: JournalFilters = {};
+    
+    if (req.query.symbol) filters.symbol = req.query.symbol as string;
+    if (req.query.status) filters.status = req.query.status as any;
+    if (req.query.result) filters.result = req.query.result as any;
+    if (req.query.dateFrom) filters.dateFrom = req.query.dateFrom as string;
+    if (req.query.dateTo) filters.dateTo = req.query.dateTo as string;
+    
+    const csv = journalStore.exportCSV(Object.keys(filters).length > 0 ? filters : undefined);
+    
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename=trading-journal-${new Date().toISOString().split('T')[0]}.csv`);
+    res.send(csv);
+  } catch (error) {
+    logger.error('Export journal error', { error });
+    res.status(500).json({ 
+      error: error instanceof Error ? error.message : 'Failed to export journal' 
+    });
+  }
+});
+
+/**
+ * Get single journal entry by ID
+ */
+app.get('/api/journal/:id', (req, res) => {
+  try {
+    const entry = journalStore.get(req.params.id);
+    
+    if (!entry) {
+      return res.status(404).json({ error: 'Journal entry not found' });
+    }
+    
+    res.json({ success: true, entry });
+  } catch (error) {
+    logger.error('Get journal entry error', { error });
+    res.status(500).json({ 
+      error: error instanceof Error ? error.message : 'Failed to get journal entry' 
+    });
+  }
+});
+
+/**
+ * Update journal entry
+ */
+app.put('/api/journal/:id', (req, res) => {
+  try {
+    const updates = req.body;
+    
+    if (updates.status === 'closed' && updates.exitPrice) {
+      const existing = journalStore.get(req.params.id);
+      if (existing) {
+        const tempEntry = { ...existing, ...updates };
+        const pnl = journalStore.calculatePnL(tempEntry as TradeJournalEntry);
+        if (pnl) {
+          updates.pnlPips = pnl.pnlPips;
+          updates.pnlDollars = pnl.pnlDollars;
+          updates.rMultiple = pnl.rMultiple;
+          
+          if (pnl.pnlPips > 0) updates.result = 'win';
+          else if (pnl.pnlPips < 0) updates.result = 'loss';
+          else updates.result = 'breakeven';
+        }
+      }
+    }
+    
+    const entry = journalStore.update(req.params.id, updates);
+    
+    if (!entry) {
+      return res.status(404).json({ error: 'Journal entry not found' });
+    }
+    
+    res.json({ success: true, entry });
+  } catch (error) {
+    logger.error('Update journal entry error', { error });
+    res.status(500).json({ 
+      error: error instanceof Error ? error.message : 'Failed to update journal entry' 
+    });
+  }
+});
+
+/**
+ * Delete journal entry
+ */
+app.delete('/api/journal/:id', (req, res) => {
+  try {
+    const deleted = journalStore.delete(req.params.id);
+    
+    if (!deleted) {
+      return res.status(404).json({ error: 'Journal entry not found' });
+    }
+    
+    res.json({ success: true });
+  } catch (error) {
+    logger.error('Delete journal entry error', { error });
+    res.status(500).json({ 
+      error: error instanceof Error ? error.message : 'Failed to delete journal entry' 
+    });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════
 // SERVE FRONTEND
 // ═══════════════════════════════════════════════════════════════
 
@@ -310,6 +494,7 @@ app.listen(PORT, () => {
 process.on('SIGTERM', () => {
   logger.info('Shutting down...');
   signalStore.close();
+  journalStore.close();
   cache.close();
   process.exit(0);
 });

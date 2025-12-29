@@ -1,0 +1,384 @@
+This makes perfect sense! A trading journal to track your decisions and outcomes. Let me design this for you.
+
+---
+
+## Trade Journal Feature Design
+
+### Card Buttons (After Signal Appears)
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  CAD/JPY  [A+]                                    ▲ LONG    │
+│                                                             │
+│  ENTRY ZONE        STOP LOSS       TAKE PROFIT   POSITION  │
+│  114.256-114.294   113.871 (40.4p) 115.083 (2R)  0.15 lots │
+│                                                             │
+│  "Uptrend, pullback to EMA20, RSI 43→48, ADX 29"          │
+│                                                             │
+│  H4/H1 | Valid until 12:23:42 PM                   📋 Copy │
+│                                                             │
+│  ┌──────────┐ ┌──────────────┐ ┌────────────┐              │
+│  │ ✓ TAKEN  │ │ ✗ SKIPPED    │ │ ⏰ MISSED  │              │
+│  └──────────┘ └──────────────┘ └────────────┘              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### When "TAKEN" is Clicked → Expand to Capture Details
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  📝 LOG TRADE: CAD/JPY LONG                                │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│  Entry Price: [114.268    ] (pre-filled from zone mid)     │
+│  Actual Lots: [0.15       ] (pre-filled from suggestion)   │
+│                                                             │
+│  ┌─────────┐ ┌─────────┐ ┌─────────┐                       │
+│  │ PENDING │ │ RUNNING │ │ CLOSED  │  ← Status             │
+│  └─────────┘ └─────────┘ └─────────┘                       │
+│                                                             │
+│  (If CLOSED):                                              │
+│  Exit Price: [          ]                                  │
+│  Result:  ○ WIN  ○ LOSS  ○ BREAKEVEN                       │
+│  P&L:     [          ] pips / $ amount                     │
+│                                                             │
+│  Notes: [                                        ]          │
+│                                                             │
+│  ┌────────────────┐  ┌────────────────┐                    │
+│  │  💾 SAVE       │  │  ❌ CANCEL     │                    │
+│  └────────────────┘  └────────────────┘                    │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Manual Trade Entry (For Counter-Trend/Liquidity Grabs)
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  ➕ ADD MANUAL TRADE                                        │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│  Symbol:    [EURUSD     ▼]                                 │
+│  Direction: ○ LONG  ○ SHORT                                │
+│  Style:     ○ Intraday  ○ Swing                            │
+│                                                             │
+│  Trade Type:                                                │
+│  ○ Pullback (standard strategy)                            │
+│  ○ Counter-trend reversal                                  │
+│  ○ Liquidity grab                                          │
+│  ○ Exhaustion play                                         │
+│  ○ Other: [____________]                                   │
+│                                                             │
+│  Entry Price: [          ]                                 │
+│  Stop Loss:   [          ]                                 │
+│  Take Profit: [          ]                                 │
+│  Lots:        [          ]                                 │
+│                                                             │
+│  Status: ○ PENDING  ○ RUNNING  ○ CLOSED                    │
+│                                                             │
+│  Notes: [                                        ]          │
+│                                                             │
+│  ┌────────────────┐                                        │
+│  │  💾 SAVE       │                                        │
+│  └────────────────┘                                        │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Journal View (New Tab)
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  📊 TRADING JOURNAL                        [+ Manual Trade] │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│  STATS (Last 30 Days)                                       │
+│  ┌──────────┬──────────┬──────────┬──────────┐             │
+│  │ TAKEN    │ WIN RATE │ AVG R    │ TOTAL    │             │
+│  │ 24       │ 62.5%    │ 1.8R     │ +$1,240  │             │
+│  └──────────┴──────────┴──────────┴──────────┘             │
+│                                                             │
+│  BREAKDOWN BY TYPE                                          │
+│  • Pullback signals: 18 taken, 67% win                     │
+│  • Counter-trend:    4 taken, 50% win                      │
+│  • Liquidity grab:   2 taken, 50% win                      │
+│                                                             │
+│  Filter: [All ▼] [All Pairs ▼] [Last 30 Days ▼]           │
+│                                                             │
+├─────────────────────────────────────────────────────────────┤
+│  DATE       PAIR     DIR   TYPE        RESULT   P&L        │
+│  ─────────────────────────────────────────────────────────  │
+│  Dec 29     CAD/JPY  LONG  Pullback    RUNNING  --         │
+│  Dec 28     EUR/USD  SHORT Pullback    WIN ✓    +42 pips   │
+│  Dec 28     GBP/USD  LONG  Liq. Grab   WIN ✓    +28 pips   │
+│  Dec 27     AUD/JPY  LONG  Pullback    LOSS ✗   -25 pips   │
+│  Dec 27     BTC/USD  SHORT Counter     WIN ✓    +180 pips  │
+│  ...                                                        │
+│                                                             │
+│  [Export CSV]                                               │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Data Model
+
+```typescript
+interface TradeJournalEntry {
+  id: string;
+  
+  // Signal source
+  source: 'signal' | 'manual';
+  signalId?: string;  // Links to original signal if from scan
+  
+  // Trade details
+  symbol: string;
+  direction: 'long' | 'short';
+  style: 'intraday' | 'swing';
+  grade?: string;  // A+, B, etc. (from signal)
+  
+  // Trade type
+  tradeType: 'pullback' | 'counter-trend' | 'liquidity-grab' | 'exhaustion' | 'other';
+  tradeTypeNote?: string;
+  
+  // Prices
+  entryZoneLow?: number;
+  entryZoneHigh?: number;
+  entryPrice: number;
+  stopLoss: number;
+  takeProfit: number;
+  lots: number;
+  
+  // Status tracking
+  status: 'pending' | 'running' | 'closed';
+  action: 'taken' | 'skipped' | 'missed';
+  
+  // Outcome (when closed)
+  exitPrice?: number;
+  result?: 'win' | 'loss' | 'breakeven';
+  pnlPips?: number;
+  pnlDollars?: number;
+  rMultiple?: number;
+  
+  // Metadata
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+  closedAt?: string;
+}
+```
+
+---
+
+## Prompt for Replit
+
+```
+ADD TRADING JOURNAL FEATURE
+
+This tracks trade decisions and outcomes from signals.
+
+═══════════════════════════════════════════════════════════════
+TASK 1: DATA MODEL & STORAGE
+═══════════════════════════════════════════════════════════════
+
+Create: src/storage/journalStore.ts
+
+Interface TradeJournalEntry:
+- id: string (uuid)
+- source: 'signal' | 'manual'
+- signalId?: string (links to original signal)
+- symbol: string
+- direction: 'long' | 'short'
+- style: 'intraday' | 'swing'
+- grade?: string (A+, B, etc.)
+- tradeType: 'pullback' | 'counter-trend' | 'liquidity-grab' | 'exhaustion' | 'other'
+- tradeTypeNote?: string
+- entryZoneLow?: number
+- entryZoneHigh?: number
+- entryPrice: number
+- stopLoss: number
+- takeProfit: number
+- lots: number
+- status: 'pending' | 'running' | 'closed'
+- action: 'taken' | 'skipped' | 'missed'
+- exitPrice?: number
+- result?: 'win' | 'loss' | 'breakeven'
+- pnlPips?: number
+- pnlDollars?: number
+- rMultiple?: number
+- notes?: string
+- createdAt: string
+- updatedAt: string
+- closedAt?: string
+
+Storage: data/journal.json (persistent)
+
+Methods:
+- addEntry(entry): Add new journal entry
+- updateEntry(id, updates): Update existing entry
+- getEntry(id): Get single entry
+- getEntries(filters?): Get all with optional filters
+- getStats(dateRange?): Calculate win rate, avg R, totals
+- deleteEntry(id): Remove entry
+- exportCSV(): Export all entries as CSV
+
+═══════════════════════════════════════════════════════════════
+TASK 2: API ENDPOINTS
+═══════════════════════════════════════════════════════════════
+
+Add to src/server.ts:
+
+POST /api/journal
+- Add new entry (from signal or manual)
+- Body: TradeJournalEntry (partial)
+
+GET /api/journal
+- Get all entries
+- Query params: symbol, status, result, dateFrom, dateTo
+
+GET /api/journal/:id
+- Get single entry
+
+PUT /api/journal/:id
+- Update entry (status, exit, result, notes)
+
+DELETE /api/journal/:id
+- Delete entry
+
+GET /api/journal/stats
+- Get aggregated stats
+- Query params: dateFrom, dateTo
+- Returns: { totalTaken, winRate, avgR, totalPnl, byType: {...} }
+
+GET /api/journal/export
+- Returns CSV file download
+
+═══════════════════════════════════════════════════════════════
+TASK 3: SIGNAL CARD BUTTONS
+═══════════════════════════════════════════════════════════════
+
+Update: public/js/ui.js (renderSignalCard function)
+
+Add 3 buttons below each signal card:
+- "✓ TAKEN" (green) → Opens trade entry modal
+- "✗ SKIPPED" (gray) → Logs as skipped with optional note
+- "⏰ MISSED" (yellow) → Logs as missed
+
+Button styling:
+- Small, inline buttons at bottom of card
+- Only show for 'ready' signals with grade
+
+When TAKEN clicked:
+- Pre-fill entry price (mid of zone)
+- Pre-fill lots from signal
+- Pre-fill SL/TP from signal
+- Show modal to confirm/edit
+- Set tradeType = 'pullback' by default
+- Save to journal
+
+When SKIPPED/MISSED clicked:
+- Optional note prompt
+- Log to journal with action type
+- No P&L tracking needed
+
+═══════════════════════════════════════════════════════════════
+TASK 4: TRADE ENTRY MODAL
+═══════════════════════════════════════════════════════════════
+
+Create modal component in UI:
+
+For signal-based trades:
+- Pre-filled from signal data
+- Entry price (editable, default = zone mid)
+- Lots (editable)
+- Stop Loss (from signal)
+- Take Profit (from signal)
+- Status: Pending / Running / Closed
+- If Closed: Exit price, Result (win/loss/BE), P&L
+
+For manual trades (+ Manual Trade button):
+- Symbol dropdown (all symbols)
+- Direction (Long/Short)
+- Style (Intraday/Swing)
+- Trade Type:
+  - Pullback (standard)
+  - Counter-trend reversal
+  - Liquidity grab
+  - Exhaustion play
+  - Other (with text input)
+- Entry price
+- Stop Loss
+- Take Profit
+- Lots
+- Status
+- Notes
+
+═══════════════════════════════════════════════════════════════
+TASK 5: JOURNAL TAB/VIEW
+═══════════════════════════════════════════════════════════════
+
+Add "Journal" button to header nav (next to Results, Watchlist, Settings)
+
+Journal view contains:
+
+1. STATS SUMMARY (top)
+   - Trades taken count
+   - Win rate %
+   - Average R-multiple
+   - Total P&L (pips and $)
+   
+2. BREAKDOWN BY TYPE
+   - Pullback: X taken, Y% win
+   - Counter-trend: X taken, Y% win
+   - Liquidity grab: X taken, Y% win
+   - etc.
+
+3. FILTERS
+   - All / Taken / Skipped / Missed
+   - All pairs / specific pair
+   - Date range
+
+4. TRADE LIST
+   - Table or cards showing all journal entries
+   - Sortable by date, pair, result
+   - Click to edit/update
+   - Running trades highlighted
+
+5. ACTIONS
+   - "+ Manual Trade" button (top right)
+   - "Export CSV" button (bottom)
+
+═══════════════════════════════════════════════════════════════
+TASK 6: UPDATE RUNNING TRADES
+═══════════════════════════════════════════════════════════════
+
+In journal view, running trades should have:
+- "Update" button to mark as closed
+- Quick buttons: "Hit TP ✓" / "Hit SL ✗" / "Manual Exit"
+- Auto-calculate P&L when closed
+
+P&L Calculation:
+- pnlPips = (exitPrice - entryPrice) / pipValue * direction
+- rMultiple = pnlPips / (entryPrice - stopLoss) * pipValue
+- pnlDollars = pnlPips * pipValuePerLot * lots
+
+═══════════════════════════════════════════════════════════════
+
+Implementation order:
+1. Data model & storage
+2. API endpoints  
+3. Signal card buttons
+4. Trade entry modal
+5. Journal view
+6. Stats & export
+
+Run typecheck after each task.
+```
+
+---
+
+This gives you:
+- **Signal tracking**: TAKEN / SKIPPED / MISSED on every signal
+- **Manual entry**: For your counter-trend, liquidity grab plays
+- **Performance stats**: Win rate, R-multiple, by trade type
+- **Export**: CSV for deeper analysis
+
+Want me to refine any part of this design? 🎯
