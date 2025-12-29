@@ -329,6 +329,190 @@ class AlphaVantageClient {
   }
 
   /**
+   * Get Stochastic values
+   */
+  async getStochastic(
+    symbol: string,
+    interval: string,
+    fastkPeriod: number = 14,
+    slowkPeriod: number = 3,
+    slowdPeriod: number = 3
+  ): Promise<{ timestamp: string; k: number; d: number }[]> {
+    const cacheKey = CacheService.makeKey(symbol, interval, 'stoch', { fastkPeriod, slowkPeriod, slowdPeriod });
+    const cached = cache.get<{ timestamp: string; k: number; d: number }[]>(cacheKey);
+    if (cached) return cached;
+
+    const data = await this.fetch<Record<string, unknown>>({
+      function: 'STOCH',
+      symbol,
+      interval,
+      fastkperiod: String(fastkPeriod),
+      slowkperiod: String(slowkPeriod),
+      slowdperiod: String(slowdPeriod),
+    });
+
+    const values = this.parseStochastic(data);
+    
+    const ttl = interval === 'daily' ? CACHE_TTL.D1 : CACHE_TTL.H1;
+    cache.set(cacheKey, values, ttl);
+
+    return values;
+  }
+
+  /**
+   * Parse Stochastic response
+   */
+  private parseStochastic(data: Record<string, unknown>): { timestamp: string; k: number; d: number }[] {
+    const seriesKey = Object.keys(data).find(k => k.includes('Technical Analysis'));
+    if (!seriesKey || !data[seriesKey]) return [];
+
+    const series = data[seriesKey] as Record<string, Record<string, string>>;
+    const values: { timestamp: string; k: number; d: number }[] = [];
+
+    for (const [timestamp, valueObj] of Object.entries(series)) {
+      const k = parseFloat(valueObj['SlowK'] || '0');
+      const d = parseFloat(valueObj['SlowD'] || '0');
+      values.push({ timestamp, k, d });
+    }
+
+    return values.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+  }
+
+  /**
+   * Get Williams %R values
+   */
+  async getWilliamsR(
+    symbol: string,
+    interval: string,
+    period: number = 14
+  ): Promise<IndicatorValue[]> {
+    const cacheKey = CacheService.makeKey(symbol, interval, 'willr', { period });
+    const cached = cache.get<IndicatorValue[]>(cacheKey);
+    if (cached) return cached;
+
+    const data = await this.fetch<Record<string, unknown>>({
+      function: 'WILLR',
+      symbol,
+      interval,
+      time_period: String(period),
+    });
+
+    const values = this.parseIndicator(data, 'WILLR');
+    
+    const ttl = interval === 'daily' ? CACHE_TTL.D1 : CACHE_TTL.H1;
+    cache.set(cacheKey, values, ttl);
+
+    return values;
+  }
+
+  /**
+   * Get CCI values
+   */
+  async getCCI(
+    symbol: string,
+    interval: string,
+    period: number = 20
+  ): Promise<IndicatorValue[]> {
+    const cacheKey = CacheService.makeKey(symbol, interval, 'cci', { period });
+    const cached = cache.get<IndicatorValue[]>(cacheKey);
+    if (cached) return cached;
+
+    const data = await this.fetch<Record<string, unknown>>({
+      function: 'CCI',
+      symbol,
+      interval,
+      time_period: String(period),
+    });
+
+    const values = this.parseIndicator(data, 'CCI');
+    
+    const ttl = interval === 'daily' ? CACHE_TTL.D1 : CACHE_TTL.H1;
+    cache.set(cacheKey, values, ttl);
+
+    return values;
+  }
+
+  /**
+   * Get Bollinger Bands values
+   */
+  async getBBands(
+    symbol: string,
+    interval: string,
+    period: number = 20,
+    nbdevup: number = 2,
+    nbdevdn: number = 2
+  ): Promise<{ timestamp: string; upper: number; middle: number; lower: number }[]> {
+    const cacheKey = CacheService.makeKey(symbol, interval, 'bbands', { period, nbdevup, nbdevdn });
+    const cached = cache.get<{ timestamp: string; upper: number; middle: number; lower: number }[]>(cacheKey);
+    if (cached) return cached;
+
+    const data = await this.fetch<Record<string, unknown>>({
+      function: 'BBANDS',
+      symbol,
+      interval,
+      time_period: String(period),
+      series_type: 'close',
+      nbdevup: String(nbdevup),
+      nbdevdn: String(nbdevdn),
+    });
+
+    const values = this.parseBBands(data);
+    
+    const ttl = interval === 'daily' ? CACHE_TTL.D1 : CACHE_TTL.H1;
+    cache.set(cacheKey, values, ttl);
+
+    return values;
+  }
+
+  /**
+   * Parse Bollinger Bands response
+   */
+  private parseBBands(data: Record<string, unknown>): { timestamp: string; upper: number; middle: number; lower: number }[] {
+    const seriesKey = Object.keys(data).find(k => k.includes('Technical Analysis'));
+    if (!seriesKey || !data[seriesKey]) return [];
+
+    const series = data[seriesKey] as Record<string, Record<string, string>>;
+    const values: { timestamp: string; upper: number; middle: number; lower: number }[] = [];
+
+    for (const [timestamp, valueObj] of Object.entries(series)) {
+      const upper = parseFloat(valueObj['Real Upper Band'] || '0');
+      const middle = parseFloat(valueObj['Real Middle Band'] || '0');
+      const lower = parseFloat(valueObj['Real Lower Band'] || '0');
+      values.push({ timestamp, upper, middle, lower });
+    }
+
+    return values.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+  }
+
+  /**
+   * Get SMA values
+   */
+  async getSMA(
+    symbol: string,
+    interval: string,
+    period: number
+  ): Promise<IndicatorValue[]> {
+    const cacheKey = CacheService.makeKey(symbol, interval, 'sma', { period });
+    const cached = cache.get<IndicatorValue[]>(cacheKey);
+    if (cached) return cached;
+
+    const data = await this.fetch<Record<string, unknown>>({
+      function: 'SMA',
+      symbol,
+      interval,
+      time_period: String(period),
+      series_type: 'close',
+    });
+
+    const values = this.parseIndicator(data, 'SMA');
+    
+    const ttl = interval === 'daily' ? CACHE_TTL.D1 : CACHE_TTL.H1;
+    cache.set(cacheKey, values, ttl);
+
+    return values;
+  }
+
+  /**
    * Parse indicator response
    */
   private parseIndicator(

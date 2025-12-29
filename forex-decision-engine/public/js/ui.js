@@ -111,8 +111,10 @@ const UI = {
     const isNoTrade = decision.grade === 'no-trade';
     const isError = hasErrors && isNoTrade;
     
-    const gradeClass = decision.grade === 'A+' ? 'grade-a' : 
-                       decision.grade === 'B' ? 'grade-b' : 
+    // Extended grade support for new strategies
+    const gradeClass = ['A+', 'A'].includes(decision.grade) ? 'grade-a' :
+                       ['B+', 'B'].includes(decision.grade) ? 'grade-b' :
+                       decision.grade === 'C' ? 'grade-c' :
                        isError ? 'grade-error' : '';
     
     const directionClass = decision.direction === 'long' ? 'direction-long' :
@@ -122,22 +124,43 @@ const UI = {
                           decision.direction === 'short' ? '▼ SHORT' : 
                           isError ? '⚠️ ERROR' : '— NO TRADE';
 
-    const gradeDisplay = decision.grade === 'A+' ? 'A+' :
-                         decision.grade === 'B' ? 'B' : 
+    const gradeDisplay = ['A+', 'A', 'B+', 'B', 'C'].includes(decision.grade) ? decision.grade :
                          isError ? '⚠️' : '—';
     
     const gradeBadgeClass = decision.grade === 'A+' ? 'grade-a-plus' :
-                            decision.grade === 'B' ? 'grade-b' : 
+                            decision.grade === 'A' ? 'grade-a' :
+                            decision.grade === 'B+' ? 'grade-b-plus' :
+                            decision.grade === 'B' ? 'grade-b' :
+                            decision.grade === 'C' ? 'grade-c' :
                             isError ? 'grade-error' : 'grade-no-trade';
 
-    // Build trade info section
+    // Strategy info section
+    const strategyInfo = decision.strategyName ? 
+      `<div class="card-strategy">
+        <span class="strategy-name">${decision.strategyName}</span>
+        ${decision.confidence !== undefined ? 
+          `<span class="strategy-confidence">${decision.confidence}%</span>` : ''}
+      </div>` : '';
+    
+    // Reason codes (tags)
+    const reasonCodesHTML = decision.reasonCodes && decision.reasonCodes.length > 0 ?
+      `<div class="reason-tags">
+        ${decision.reasonCodes.map(code => 
+          `<span class="reason-tag">${code.replace(/_/g, ' ')}</span>`
+        ).join('')}
+      </div>` : '';
+
+    // Build trade info section - handle NEXT_OPEN execution model
     let tradeInfoHTML = '';
-    if (!isNoTrade && decision.entryZone) {
+    if (!isNoTrade) {
+      const entryDisplay = decision.entryZone?.formatted || 
+        (decision.entry?.formatted ? `${decision.entry.formatted} (NEXT_OPEN)` : '—');
+      
       tradeInfoHTML = `
         <div class="card-trade-info">
           <div class="trade-item">
-            <span class="trade-label">Entry Zone</span>
-            <span class="trade-value">${decision.entryZone.formatted}</span>
+            <span class="trade-label">Entry</span>
+            <span class="trade-value">${entryDisplay}</span>
           </div>
           <div class="trade-item">
             <span class="trade-label">Stop Loss</span>
@@ -170,12 +193,14 @@ const UI = {
           </div>
           <span class="card-direction ${directionClass}">${directionText}</span>
         </div>
+        ${strategyInfo}
         <div class="card-body">
           ${tradeInfoHTML}
+          ${reasonCodesHTML}
           <div class="card-reason">"${decision.reason}"</div>
         </div>
         <div class="card-footer">
-          <span>${decision.timeframes.trend}/${decision.timeframes.entry} | ${validText}</span>
+          <span>${decision.timeframes?.trend || 'H4'}/${decision.timeframes?.entry || 'H1'} | ${validText}</span>
           <div class="card-actions">
             ${!isNoTrade ? `<button class="btn btn-small" onclick="App.copySignal('${decision.symbol}')">📋 Copy</button>` : ''}
           </div>

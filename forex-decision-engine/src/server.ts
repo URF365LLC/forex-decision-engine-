@@ -21,6 +21,7 @@ import { FOREX_SYMBOLS, CRYPTO_SYMBOLS, DEFAULT_WATCHLIST, SYMBOL_META } from '.
 import { DEFAULTS, RISK_OPTIONS } from './config/defaults.js';
 import { STYLE_PRESETS } from './config/strategy.js';
 import { analyzeSymbol, scanSymbols, UserSettings, Decision } from './engine/decisionEngine.js';
+import { strategyRegistry } from './strategies/index.js';
 import { validateSettings, validateSymbol, validateSymbols } from './utils/validation.js';
 import { signalStore } from './storage/signalStore.js';
 import { journalStore, TradeJournalEntry, JournalFilters } from './storage/journalStore.js';
@@ -114,6 +115,23 @@ app.get('/api/settings/defaults', (req, res) => {
 });
 
 /**
+ * Get available strategies
+ */
+app.get('/api/strategies', (req, res) => {
+  const style = (req.query.style as string) || 'intraday';
+  const strategies = strategyRegistry.getByStyle(style);
+  
+  res.json(strategies.map(s => ({
+    id: s.id,
+    name: s.name,
+    description: s.description,
+    winRate: s.winRate,
+    style: s.style,
+    timeframes: s.timeframes,
+  })));
+});
+
+/**
  * Analyze single symbol
  */
 app.post('/api/analyze', async (req, res) => {
@@ -163,7 +181,7 @@ app.post('/api/scan', async (req, res) => {
   scanInProgress = true;
   
   try {
-    const { symbols, settings } = req.body;
+    const { symbols, settings, strategyId } = req.body;
     
     // Validate symbols
     const symbolsResult = validateSymbols(symbols);
@@ -179,6 +197,11 @@ app.post('/api/scan', async (req, res) => {
     
     const userSettings = settingsResult.sanitized as UserSettings;
     const sanitizedSymbols = symbolsResult.sanitized as string[];
+    
+    // Add strategyId to settings if provided
+    if (strategyId) {
+      (userSettings as any).strategyId = strategyId;
+    }
     
     // Scan
     const decisions = await scanSymbols(sanitizedSymbols, userSettings);

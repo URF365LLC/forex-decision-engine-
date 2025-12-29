@@ -13,6 +13,8 @@ const App = {
   journalEntries: [],
   journalFilter: 'all',
   currentTradeData: null,
+  selectedStrategy: localStorage.getItem('selectedStrategy') || 'ema-pullback-intra',
+  strategies: [],
 
   /**
    * Initialize the application
@@ -35,6 +37,9 @@ const App = {
     this.loadSettings();
     this.loadWatchlist();
     this.loadResults();
+    
+    // Load strategies
+    await this.loadStrategyOptions();
 
     // Setup event listeners
     this.setupEventListeners();
@@ -43,6 +48,34 @@ const App = {
     this.checkHealth();
 
     console.log('✅ Application initialized');
+  },
+  
+  /**
+   * Load strategy options based on current trading style
+   */
+  async loadStrategyOptions() {
+    const settings = Storage.getSettings();
+    const dropdown = UI.$('strategy-select');
+    if (!dropdown) return;
+    
+    try {
+      const response = await fetch(`/api/strategies?style=${settings.style}`);
+      const strategies = await response.json();
+      this.strategies = strategies;
+      
+      dropdown.innerHTML = strategies.map(s => 
+        `<option value="${s.id}">${s.name} (${s.winRate}% WR)</option>`
+      ).join('');
+      
+      // Restore saved selection or use first option
+      const saved = localStorage.getItem('selectedStrategy');
+      const validSelection = strategies.find(s => s.id === saved);
+      this.selectedStrategy = validSelection ? saved : (strategies[0]?.id || 'ema-pullback-intra');
+      dropdown.value = this.selectedStrategy;
+      
+    } catch (error) {
+      console.error('Failed to load strategies:', error);
+    }
   },
 
   /**
@@ -265,7 +298,7 @@ const App = {
     UI.showLoading('Starting scan...');
 
     try {
-      const response = await API.scan(this.selectedSymbols, settings);
+      const response = await API.scan(this.selectedSymbols, settings, this.selectedStrategy);
       
       this.results = response.decisions;
       Storage.saveResults(this.results);
@@ -816,6 +849,12 @@ const App = {
     UI.$('clear-selection-btn')?.addEventListener('click', () => this.clearSelection());
     UI.$('scan-btn')?.addEventListener('click', () => this.runScan());
     UI.$('symbol-search')?.addEventListener('input', (e) => this.searchSymbols(e.target.value));
+
+    // Strategy selection
+    UI.$('strategy-select')?.addEventListener('change', (e) => {
+      this.selectedStrategy = e.target.value;
+      localStorage.setItem('selectedStrategy', this.selectedStrategy);
+    });
 
     // Results
     UI.$$('.filter-btn[data-filter]').forEach(btn => {
