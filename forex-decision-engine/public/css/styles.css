@@ -822,6 +822,62 @@ body {
   color: white;
 }
 
+/* ═══════════════════════════════════════════════════════════════
+   STRATEGY INFO & REASON TAGS
+   ═══════════════════════════════════════════════════════════════ */
+
+.card-strategy {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: var(--bg-tertiary);
+  border-bottom: 1px solid var(--border-color);
+  font-size: 0.8rem;
+}
+
+.strategy-name {
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.strategy-confidence {
+  background: var(--accent-blue-bg);
+  color: var(--accent-blue);
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-weight: 600;
+  font-size: 0.75rem;
+}
+
+.reason-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-xs);
+  margin-bottom: var(--spacing-sm);
+}
+
+.reason-tag {
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border: 1px solid var(--border-color);
+}
+
+.grade-b-plus {
+  background: var(--accent-amber-bg);
+  color: var(--accent-amber);
+}
+
+.grade-c {
+  background: rgba(156, 163, 175, 0.1);
+  color: #9ca3af;
+}
+
 .btn-skipped {
   background: var(--bg-tertiary);
   color: var(--text-secondary);

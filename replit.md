@@ -89,6 +89,43 @@ PUT  /api/signals/:id - Update signal result
 
 ## Recent Updates
 
+### Multi-Strategy System (Phase 3 Complete) - 2025-12-29
+- **8 Intraday Strategies** with varying win rates:
+  1. RSI Oversold Bounce (72% WR) - Mean reversion from RSI extremes with Bollinger Band confirmation
+  2. Stochastic Oversold (65% WR) - Stochastic crossover in extreme zones
+  3. Bollinger Mean Reversion (65% WR) - Mean reversion from Bollinger Band touches
+  4. Williams %R + EMA (58% WR) - Williams %R with EMA trend filter
+  5. Triple EMA Crossover (56% WR) - EMA8/21/55 alignment with pullback entry
+  6. Break & Retest (55% WR) - Enter on retest of broken levels
+  7. CCI Zero-Line Cross (55% WR) - CCI crossing zero from extremes
+  8. EMA Pullback (50% WR) - Original trend continuation strategy
+
+- **Strategy Architecture** (`src/strategies/`):
+  - `types.ts` - IStrategy interface, StrategyDecision, IndicatorData types
+  - `utils.ts` - 10+ helpers: calculateGrade, buildDecision, validateOrder, atIndex, safeDiv, isRejectionCandle, normalizedSlope, clamp
+  - `registry.ts` - Central strategy lookup with metadata (win rate, indicators, timeframes)
+  - `index.ts` - Main exports
+
+- **API Endpoints**:
+  - `GET /api/strategies?style=intraday` - Returns available strategies for style
+  - `POST /api/scan` - Now accepts `strategyId` parameter
+
+- **Alpha Vantage Client Extensions**:
+  - `getStochastic()` - SlowK/SlowD values
+  - `getWilliamsR()` - Williams %R indicator
+  - `getCCI()` - Commodity Channel Index
+  - `getBBands()` - Bollinger Bands (upper/middle/lower)
+  - `getSMA()` - Simple Moving Average
+
+- **Frontend Updates**:
+  - Strategy dropdown in Watchlist screen (persists to localStorage)
+  - Decision cards show: strategy name, confidence %, reason codes
+  - Extended grade display: A+, A, B+, B, C
+
+- **Execution Model**: NEXT_OPEN - signal on bar-2, entry on bar-1 open
+- **Confidence Scoring**: 0-100 scale converted to grades (A+ ≥90, A ≥80, B+ ≥70, B ≥60, C ≥50)
+- **Reason Codes**: Machine-readable analytics (RSI_OVERSOLD, BB_TOUCH_LOWER, TREND_ALIGNED, etc.)
+
 ### Journal Feature (Phase 2 Complete)
 - **Backend**: Full journal API with CRUD operations, P&L calculation, stats endpoint
 - **Storage**: `data/journal.json` with atomic writes for persistence

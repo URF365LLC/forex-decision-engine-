@@ -80,10 +80,10 @@ const API = {
   /**
    * Scan multiple symbols
    */
-  async scan(symbols, settings) {
+  async scan(symbols, settings, strategyId = 'ema-pullback-intra') {
     return this.request('/api/scan', {
       method: 'POST',
-      body: { symbols, settings },
+      body: { symbols, settings, strategyId },
     });
   },
 
