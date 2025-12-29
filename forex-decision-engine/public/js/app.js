@@ -165,6 +165,16 @@ const App = {
   },
 
   /**
+   * Get strategy name from cached strategies
+   */
+  getStrategyName(strategyId) {
+    const select = UI.$('strategy-select');
+    if (!select) return strategyId;
+    const option = select.querySelector(`option[value="${strategyId}"]`);
+    return option?.textContent || strategyId;
+  },
+
+  /**
    * Load watchlist from storage
    */
   loadWatchlist() {
@@ -470,10 +480,15 @@ const App = {
         direction: decision.direction,
         style: decision.style,
         grade: decision.grade,
+        // Strategy metadata (Phase 3)
+        strategyId: decision.strategyId || this.selectedStrategy,
+        strategyName: decision.strategyName || this.getStrategyName(this.selectedStrategy),
+        confidence: decision.confidence,
+        reasonCodes: decision.reasonCodes || [],
         tradeType: 'pullback',
         entryZoneLow: decision.entryZone?.low,
         entryZoneHigh: decision.entryZone?.high,
-        entryPrice: decision.entryZone ? (decision.entryZone.low + decision.entryZone.high) / 2 : 0,
+        entryPrice: decision.entryZone ? (decision.entryZone.low + decision.entryZone.high) / 2 : (decision.entryPrice || 0),
         stopLoss: decision.stopLoss?.price || 0,
         takeProfit: decision.takeProfit?.price || 0,
         lots: decision.position?.lots || 0,
@@ -727,6 +742,11 @@ const App = {
           direction: decision.direction,
           style: decision.style,
           grade: decision.grade,
+          // Strategy metadata (Phase 3)
+          strategyId: decision.strategyId || this.selectedStrategy,
+          strategyName: decision.strategyName || this.getStrategyName(this.selectedStrategy),
+          confidence: decision.confidence,
+          reasonCodes: decision.reasonCodes || [],
           tradeType: 'pullback',
           entryZoneLow: decision.entryZone?.low,
           entryZoneHigh: decision.entryZone?.high,
@@ -850,10 +870,17 @@ const App = {
     UI.$('scan-btn')?.addEventListener('click', () => this.runScan());
     UI.$('symbol-search')?.addEventListener('input', (e) => this.searchSymbols(e.target.value));
 
-    // Strategy selection
+    // Strategy selection - clear results when strategy changes
     UI.$('strategy-select')?.addEventListener('change', (e) => {
       this.selectedStrategy = e.target.value;
       localStorage.setItem('selectedStrategy', this.selectedStrategy);
+      
+      // Clear cached results when strategy changes to force fresh scan
+      this.results = [];
+      Storage.saveResults([]);
+      UI.renderResults([], this.currentFilter);
+      UI.$('refresh-btn').disabled = true;
+      UI.toast(`Strategy changed to ${e.target.options[e.target.selectedIndex].text}`, 'info');
     });
 
     // Results

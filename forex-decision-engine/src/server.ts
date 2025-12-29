@@ -21,7 +21,9 @@ import { FOREX_SYMBOLS, CRYPTO_SYMBOLS, DEFAULT_WATCHLIST, SYMBOL_META } from '.
 import { DEFAULTS, RISK_OPTIONS } from './config/defaults.js';
 import { STYLE_PRESETS } from './config/strategy.js';
 import { analyzeSymbol, scanSymbols, UserSettings, Decision } from './engine/decisionEngine.js';
+import { scanWithStrategy, clearStrategyCache } from './engine/strategyAnalyzer.js';
 import { strategyRegistry } from './strategies/index.js';
+import { Decision as StrategyDecision } from './strategies/types.js';
 import { validateSettings, validateSymbol, validateSymbols } from './utils/validation.js';
 import { signalStore } from './storage/signalStore.js';
 import { journalStore, TradeJournalEntry, JournalFilters } from './storage/journalStore.js';
@@ -119,7 +121,8 @@ app.get('/api/settings/defaults', (req, res) => {
  */
 app.get('/api/strategies', (req, res) => {
   const style = (req.query.style as string) || 'intraday';
-  const strategies = strategyRegistry.getByStyle(style);
+  const validStyle = style === 'swing' ? 'swing' : 'intraday';
+  const strategies = strategyRegistry.getByStyle(validStyle as 'intraday' | 'swing');
   
   res.json(strategies.map(s => ({
     id: s.id,
@@ -198,24 +201,28 @@ app.post('/api/scan', async (req, res) => {
     const userSettings = settingsResult.sanitized as UserSettings;
     const sanitizedSymbols = symbolsResult.sanitized as string[];
     
-    // Add strategyId to settings if provided
-    if (strategyId) {
-      (userSettings as any).strategyId = strategyId;
+    // Use strategy-specific scanning if strategyId provided
+    let decisions: (Decision | StrategyDecision)[];
+    
+    if (strategyId && strategyRegistry.get(strategyId)) {
+      // Use new multi-strategy system
+      logger.info(`Scanning with strategy: ${strategyId}`);
+      decisions = await scanWithStrategy(sanitizedSymbols, strategyId, userSettings);
+    } else {
+      // Fallback to legacy decision engine
+      decisions = await scanSymbols(sanitizedSymbols, userSettings);
     }
     
-    // Scan
-    const decisions = await scanSymbols(sanitizedSymbols, userSettings);
-    
-    // Save trade signals
+    // Save trade signals (handle both decision types)
     for (const decision of decisions) {
       if (decision.grade !== 'no-trade') {
-        signalStore.saveSignal(decision);
+        signalStore.saveSignal(decision as any);
       }
     }
     
-    // Sort by grade (A+ first, then B, then no-trade)
-    const gradeOrder = { 'A+': 0, 'B': 1, 'no-trade': 2 };
-    decisions.sort((a, b) => gradeOrder[a.grade] - gradeOrder[b.grade]);
+    // Sort by grade (A+ first, then lower grades, then no-trade)
+    const gradeOrder: Record<string, number> = { 'A+': 0, 'A': 1, 'B+': 2, 'B': 3, 'C': 4, 'no-trade': 5 };
+    decisions.sort((a, b) => (gradeOrder[a.grade] ?? 5) - (gradeOrder[b.grade] ?? 5));
     
     res.json({
       success: true,
