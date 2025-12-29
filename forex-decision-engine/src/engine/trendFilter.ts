@@ -71,8 +71,12 @@ export function analyzeTrend(data: IndicatorData): TrendAnalysis {
 
   const priceAboveEma = price > ema200;
   const priceBelowEma = price < ema200;
-  const slopePositive = ema200Slope > 0;
-  const slopeNegative = ema200Slope < 0;
+  
+  // Minimum slope threshold to filter out flat/ranging markets
+  // Value represents minimum EMA200 movement over 3 periods
+  const MIN_SLOPE_THRESHOLD = 0.00005;
+  const slopePositive = ema200Slope > MIN_SLOPE_THRESHOLD;
+  const slopeNegative = ema200Slope < -MIN_SLOPE_THRESHOLD;
   const adxAboveThreshold = adx >= trend.adx.threshold;
   const adxBorderline = adx >= STRATEGY.grading.adxBorderline.min && adx < trend.adx.threshold;
 

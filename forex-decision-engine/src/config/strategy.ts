@@ -91,21 +91,21 @@ export interface StyleConfig {
 export const STYLE_PRESETS: Record<TradingStyle, StyleConfig> = {
   intraday: {
     name: 'Intraday',
-    trendTimeframe: 'H4',
-    entryTimeframe: 'H1',
+    trendTimeframe: 'D1',      // Using Daily for EMA200/ADX (more reliable than H4)
+    entryTimeframe: 'H1',      // 60min for entry triggers
     refreshMinutes: 5,
-    validCandles: 4,           // ~4 hours
-    avInterval: '60min',
-    avTrendInterval: '60min',  // We'll use daily for H4 approximation
+    validCandles: 4,           // Signal valid for ~4 hours
+    avInterval: '60min',       // Alpha Vantage interval for entry TF
+    avTrendInterval: 'daily',  // Alpha Vantage interval for trend TF
   },
   swing: {
     name: 'Swing',
-    trendTimeframe: 'D1',
-    entryTimeframe: 'H4',
+    trendTimeframe: 'D1',      // Daily for trend direction
+    entryTimeframe: 'H4',      // 4-hour for entry (aggregated from 60min)
     refreshMinutes: 15,
-    validCandles: 6,           // ~24 hours
-    avInterval: '60min',       // We'll aggregate to H4
-    avTrendInterval: 'daily',
+    validCandles: 6,           // Signal valid for ~24 hours
+    avInterval: '60min',       // We aggregate 60min bars to H4
+    avTrendInterval: 'daily',  // Alpha Vantage daily endpoint
   },
 };
 

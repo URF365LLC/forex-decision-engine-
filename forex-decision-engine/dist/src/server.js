@@ -1,0 +1,457 @@
+/**
+ * Forex Decision Engine - API Server
+ *
+ * Endpoints:
+ * GET  /api/health          - Health check
+ * GET  /api/universe        - Get available symbols
+ * GET  /api/status          - Cache and rate limiter status
+ * POST /api/analyze         - Analyze single symbol
+ * POST /api/scan            - Scan multiple symbols
+ * GET  /api/signals         - Get signal history
+ * PUT  /api/signals/:id     - Update signal result
+ */
+import 'dotenv/config';
+import express from 'express';
+import cors from 'cors';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { FOREX_SYMBOLS, CRYPTO_SYMBOLS, DEFAULT_WATCHLIST, SYMBOL_META } from './config/universe.js';
+import { DEFAULTS, RISK_OPTIONS } from './config/defaults.js';
+import { STYLE_PRESETS } from './config/strategy.js';
+import { analyzeSymbol, scanSymbols } from './engine/decisionEngine.js';
+import { validateSettings, validateSymbol, validateSymbols } from './utils/validation.js';
+import { signalStore } from './storage/signalStore.js';
+import { journalStore } from './storage/journalStore.js';
+import { cache } from './services/cache.js';
+import { rateLimiter } from './services/rateLimiter.js';
+import { createLogger } from './services/logger.js';
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const logger = createLogger('Server');
+const app = express();
+const PORT = process.env.PORT || 3000;
+let scanInProgress = false;
+// ═══════════════════════════════════════════════════════════════
+// MIDDLEWARE
+// ═══════════════════════════════════════════════════════════════
+app.use(cors());
+app.use(express.json());
+app.use(express.static(path.join(__dirname, '../public')));
+// Request logging
+app.use((req, res, next) => {
+    const start = Date.now();
+    res.on('finish', () => {
+        const duration = Date.now() - start;
+        logger.debug(`${req.method} ${req.path} ${res.statusCode} ${duration}ms`);
+    });
+    next();
+});
+// ═══════════════════════════════════════════════════════════════
+// API ROUTES
+// ═══════════════════════════════════════════════════════════════
+/**
+ * Health check
+ */
+app.get('/api/health', (req, res) => {
+    res.json({
+        status: 'ok',
+        version: '1.0.0',
+        timestamp: new Date().toISOString(),
+        apiKeyConfigured: !!process.env.ALPHAVANTAGE_API_KEY,
+    });
+});
+/**
+ * Get trading universe
+ */
+app.get('/api/universe', (req, res) => {
+    res.json({
+        forex: FOREX_SYMBOLS,
+        crypto: CRYPTO_SYMBOLS,
+        defaultWatchlist: DEFAULT_WATCHLIST,
+        metadata: SYMBOL_META,
+    });
+});
+/**
+ * Get system status
+ */
+app.get('/api/status', (req, res) => {
+    const cacheStats = cache.getStats();
+    const rateLimitState = rateLimiter.getState();
+    const signalStats = signalStore.getStats();
+    res.json({
+        cache: cacheStats,
+        rateLimit: rateLimitState,
+        signals: signalStats,
+        timestamp: new Date().toISOString(),
+    });
+});
+/**
+ * Get default settings
+ */
+app.get('/api/settings/defaults', (req, res) => {
+    res.json({
+        accountSize: DEFAULTS.account.size,
+        riskPercent: DEFAULTS.risk.perTrade,
+        style: DEFAULTS.style,
+        riskOptions: RISK_OPTIONS,
+        styles: STYLE_PRESETS,
+        timezone: DEFAULTS.timezone,
+    });
+});
+/**
+ * Analyze single symbol
+ */
+app.post('/api/analyze', async (req, res) => {
+    try {
+        const { symbol, settings } = req.body;
+        // Validate symbol
+        const symbolResult = validateSymbol(symbol);
+        if (!symbolResult.valid) {
+            return res.status(400).json({ error: symbolResult.errors.join(', ') });
+        }
+        // Validate settings
+        const settingsResult = validateSettings(settings);
+        if (!settingsResult.valid) {
+            return res.status(400).json({ error: settingsResult.errors.join(', ') });
+        }
+        const userSettings = settingsResult.sanitized;
+        const sanitizedSymbol = symbolResult.sanitized;
+        // Analyze
+        const decision = await analyzeSymbol(sanitizedSymbol, userSettings);
+        // Save to store (if it's a trade signal)
+        if (decision.grade !== 'no-trade') {
+            signalStore.saveSignal(decision);
+        }
+        res.json({ success: true, decision });
+    }
+    catch (error) {
+        logger.error('Analyze error', { error });
+        res.status(500).json({
+            error: error instanceof Error ? error.message : 'Analysis failed'
+        });
+    }
+});
+/**
+ * Scan multiple symbols
+ */
+app.post('/api/scan', async (req, res) => {
+    if (scanInProgress) {
+        return res.status(429).json({ error: 'Scan already in progress. Please wait.' });
+    }
+    scanInProgress = true;
+    try {
+        const { symbols, settings } = req.body;
+        // Validate symbols
+        const symbolsResult = validateSymbols(symbols);
+        if (!symbolsResult.valid) {
+            return res.status(400).json({ error: symbolsResult.errors.join(', ') });
+        }
+        // Validate settings
+        const settingsResult = validateSettings(settings);
+        if (!settingsResult.valid) {
+            return res.status(400).json({ error: settingsResult.errors.join(', ') });
+        }
+        const userSettings = settingsResult.sanitized;
+        const sanitizedSymbols = symbolsResult.sanitized;
+        // Scan
+        const decisions = await scanSymbols(sanitizedSymbols, userSettings);
+        // Save trade signals
+        for (const decision of decisions) {
+            if (decision.grade !== 'no-trade') {
+                signalStore.saveSignal(decision);
+            }
+        }
+        // Sort by grade (A+ first, then B, then no-trade)
+        const gradeOrder = { 'A+': 0, 'B': 1, 'no-trade': 2 };
+        decisions.sort((a, b) => gradeOrder[a.grade] - gradeOrder[b.grade]);
+        res.json({
+            success: true,
+            count: decisions.length,
+            trades: decisions.filter(d => d.grade !== 'no-trade').length,
+            decisions,
+        });
+    }
+    catch (error) {
+        logger.error('Scan error', { error });
+        res.status(500).json({
+            error: error instanceof Error ? error.message : 'Scan failed'
+        });
+    }
+    finally {
+        scanInProgress = false;
+    }
+});
+/**
+ * Get signal history
+ */
+app.get('/api/signals', (req, res) => {
+    try {
+        const limit = Math.min(parseInt(req.query.limit) || 50, 100);
+        const grade = req.query.grade;
+        const symbol = req.query.symbol;
+        let signals;
+        if (grade) {
+            signals = signalStore.getByGrade(grade, limit);
+        }
+        else if (symbol) {
+            signals = signalStore.getBySymbol(symbol.toUpperCase(), limit);
+        }
+        else {
+            signals = signalStore.getRecent(limit);
+        }
+        res.json({ success: true, count: signals.length, signals });
+    }
+    catch (error) {
+        logger.error('Get signals error', { error });
+        res.status(500).json({
+            error: error instanceof Error ? error.message : 'Failed to get signals'
+        });
+    }
+});
+/**
+ * Update signal result
+ */
+app.put('/api/signals/:id', (req, res) => {
+    try {
+        const id = parseInt(req.params.id);
+        const { result, notes } = req.body;
+        if (!['win', 'loss', 'breakeven', 'skipped'].includes(result)) {
+            return res.status(400).json({ error: 'Invalid result. Must be: win, loss, breakeven, or skipped' });
+        }
+        const updated = signalStore.updateResult(id, result, notes);
+        if (!updated) {
+            return res.status(404).json({ error: 'Signal not found' });
+        }
+        res.json({ success: true });
+    }
+    catch (error) {
+        logger.error('Update signal error', { error });
+        res.status(500).json({
+            error: error instanceof Error ? error.message : 'Failed to update signal'
+        });
+    }
+});
+/**
+ * Get signal statistics
+ */
+app.get('/api/signals/stats', (req, res) => {
+    try {
+        const stats = signalStore.getStats();
+        res.json({ success: true, stats });
+    }
+    catch (error) {
+        logger.error('Get stats error', { error });
+        res.status(500).json({
+            error: error instanceof Error ? error.message : 'Failed to get stats'
+        });
+    }
+});
+// ═══════════════════════════════════════════════════════════════
+// JOURNAL API
+// ═══════════════════════════════════════════════════════════════
+/**
+ * Add journal entry
+ */
+app.post('/api/journal', (req, res) => {
+    try {
+        const entry = req.body;
+        if (!entry.symbol || !entry.direction || !entry.action) {
+            return res.status(400).json({
+                error: 'Missing required fields: symbol, direction, action'
+            });
+        }
+        if (!['long', 'short'].includes(entry.direction)) {
+            return res.status(400).json({ error: 'Direction must be long or short' });
+        }
+        if (!['taken', 'skipped', 'missed'].includes(entry.action)) {
+            return res.status(400).json({ error: 'Action must be taken, skipped, or missed' });
+        }
+        const newEntry = journalStore.add(entry);
+        res.json({ success: true, entry: newEntry });
+    }
+    catch (error) {
+        logger.error('Add journal entry error', { error });
+        res.status(500).json({
+            error: error instanceof Error ? error.message : 'Failed to add journal entry'
+        });
+    }
+});
+/**
+ * Get journal entries
+ */
+app.get('/api/journal', (req, res) => {
+    try {
+        const filters = {};
+        if (req.query.symbol)
+            filters.symbol = req.query.symbol;
+        if (req.query.status)
+            filters.status = req.query.status;
+        if (req.query.result)
+            filters.result = req.query.result;
+        if (req.query.action)
+            filters.action = req.query.action;
+        if (req.query.tradeType)
+            filters.tradeType = req.query.tradeType;
+        if (req.query.dateFrom)
+            filters.dateFrom = req.query.dateFrom;
+        if (req.query.dateTo)
+            filters.dateTo = req.query.dateTo;
+        const entries = journalStore.getAll(Object.keys(filters).length > 0 ? filters : undefined);
+        res.json({ success: true, count: entries.length, entries });
+    }
+    catch (error) {
+        logger.error('Get journal entries error', { error });
+        res.status(500).json({
+            error: error instanceof Error ? error.message : 'Failed to get journal entries'
+        });
+    }
+});
+/**
+ * Get single journal entry
+ */
+app.get('/api/journal/stats', (req, res) => {
+    try {
+        const dateFrom = req.query.dateFrom;
+        const dateTo = req.query.dateTo;
+        const stats = journalStore.getStats(dateFrom, dateTo);
+        res.json({ success: true, stats });
+    }
+    catch (error) {
+        logger.error('Get journal stats error', { error });
+        res.status(500).json({
+            error: error instanceof Error ? error.message : 'Failed to get journal stats'
+        });
+    }
+});
+/**
+ * Export journal as CSV
+ */
+app.get('/api/journal/export', (req, res) => {
+    try {
+        const filters = {};
+        if (req.query.symbol)
+            filters.symbol = req.query.symbol;
+        if (req.query.status)
+            filters.status = req.query.status;
+        if (req.query.result)
+            filters.result = req.query.result;
+        if (req.query.dateFrom)
+            filters.dateFrom = req.query.dateFrom;
+        if (req.query.dateTo)
+            filters.dateTo = req.query.dateTo;
+        const csv = journalStore.exportCSV(Object.keys(filters).length > 0 ? filters : undefined);
+        res.setHeader('Content-Type', 'text/csv');
+        res.setHeader('Content-Disposition', `attachment; filename=trading-journal-${new Date().toISOString().split('T')[0]}.csv`);
+        res.send(csv);
+    }
+    catch (error) {
+        logger.error('Export journal error', { error });
+        res.status(500).json({
+            error: error instanceof Error ? error.message : 'Failed to export journal'
+        });
+    }
+});
+/**
+ * Get single journal entry by ID
+ */
+app.get('/api/journal/:id', (req, res) => {
+    try {
+        const entry = journalStore.get(req.params.id);
+        if (!entry) {
+            return res.status(404).json({ error: 'Journal entry not found' });
+        }
+        res.json({ success: true, entry });
+    }
+    catch (error) {
+        logger.error('Get journal entry error', { error });
+        res.status(500).json({
+            error: error instanceof Error ? error.message : 'Failed to get journal entry'
+        });
+    }
+});
+/**
+ * Update journal entry
+ */
+app.put('/api/journal/:id', (req, res) => {
+    try {
+        const updates = req.body;
+        if (updates.status === 'closed' && updates.exitPrice) {
+            const existing = journalStore.get(req.params.id);
+            if (existing) {
+                const tempEntry = { ...existing, ...updates };
+                const pnl = journalStore.calculatePnL(tempEntry);
+                if (pnl) {
+                    updates.pnlPips = pnl.pnlPips;
+                    updates.pnlDollars = pnl.pnlDollars;
+                    updates.rMultiple = pnl.rMultiple;
+                    if (pnl.pnlPips > 0)
+                        updates.result = 'win';
+                    else if (pnl.pnlPips < 0)
+                        updates.result = 'loss';
+                    else
+                        updates.result = 'breakeven';
+                }
+            }
+        }
+        const entry = journalStore.update(req.params.id, updates);
+        if (!entry) {
+            return res.status(404).json({ error: 'Journal entry not found' });
+        }
+        res.json({ success: true, entry });
+    }
+    catch (error) {
+        logger.error('Update journal entry error', { error });
+        res.status(500).json({
+            error: error instanceof Error ? error.message : 'Failed to update journal entry'
+        });
+    }
+});
+/**
+ * Delete journal entry
+ */
+app.delete('/api/journal/:id', (req, res) => {
+    try {
+        const deleted = journalStore.delete(req.params.id);
+        if (!deleted) {
+            return res.status(404).json({ error: 'Journal entry not found' });
+        }
+        res.json({ success: true });
+    }
+    catch (error) {
+        logger.error('Delete journal entry error', { error });
+        res.status(500).json({
+            error: error instanceof Error ? error.message : 'Failed to delete journal entry'
+        });
+    }
+});
+// ═══════════════════════════════════════════════════════════════
+// SERVE FRONTEND
+// ═══════════════════════════════════════════════════════════════
+app.get('*', (req, res) => {
+    res.sendFile(path.join(__dirname, '../public/index.html'));
+});
+// ═══════════════════════════════════════════════════════════════
+// ERROR HANDLING
+// ═══════════════════════════════════════════════════════════════
+app.use((err, req, res, next) => {
+    logger.error('Unhandled error', { error: err.message, stack: err.stack });
+    res.status(500).json({ error: 'Internal server error' });
+});
+// ═══════════════════════════════════════════════════════════════
+// START SERVER
+// ═══════════════════════════════════════════════════════════════
+app.listen(PORT, () => {
+    logger.info(`🎯 Forex Decision Engine v1.0.0`);
+    logger.info(`📡 Server running on port ${PORT}`);
+    logger.info(`🔑 API Key: ${process.env.ALPHAVANTAGE_API_KEY ? 'Configured' : 'NOT CONFIGURED'}`);
+    logger.info(`📊 Symbols: ${FOREX_SYMBOLS.length} forex, ${CRYPTO_SYMBOLS.length} crypto`);
+});
+// Graceful shutdown
+process.on('SIGTERM', () => {
+    logger.info('Shutting down...');
+    signalStore.close();
+    journalStore.close();
+    cache.close();
+    process.exit(0);
+});
+//# sourceMappingURL=server.js.map
