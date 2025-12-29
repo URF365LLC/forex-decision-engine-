@@ -1,0 +1,283 @@
+## 🔧 REPLIT PATCH #3: Grading + Reason Codes
+
+**Paste this to Replit after Patch #1 & #2, before building:**
+
+---
+
+### CONTEXT
+
+This patch adds dynamic grading and reason codes for analytics. Apply these changes to the plan already approved.
+
+---
+
+### FIX 14: Dynamic Grade Calculation
+
+**Problem:** Static grades (e.g., `grade: 'A'`) prevent filtering by setup quality.
+
+**Add to `utils.ts`:**
+```typescript
+/**
+ * Calculate grade from confidence score.
+ * Strategies compute confidence (0-100), grade is derived centrally.
+ * NEVER hardcode grades in strategies.
+ */
+export function calculateGrade(confidence: number): SignalGrade {
+  if (confidence >= 90) return 'A+';
+  if (confidence >= 80) return 'A';
+  if (confidence >= 70) return 'B+';
+  if (confidence >= 60) return 'B';
+  if (confidence >= 50) return 'C';
+  return 'no-trade';
+}
+```
+
+**In `buildDecision()`:**
+```typescript
+// Grade is DERIVED, never passed in
+const grade = calculateGrade(confidence);
+```
+
+**In each strategy:**
+- Do NOT pass `grade` to `buildDecision()`
+- Only pass `confidence` (0-100)
+- Remove any hardcoded `grade: 'A'` or similar
+
+---
+
+### FIX 15: Add `reasonCodes` for Analytics
+
+**Problem:** Human-readable triggers can't be analyzed programmatically.
+
+**Add to `Decision` interface in `types.ts`:**
+```typescript
+// Human-readable explanations
+triggers: string[];
+
+// Machine-readable codes for analytics (NEW)
+reasonCodes: ReasonCode[];
+```
+
+**Add type definition in `types.ts`:**
+```typescript
+export type ReasonCode = 
+  // RSI conditions
+  | 'RSI_OVERSOLD'
+  | 'RSI_OVERBOUGHT'
+  | 'RSI_EXTREME_LOW'
+  | 'RSI_EXTREME_HIGH'
+  // Bollinger Band conditions
+  | 'BB_TOUCH_LOWER'
+  | 'BB_TOUCH_UPPER'
+  | 'BB_SQUEEZE'
+  | 'BB_EXPANSION'
+  // Candle patterns
+  | 'REJECTION_CONFIRMED'
+  | 'ENGULFING_BULL'
+  | 'ENGULFING_BEAR'
+  // Trend conditions
+  | 'TREND_ALIGNED'
+  | 'TREND_COUNTER'
+  | 'EMA_BULLISH_STACK'
+  | 'EMA_BEARISH_STACK'
+  | 'EMA_PULLBACK'
+  // Momentum
+  | 'STOCH_OVERSOLD'
+  | 'STOCH_OVERBOUGHT'
+  | 'STOCH_CROSS_UP'
+  | 'STOCH_CROSS_DOWN'
+  | 'WILLR_OVERSOLD'
+  | 'WILLR_OVERBOUGHT'
+  | 'CCI_ZERO_CROSS_UP'
+  | 'CCI_ZERO_CROSS_DOWN'
+  | 'CCI_EXTREME_LOW'
+  | 'CCI_EXTREME_HIGH'
+  // Structure
+  | 'BREAK_CONFIRMED'
+  | 'RETEST_CONFIRMED'
+  | 'SUPPORT_HOLD'
+  | 'RESISTANCE_HOLD'
+  // Risk
+  | 'RR_FAVORABLE'
+  | 'ATR_NORMAL'
+  | 'ATR_ELEVATED';
+```
+
+**Update `buildDecision()` params:**
+```typescript
+export interface DecisionParams {
+  // ... existing params ...
+  triggers: string[];
+  reasonCodes: ReasonCode[];  // NEW
+}
+```
+
+**In each strategy, add reason codes alongside triggers:**
+```typescript
+// Example from RsiBounce:
+const triggers: string[] = [];
+const reasonCodes: ReasonCode[] = [];
+
+if (rsiSignal < 30) {
+  triggers.push(`RSI oversold at ${rsiSignal.toFixed(1)}`);
+  reasonCodes.push('RSI_OVERSOLD');
+  
+  if (rsiSignal < 20) {
+    triggers.push('RSI extremely oversold');
+    reasonCodes.push('RSI_EXTREME_LOW');
+  }
+}
+
+if (signalBar.low <= bbSignal.lower) {
+  triggers.push(`Price touched lower BB at ${bbSignal.lower.toFixed(5)}`);
+  reasonCodes.push('BB_TOUCH_LOWER');
+}
+
+if (rejection.ok) {
+  triggers.push(`Rejection candle confirmed (${(rejection.wickRatio * 100).toFixed(0)}% wick)`);
+  reasonCodes.push('REJECTION_CONFIRMED');
+}
+
+// Pass both to buildDecision
+return buildDecision({
+  // ...
+  triggers,
+  reasonCodes,
+  // ...
+});
+```
+
+---
+
+### FIX 16: Confidence Scoring Guidelines
+
+**Problem:** Need consistent confidence scoring across all strategies.
+
+**Scoring Framework (apply to all strategies):**
+
+```typescript
+// Base confidence structure:
+let confidence = 0;
+
+// PRIMARY SIGNAL (25-35 points)
+// The core setup condition
+if (primaryConditionMet) {
+  confidence += 30;
+  if (strongVersion) confidence += 5;  // e.g., RSI < 20 vs RSI < 30
+}
+
+// CONFIRMATION (15-25 points each, max 2-3)
+// Supporting indicators that align
+if (confirmationA) confidence += 20;
+if (confirmationB) confidence += 15;
+
+// TREND ALIGNMENT (10-20 points)
+// With trend = bonus, counter-trend = penalty
+if (trendAligned) confidence += 15;
+if (counterTrend) confidence -= 10;
+
+// CANDLE QUALITY (10-15 points)
+// Rejection, engulfing, etc.
+if (rejectionConfirmed) confidence += 15;
+
+// RISK/REWARD (5-10 points)
+// Favorable structure
+if (rr >= 2.0) confidence += 10;
+else if (rr >= 1.5) confidence += 5;
+
+// VOLATILITY CONTEXT (5-10 points)
+// Normal ATR = good, extreme = caution
+if (normalVolatility) confidence += 5;
+if (extremeVolatility) confidence -= 5;
+
+// CLAMP final score
+confidence = clamp(confidence, 0, 100);
+```
+
+**Grade Mapping (for reference):**
+| Confidence | Grade | Meaning |
+|------------|-------|---------|
+| 90-100 | A+ | High conviction, tradeable |
+| 80-89 | A | Strong setup, tradeable |
+| 70-79 | B+ | Good setup, tradeable with caution |
+| 60-69 | B | Moderate, confirmation recommended |
+| 50-59 | C | Weak, monitor only |
+| 0-49 | no-trade | Do not trade |
+
+---
+
+### FIX 17: Update Signal Card to Show Reason Codes
+
+**In signal card rendering (app.js):**
+```typescript
+// Show reason codes as tags
+const reasonTags = decision.reasonCodes
+  .map(code => `<span class="reason-tag">${code}</span>`)
+  .join('');
+
+// Add to card HTML
+<div class="reason-codes">
+  ${reasonTags}
+</div>
+```
+
+**Add CSS:**
+```css
+.reason-tag {
+  display: inline-block;
+  padding: 2px 6px;
+  margin: 2px;
+  font-size: 0.7rem;
+  background: var(--bg-tertiary);
+  border-radius: 4px;
+  color: var(--text-secondary);
+}
+```
+
+---
+
+## SUMMARY TABLE (Patch #3)
+
+| # | Fix | File(s) | Purpose |
+|---|-----|---------|---------|
+| 14 | `calculateGrade()` | utils.ts | Dynamic grading from confidence |
+| 15 | `reasonCodes` | types.ts + all strategies | Analytics-ready condition tracking |
+| 16 | Confidence guidelines | All strategies | Consistent scoring framework |
+| 17 | UI reason tags | app.js + CSS | Display reason codes |
+
+---
+
+## COMPLETE FIX LIST (All 3 Patches Combined)
+
+| # | Fix | Priority |
+|---|-----|----------|
+| 1 | Indicator/bar alignment | 🔴 Critical |
+| 2 | Entry = next bar open | 🔴 Critical |
+| 3 | `atIndex()` helper | 🔴 Critical |
+| 4 | `validateOrder()` | 🔴 Critical |
+| 5 | `safeDiv()` | 🟡 Medium |
+| 6 | `isRejectionCandle()` | 🟡 Medium |
+| 7 | `normalizedSlope()` | 🟡 Medium |
+| 8 | `clamp()` | 🟢 Low |
+| 9 | Type consistency | 🟡 Medium |
+| 10 | `isApproximate` flag | 🟡 Medium |
+| 11 | `entryZone: null` | 🟡 Medium |
+| 12 | `executionModel` | 🟢 Low |
+| 13 | `version` in meta | 🟢 Low |
+| A | Min bars guard (50) | 🔴 Critical |
+| B | `normalizedSlope` undefined-safe | 🟡 Medium |
+| C | Strict `validateIndicators` | 🟡 Medium |
+| D | UI null-check `entryZone` | 🟡 Medium |
+| 14 | `calculateGrade()` | 🔴 Critical |
+| 15 | `reasonCodes` | 🟡 Medium |
+| 16 | Confidence guidelines | 🟡 Medium |
+| 17 | UI reason tags | 🟢 Low |
+
+---
+
+## FINAL INSTRUCTION TO REPLIT
+
+> Apply all fixes from Patches #1, #2, and #3 (17 total fixes + 4 tweaks). Grades are DERIVED from confidence using `calculateGrade()`. Each strategy outputs confidence (0-100) and reasonCodes. Do not hardcode grades. Proceed with build.
+
+---
+
+**Ready to paste.** 🚀

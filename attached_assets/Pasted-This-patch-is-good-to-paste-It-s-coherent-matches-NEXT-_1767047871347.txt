@@ -1,0 +1,90 @@
+This patch is **good to paste**. It’s coherent, matches `NEXT_OPEN`, and closes the real failure modes (misalignment, same-candle entry, bad SL/TP, NaN ratios, UI nulls).
+
+Before you paste, make **two surgical edits** so you don’t get “silent wrong” behavior:
+
+---
+
+## 1) Fix `validateIndicators()` — enforce `minBars` on indicators too
+
+Right now it only enforces `minBars` on `bars`, but indicators can still be shorter and pass (it only requires `>= 3`). That can cause garbage signals if an indicator series is still warming up.
+
+Change this part:
+
+```ts
+// Must have sufficient length (at least 3 for signal/entry logic)
+if (indicator.length < 3) return false;
+```
+
+To:
+
+```ts
+// Must have sufficient length (match bars history requirement)
+if (indicator.length < minBars) return false;
+```
+
+And keep the `console.warn` for mismatch length (good diagnostic).
+
+---
+
+## 2) UI snippet: don’t assume `formatPrice` exists in that scope
+
+Your UI tweak shows:
+
+```ts
+entryDisplay = `Entry: ${formatPrice(decision.entryPrice)} (NEXT_OPEN)`;
+```
+
+If your UI doesn’t already have `formatPrice`, you’ll crash the rendering. Safer version:
+
+```ts
+entryDisplay = `Entry: ${decision.entryPrice} (NEXT_OPEN)`;
+```
+
+(or wire the same formatter you already use elsewhere).
+
+---
+
+## Two “nice but optional” micro-tweaks
+
+Not required, but clean:
+
+### A) Minimum bars guard: use `minBars` not hardcoded `3`
+
+Instead of:
+
+```ts
+if (!bars || bars.length < 3) return null;
+```
+
+Use:
+
+```ts
+if (!bars || bars.length < 50) return null; // or your chosen minBars
+```
+
+Because many indicators (EMA200, BB, ATR) need warm-up history to be meaningful.
+
+### B) Add a hard null check after atIndex
+
+After:
+
+```ts
+const rsiSignal = atIndex(rsi, signalIdx);
+```
+
+Do:
+
+```ts
+if (!rsiSignal) return null;
+```
+
+Same for any required indicator you dereference.
+
+---
+
+## Final verdict
+
+**Yes: paste it.**
+With those 2 edits, it’s production-safe for MVP and won’t inflate backtests or break live execution assumptions.
+
+If you paste your current `utils.ts` (the real one), I can point out exactly where these changes slot in without Replit “refactoring” your types into a mess.
