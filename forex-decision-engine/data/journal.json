@@ -13,11 +13,11 @@
       "stopLoss": 1.17484,
       "takeProfit": 1.18207,
       "lots": 0.21,
-      "status": "pending",
+      "status": "running",
       "action": "taken",
       "id": "1767018542828-nbc997v10",
       "createdAt": "2025-12-29T14:29:02.828Z",
-      "updatedAt": "2025-12-29T14:29:02.828Z"
+      "updatedAt": "2025-12-29T17:09:51.509Z"
     },
     {
       "source": "signal",
@@ -32,11 +32,49 @@
       "stopLoss": 1.37046,
       "takeProfit": 1.36218,
       "lots": 0.18,
-      "status": "pending",
+      "status": "running",
       "action": "taken",
       "id": "1767018713084-rk5uuvw0d",
       "createdAt": "2025-12-29T14:31:53.084Z",
-      "updatedAt": "2025-12-29T14:31:53.084Z"
+      "updatedAt": "2025-12-29T17:09:59.692Z"
+    },
+    {
+      "source": "signal",
+      "symbol": "AUDNZD",
+      "direction": "long",
+      "style": "intraday",
+      "grade": "A+",
+      "tradeType": "pullback",
+      "entryZoneLow": 1.1517,
+      "entryZoneHigh": 1.153,
+      "action": "taken",
+      "entryPrice": 1.15235,
+      "stopLoss": 1.14961,
+      "takeProfit": 1.15783,
+      "lots": 0.18,
+      "status": "pending",
+      "id": "1767028180169-4t8125jmx",
+      "createdAt": "2025-12-29T17:09:40.169Z",
+      "updatedAt": "2025-12-29T17:09:40.169Z"
+    },
+    {
+      "source": "signal",
+      "symbol": "EURUSD",
+      "direction": "long",
+      "style": "intraday",
+      "grade": "A+",
+      "tradeType": "pullback",
+      "entryZoneLow": 1.1767,
+      "entryZoneHigh": 1.1772,
+      "action": "taken",
+      "entryPrice": 1.17693,
+      "stopLoss": 1.17444,
+      "takeProfit": 1.18197,
+      "lots": 0.2,
+      "status": "running",
+      "id": "1767038885092-vo9bulvet",
+      "createdAt": "2025-12-29T20:08:05.092Z",
+      "updatedAt": "2025-12-29T20:08:05.092Z"
     }
   ]
 }

@@ -1,0 +1,156 @@
+Here's your single copy-paste prompt for Replit:
+
+---
+
+```
+I need you to implement 3 fixes to our trading strategy implementation. Make these changes precisely:
+
+## FIX 1: Add Slope Threshold (trendFilter.ts)
+
+In `src/engine/trendFilter.ts`, add a minimum slope threshold to prevent false trend signals in ranging markets.
+
+Find this code around lines 50-52:
+```typescript
+const slopePositive = ema200Slope > 0;
+const slopeNegative = ema200Slope < 0;
+```
+
+Replace with:
+```typescript
+// Minimum slope threshold to filter out flat/ranging markets
+// Value represents minimum EMA200 movement over 3 periods
+const MIN_SLOPE_THRESHOLD = 0.00005;
+const slopePositive = ema200Slope > MIN_SLOPE_THRESHOLD;
+const slopeNegative = ema200Slope < -MIN_SLOPE_THRESHOLD;
+```
+
+## FIX 2: Extend RSI Lookback (entryTrigger.ts)
+
+In `src/engine/entryTrigger.ts`, extend the RSI reset lookback from 2 bars to 5 bars to catch more valid setups.
+
+Find this code around lines 55-58:
+```typescript
+const rsi = getLatestValue(data.rsi);
+const rsiPrevious = getPreviousValue(data.rsi, 1);
+const rsi2Back = getPreviousValue(data.rsi, 2);
+```
+
+Replace with:
+```typescript
+const rsi = getLatestValue(data.rsi);
+const rsiPrevious = getPreviousValue(data.rsi, 1);
+const rsi2Back = getPreviousValue(data.rsi, 2);
+const rsi3Back = getPreviousValue(data.rsi, 3);
+const rsi4Back = getPreviousValue(data.rsi, 4);
+```
+
+Then find the RSI reset logic around lines 95-107:
+```typescript
+if (trendDirection === 'bullish') {
+  // RSI should have gone below 50 and now turning up
+  const wasBelow50 = rsiPrevious < entry.rsi.bullishResetBelow || 
+                     (rsi2Back !== null && rsi2Back < entry.rsi.bullishResetBelow);
+  rsiWasReset = wasBelow50;
+  rsiTurning = rsi > rsiPrevious;
+  rsiResetStrength = rsi - Math.min(rsiPrevious, rsi2Back ?? rsiPrevious);
+} else {
+  // RSI should have gone above 50 and now turning down
+  const wasAbove50 = rsiPrevious > entry.rsi.bearishResetAbove ||
+                     (rsi2Back !== null && rsi2Back > entry.rsi.bearishResetAbove);
+  rsiWasReset = wasAbove50;
+  rsiTurning = rsi < rsiPrevious;
+  rsiResetStrength = Math.max(rsiPrevious, rsi2Back ?? rsiPrevious) - rsi;
+}
+```
+
+Replace with:
+```typescript
+if (trendDirection === 'bullish') {
+  // RSI should have gone below 50 and now turning up
+  // Check last 5 bars for RSI reset (captures proper pullback depth)
+  const rsiHistory = [rsiPrevious, rsi2Back, rsi3Back, rsi4Back].filter((v): v is number => v !== null);
+  const wasBelow50 = rsiHistory.some(v => v < entry.rsi.bullishResetBelow);
+  rsiWasReset = wasBelow50;
+  rsiTurning = rsi > rsiPrevious;
+  const lowestRsi = Math.min(...rsiHistory, rsiPrevious);
+  rsiResetStrength = rsi - lowestRsi;
+} else {
+  // RSI should have gone above 50 and now turning down
+  // Check last 5 bars for RSI reset (captures proper pullback depth)
+  const rsiHistory = [rsiPrevious, rsi2Back, rsi3Back, rsi4Back].filter((v): v is number => v !== null);
+  const wasAbove50 = rsiHistory.some(v => v > entry.rsi.bearishResetAbove);
+  rsiWasReset = wasAbove50;
+  rsiTurning = rsi < rsiPrevious;
+  const highestRsi = Math.max(...rsiHistory, rsiPrevious);
+  rsiResetStrength = highestRsi - rsi;
+}
+```
+
+## FIX 3: Update Config Comments (strategy.ts)
+
+In `src/config/strategy.ts`, update the comments to accurately reflect that we use Daily timeframe for trend analysis, not H4.
+
+Find the STYLE_PRESETS around lines 75-95:
+```typescript
+export const STYLE_PRESETS: Record<TradingStyle, StyleConfig> = {
+  intraday: {
+    name: 'Intraday',
+    trendTimeframe: 'H4',
+    entryTimeframe: 'H1',
+    refreshMinutes: 5,
+    validCandles: 4,           // ~4 hours
+    avInterval: '60min',
+    avTrendInterval: '60min',  // We'll use daily for H4 approximation
+  },
+  swing: {
+    name: 'Swing',
+    trendTimeframe: 'D1',
+    entryTimeframe: 'H4',
+    refreshMinutes: 15,
+    validCandles: 6,           // ~24 hours
+    avInterval: '60min',       // We'll aggregate to H4
+    avTrendInterval: 'daily',
+  },
+};
+```
+
+Replace with:
+```typescript
+export const STYLE_PRESETS: Record<TradingStyle, StyleConfig> = {
+  intraday: {
+    name: 'Intraday',
+    trendTimeframe: 'D1',      // Using Daily for EMA200/ADX (more reliable than H4)
+    entryTimeframe: 'H1',      // 60min for entry triggers
+    refreshMinutes: 5,
+    validCandles: 4,           // Signal valid for ~4 hours
+    avInterval: '60min',       // Alpha Vantage interval for entry TF
+    avTrendInterval: 'daily',  // Alpha Vantage interval for trend TF
+  },
+  swing: {
+    name: 'Swing',
+    trendTimeframe: 'D1',      // Daily for trend direction
+    entryTimeframe: 'H4',      // 4-hour for entry (aggregated from 60min)
+    refreshMinutes: 15,
+    validCandles: 6,           // Signal valid for ~24 hours
+    avInterval: '60min',       // We aggregate 60min bars to H4
+    avTrendInterval: 'daily',  // Alpha Vantage daily endpoint
+  },
+};
+```
+
+---
+
+After making these changes:
+1. Run `npm run build` to verify TypeScript compiles
+2. Test with a single symbol scan to verify the strategy still works
+3. Confirm no regressions in the decision engine output
+
+These fixes improve strategy accuracy by:
+- Filtering out false trends in ranging/flat markets (slope threshold)
+- Catching more valid pullback setups (extended RSI lookback)
+- Making config documentation match actual implementation (clarity)
+```
+
+---
+
+Copy that entire block and paste it into Replit AI. It will make all three fixes in one go. 🎯
