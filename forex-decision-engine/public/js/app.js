@@ -484,47 +484,7 @@ const App = {
   closeTradeModal() {
     UI.hide('trade-modal');
     this.currentTradeData = null;
-  },
-
-  /**
-   * Save trade entry from modal
-   */
-  async saveTradeEntry() {
-    const decision = this.currentTradeData;
-    if (!decision) return;
-
-    const status = document.querySelector('input[name="trade-status"]:checked')?.value || 'running';
-    
-    try {
-      const entry = {
-        source: 'signal',
-        symbol: decision.symbol,
-        direction: decision.direction,
-        style: decision.style,
-        grade: decision.grade,
-        tradeType: 'pullback',
-        entryZoneLow: decision.entryZone?.low,
-        entryZoneHigh: decision.entryZone?.high,
-        entryPrice: parseFloat(UI.$('trade-entry-price').value),
-        stopLoss: parseFloat(UI.$('trade-stop-loss').value),
-        takeProfit: parseFloat(UI.$('trade-take-profit').value),
-        lots: parseFloat(UI.$('trade-lots').value),
-        status: status,
-        action: 'taken',
-        notes: UI.$('trade-notes').value || undefined,
-      };
-
-      if (status === 'closed') {
-        entry.exitPrice = parseFloat(UI.$('trade-exit-price').value);
-        entry.result = document.querySelector('input[name="trade-result"]:checked')?.value;
-      }
-
-      await API.addJournalEntry(entry);
-      UI.toast('Trade logged successfully', 'success');
-      this.closeTradeModal();
-    } catch (error) {
-      UI.toast(`Failed to log trade: ${error.message}`, 'error');
-    }
+    this.currentEditId = null;
   },
 
   /**
@@ -566,6 +526,9 @@ const App = {
       case 'taken':
         entries = entries.filter(e => e.action === 'taken');
         break;
+      case 'pending':
+        entries = entries.filter(e => e.status === 'pending');
+        break;
       case 'running':
         entries = entries.filter(e => e.status === 'running');
         break;
@@ -584,13 +547,15 @@ const App = {
       return;
     }
 
-    const runningFirst = entries.sort((a, b) => {
-      if (a.status === 'running' && b.status !== 'running') return -1;
-      if (a.status !== 'running' && b.status === 'running') return 1;
+    const activeFirst = entries.sort((a, b) => {
+      const priority = { running: 0, pending: 1 };
+      const aPriority = priority[a.status] ?? 2;
+      const bPriority = priority[b.status] ?? 2;
+      if (aPriority !== bPriority) return aPriority - bPriority;
       return new Date(b.createdAt) - new Date(a.createdAt);
     });
 
-    container.innerHTML = runningFirst.map(e => this.createJournalEntryCard(e)).join('');
+    container.innerHTML = activeFirst.map(e => this.createJournalEntryCard(e)).join('');
   },
 
   /**
@@ -601,6 +566,7 @@ const App = {
     const dirClass = entry.direction === 'long' ? 'long' : 'short';
     const dirText = entry.direction.toUpperCase();
     const isRunning = entry.status === 'running';
+    const isPending = entry.status === 'pending';
     
     let resultHtml = '';
     if (entry.status === 'closed' && entry.result) {
@@ -608,6 +574,8 @@ const App = {
       resultHtml = `<span class="journal-entry-result ${resultClass}">${entry.result.toUpperCase()} ${entry.pnlPips ? `(${entry.pnlPips} pips)` : ''}</span>`;
     } else if (isRunning) {
       resultHtml = `<span class="journal-entry-result" style="color: var(--accent-amber);">RUNNING</span>`;
+    } else if (isPending) {
+      resultHtml = `<span class="journal-entry-result" style="color: var(--accent-blue);">PENDING</span>`;
     } else if (entry.action !== 'taken') {
       resultHtml = `<span class="journal-entry-result">${entry.action.toUpperCase()}</span>`;
     }
@@ -621,10 +589,24 @@ const App = {
           <button class="btn btn-small" onclick="App.editJournalEntry('${entry.id}')">Edit</button>
         </div>
       `;
+    } else if (entry.status === 'pending') {
+      actionsHtml = `
+        <div class="journal-entry-actions">
+          <button class="btn btn-small btn-taken" onclick="App.fillPendingTrade('${entry.id}')">Order Filled</button>
+          <button class="btn btn-small" onclick="App.editJournalEntry('${entry.id}')">Edit</button>
+          <button class="btn btn-small btn-skipped" onclick="App.cancelTrade('${entry.id}')">Cancel</button>
+        </div>
+      `;
+    } else {
+      actionsHtml = `
+        <div class="journal-entry-actions">
+          <button class="btn btn-small" onclick="App.editJournalEntry('${entry.id}')">Edit</button>
+        </div>
+      `;
     }
 
     return `
-      <div class="journal-entry ${isRunning ? 'running' : ''}" data-id="${entry.id}">
+      <div class="journal-entry ${isRunning ? 'running' : ''} ${isPending ? 'pending' : ''}" data-id="${entry.id}">
         <div class="journal-entry-header">
           <span class="journal-entry-symbol">${entry.symbol}</span>
           <span class="journal-entry-direction ${dirClass}">${dirText}</span>
@@ -638,6 +620,95 @@ const App = {
         ${actionsHtml}
       </div>
     `;
+  },
+
+  /**
+   * Edit journal entry
+   */
+  editJournalEntry(id) {
+    const entry = this.journalEntries.find(e => e.id === id);
+    if (!entry) return;
+
+    this.currentEditId = id;
+    this.currentTradeData = null;
+
+    UI.$('trade-modal-title').textContent = `Edit Trade: ${entry.symbol} ${entry.direction.toUpperCase()}`;
+    UI.$('trade-symbol').value = entry.symbol;
+    UI.$('trade-action').value = entry.action || 'taken';
+    UI.$('trade-entry-price').value = entry.entryPrice;
+    UI.$('trade-lots').value = entry.lots;
+    UI.$('trade-stop-loss').value = entry.stopLoss || '';
+    UI.$('trade-take-profit').value = entry.takeProfit || '';
+    UI.$('trade-notes').value = entry.notes || '';
+
+    const statusRadio = document.querySelector(`input[name="trade-status"][value="${entry.status}"]`);
+    if (statusRadio) statusRadio.checked = true;
+
+    if (entry.status === 'closed') {
+      UI.show('trade-closed-fields');
+      UI.$('trade-exit-price').value = entry.exitPrice || '';
+      const resultRadio = document.querySelector(`input[name="trade-result"][value="${entry.result}"]`);
+      if (resultRadio) resultRadio.checked = true;
+    } else {
+      UI.hide('trade-closed-fields');
+    }
+
+    UI.show('trade-modal');
+  },
+
+  /**
+   * Save trade entry (create or update)
+   */
+  async saveTradeEntry() {
+    const isEdit = !!this.currentEditId;
+    
+    const status = document.querySelector('input[name="trade-status"]:checked')?.value || 'running';
+    
+    try {
+      const updates = {
+        entryPrice: parseFloat(UI.$('trade-entry-price').value),
+        stopLoss: parseFloat(UI.$('trade-stop-loss').value),
+        takeProfit: parseFloat(UI.$('trade-take-profit').value),
+        lots: parseFloat(UI.$('trade-lots').value),
+        status: status,
+        notes: UI.$('trade-notes').value || undefined,
+      };
+
+      if (status === 'closed') {
+        updates.exitPrice = parseFloat(UI.$('trade-exit-price').value);
+        updates.result = document.querySelector('input[name="trade-result"]:checked')?.value;
+      }
+
+      if (isEdit) {
+        await API.updateJournalEntry(this.currentEditId, updates);
+        UI.toast('Trade updated successfully', 'success');
+        this.currentEditId = null;
+        this.loadJournal();
+      } else {
+        const decision = this.currentTradeData;
+        if (!decision) return;
+
+        const entry = {
+          source: 'signal',
+          symbol: decision.symbol,
+          direction: decision.direction,
+          style: decision.style,
+          grade: decision.grade,
+          tradeType: 'pullback',
+          entryZoneLow: decision.entryZone?.low,
+          entryZoneHigh: decision.entryZone?.high,
+          action: 'taken',
+          ...updates,
+        };
+
+        await API.addJournalEntry(entry);
+        UI.toast('Trade logged successfully', 'success');
+      }
+
+      this.closeTradeModal();
+    } catch (error) {
+      UI.toast(`Failed to save trade: ${error.message}`, 'error');
+    }
   },
 
   /**
@@ -659,6 +730,32 @@ const App = {
       this.loadJournal();
     } catch (error) {
       UI.toast(`Failed to close trade: ${error.message}`, 'error');
+    }
+  },
+
+  /**
+   * Fill pending order (move to running)
+   */
+  async fillPendingTrade(id) {
+    try {
+      await API.updateJournalEntry(id, { status: 'running' });
+      UI.toast('Order filled - trade now running', 'success');
+      this.loadJournal();
+    } catch (error) {
+      UI.toast(`Failed to update trade: ${error.message}`, 'error');
+    }
+  },
+
+  /**
+   * Cancel pending order
+   */
+  async cancelTrade(id) {
+    try {
+      await API.deleteJournalEntry(id);
+      UI.toast('Trade cancelled', 'success');
+      this.loadJournal();
+    } catch (error) {
+      UI.toast(`Failed to cancel trade: ${error.message}`, 'error');
     }
   },
 

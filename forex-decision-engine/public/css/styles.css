@@ -1027,6 +1027,11 @@ textarea:focus {
   background: var(--accent-amber-bg);
 }
 
+.journal-entry.pending {
+  border-color: var(--accent-blue);
+  background: var(--accent-blue-bg);
+}
+
 .journal-entry-header {
   display: flex;
   justify-content: space-between;
