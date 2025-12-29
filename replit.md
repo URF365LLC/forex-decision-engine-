@@ -86,3 +86,18 @@ PUT  /api/signals/:id - Update signal result
 ### NPM Dependencies
 - **Runtime**: express, cors, dotenv
 - **Development**: typescript, tsx, @types packages
+
+## Recent Updates
+
+### Journal Feature (Phase 2 Complete)
+- **Backend**: Full journal API with CRUD operations, P&L calculation, stats endpoint
+- **Storage**: `data/journal.json` with atomic writes for persistence
+- **Frontend**: 
+  - "Took Trade", "Skipped", "Missed" action buttons on signal cards
+  - Trade modal with pre-fill from signals (entry, SL, TP, lots)
+  - Journal screen with stats (trades taken, win rate, avg R, total P&L)
+  - Filter buttons: All, Taken, Running, Closed
+  - Running trades highlighted with amber border
+  - Quick close buttons (Hit TP / Hit SL) for running trades
+  - CSV export at `/api/journal/export`
+- **P&L Calculation**: Uses asset class detection - crypto uses direct price × lots, forex uses pip-based calculation
