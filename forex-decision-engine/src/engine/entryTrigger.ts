@@ -71,6 +71,8 @@ export function analyzeEntry(
   const rsi = getLatestValue(data.rsi);
   const rsiPrevious = getPreviousValue(data.rsi, 1);
   const rsi2Back = getPreviousValue(data.rsi, 2);
+  const rsi3Back = getPreviousValue(data.rsi, 3);
+  const rsi4Back = getPreviousValue(data.rsi, 4);
 
   // Handle missing data
   if (ema20 === null || ema50 === null || rsi === null || rsiPrevious === null) {
@@ -131,18 +133,22 @@ export function analyzeEntry(
   
   if (trendDirection === 'bullish') {
     // RSI should have gone below 50 and now turning up
-    const wasBelow50 = rsiPrevious < entry.rsi.bullishResetBelow || 
-                       (rsi2Back !== null && rsi2Back < entry.rsi.bullishResetBelow);
+    // Check last 5 bars for RSI reset (captures proper pullback depth)
+    const rsiHistory = [rsiPrevious, rsi2Back, rsi3Back, rsi4Back].filter((v): v is number => v !== null);
+    const wasBelow50 = rsiHistory.some(v => v < entry.rsi.bullishResetBelow);
     rsiWasReset = wasBelow50;
     rsiTurning = rsi > rsiPrevious;
-    rsiResetStrength = rsi - Math.min(rsiPrevious, rsi2Back ?? rsiPrevious);
+    const lowestRsi = Math.min(...rsiHistory, rsiPrevious);
+    rsiResetStrength = rsi - lowestRsi;
   } else {
     // RSI should have gone above 50 and now turning down
-    const wasAbove50 = rsiPrevious > entry.rsi.bearishResetAbove ||
-                       (rsi2Back !== null && rsi2Back > entry.rsi.bearishResetAbove);
+    // Check last 5 bars for RSI reset (captures proper pullback depth)
+    const rsiHistory = [rsiPrevious, rsi2Back, rsi3Back, rsi4Back].filter((v): v is number => v !== null);
+    const wasAbove50 = rsiHistory.some(v => v > entry.rsi.bearishResetAbove);
     rsiWasReset = wasAbove50;
     rsiTurning = rsi < rsiPrevious;
-    rsiResetStrength = Math.max(rsiPrevious, rsi2Back ?? rsiPrevious) - rsi;
+    const highestRsi = Math.max(...rsiHistory, rsiPrevious);
+    rsiResetStrength = highestRsi - rsi;
   }
 
   // ═══════════════════════════════════════════════════════════════
