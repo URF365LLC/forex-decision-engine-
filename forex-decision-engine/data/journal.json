@@ -1,3 +1,42 @@
 {
-  "entries": []
+  "entries": [
+    {
+      "source": "signal",
+      "symbol": "EURUSD",
+      "direction": "long",
+      "style": "intraday",
+      "grade": "A+",
+      "tradeType": "pullback",
+      "entryZoneLow": 1.1771,
+      "entryZoneHigh": 1.1774,
+      "entryPrice": 1.17725,
+      "stopLoss": 1.17484,
+      "takeProfit": 1.18207,
+      "lots": 0.21,
+      "status": "pending",
+      "action": "taken",
+      "id": "1767018542828-nbc997v10",
+      "createdAt": "2025-12-29T14:29:02.828Z",
+      "updatedAt": "2025-12-29T14:29:02.828Z"
+    },
+    {
+      "source": "signal",
+      "symbol": "USDCAD",
+      "direction": "short",
+      "style": "intraday",
+      "grade": "A+",
+      "tradeType": "pullback",
+      "entryZoneLow": 1.3676,
+      "entryZoneHigh": 1.3678,
+      "entryPrice": 1.3677,
+      "stopLoss": 1.37046,
+      "takeProfit": 1.36218,
+      "lots": 0.18,
+      "status": "pending",
+      "action": "taken",
+      "id": "1767018713084-rk5uuvw0d",
+      "createdAt": "2025-12-29T14:31:53.084Z",
+      "updatedAt": "2025-12-29T14:31:53.084Z"
+    }
+  ]
 }
