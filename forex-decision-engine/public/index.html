@@ -18,6 +18,7 @@
       <nav class="header-nav">
         <button class="nav-btn active" data-screen="results">Results</button>
         <button class="nav-btn" data-screen="watchlist">Watchlist</button>
+        <button class="nav-btn" data-screen="journal">Journal</button>
         <button class="nav-btn" data-screen="settings">Settings</button>
       </nav>
     </header>
@@ -212,6 +213,139 @@
 
     <!-- Toast Notifications -->
     <div id="toast-container" class="toast-container"></div>
+
+    <!-- Trade Modal -->
+    <div id="trade-modal" class="modal hidden">
+      <div class="modal-backdrop" onclick="App.closeTradeModal()"></div>
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3 id="trade-modal-title">Log Trade</h3>
+          <button class="modal-close" onclick="App.closeTradeModal()">&times;</button>
+        </div>
+        <div class="modal-body">
+          <form id="trade-form">
+            <input type="hidden" id="trade-symbol">
+            <input type="hidden" id="trade-action">
+            <input type="hidden" id="trade-signal-id">
+            
+            <div class="form-row">
+              <div class="form-group">
+                <label for="trade-entry-price">Entry Price</label>
+                <input type="number" id="trade-entry-price" step="any" required>
+              </div>
+              <div class="form-group">
+                <label for="trade-lots">Lots</label>
+                <input type="number" id="trade-lots" step="0.01" min="0.01" required>
+              </div>
+            </div>
+            
+            <div class="form-row">
+              <div class="form-group">
+                <label for="trade-stop-loss">Stop Loss</label>
+                <input type="number" id="trade-stop-loss" step="any" required>
+              </div>
+              <div class="form-group">
+                <label for="trade-take-profit">Take Profit</label>
+                <input type="number" id="trade-take-profit" step="any" required>
+              </div>
+            </div>
+            
+            <div class="form-group">
+              <label>Status</label>
+              <div class="radio-group-inline">
+                <label class="radio-inline">
+                  <input type="radio" name="trade-status" value="pending"> Pending
+                </label>
+                <label class="radio-inline">
+                  <input type="radio" name="trade-status" value="running" checked> Running
+                </label>
+                <label class="radio-inline">
+                  <input type="radio" name="trade-status" value="closed"> Closed
+                </label>
+              </div>
+            </div>
+            
+            <div id="trade-closed-fields" class="hidden">
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="trade-exit-price">Exit Price</label>
+                  <input type="number" id="trade-exit-price" step="any">
+                </div>
+                <div class="form-group">
+                  <label>Result</label>
+                  <div class="radio-group-inline">
+                    <label class="radio-inline">
+                      <input type="radio" name="trade-result" value="win"> Win
+                    </label>
+                    <label class="radio-inline">
+                      <input type="radio" name="trade-result" value="loss"> Loss
+                    </label>
+                    <label class="radio-inline">
+                      <input type="radio" name="trade-result" value="breakeven"> BE
+                    </label>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            <div class="form-group">
+              <label for="trade-notes">Notes (optional)</label>
+              <textarea id="trade-notes" rows="2" placeholder="Any observations..."></textarea>
+            </div>
+          </form>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" onclick="App.closeTradeModal()">Cancel</button>
+          <button class="btn btn-primary" onclick="App.saveTradeEntry()">Save Trade</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Journal Screen (add to nav later) -->
+    <section id="journal-screen" class="screen hidden">
+      <div class="screen-header">
+        <h2>📓 Trading Journal</h2>
+        <button class="btn btn-small btn-primary" onclick="App.openManualTradeModal()">+ Manual Trade</button>
+      </div>
+      
+      <div class="journal-stats" id="journal-stats">
+        <div class="stat-card">
+          <span class="stat-value" id="stat-taken">0</span>
+          <span class="stat-label">Trades Taken</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-value" id="stat-winrate">0%</span>
+          <span class="stat-label">Win Rate</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-value" id="stat-avgr">0R</span>
+          <span class="stat-label">Avg R</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-value" id="stat-pnl">$0</span>
+          <span class="stat-label">Total P&L</span>
+        </div>
+      </div>
+      
+      <div class="journal-filters">
+        <button class="filter-btn active" data-journal-filter="all">All</button>
+        <button class="filter-btn" data-journal-filter="taken">Taken</button>
+        <button class="filter-btn" data-journal-filter="running">Running</button>
+        <button class="filter-btn" data-journal-filter="closed">Closed</button>
+      </div>
+      
+      <div class="journal-container" id="journal-container">
+        <div class="empty-state">
+          <div class="empty-icon">📓</div>
+          <p>No trades logged yet</p>
+          <p class="empty-hint">Log trades from your scan results</p>
+        </div>
+      </div>
+      
+      <div class="journal-footer">
+        <a href="/api/journal/export" class="btn btn-secondary" download>📥 Export CSV</a>
+      </div>
+    </section>
   </div>
 
   <script src="/js/api.js"></script>

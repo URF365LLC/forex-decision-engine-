@@ -116,6 +116,74 @@ const API = {
   async getSignalStats() {
     return this.request('/api/signals/stats');
   },
+
+  // ═══════════════════════════════════════════════════════════════
+  // JOURNAL API
+  // ═══════════════════════════════════════════════════════════════
+
+  /**
+   * Add journal entry
+   */
+  async addJournalEntry(entry) {
+    return this.request('/api/journal', {
+      method: 'POST',
+      body: entry,
+    });
+  },
+
+  /**
+   * Get journal entries
+   */
+  async getJournalEntries(filters = {}) {
+    const params = new URLSearchParams();
+    if (filters.symbol) params.set('symbol', filters.symbol);
+    if (filters.status) params.set('status', filters.status);
+    if (filters.result) params.set('result', filters.result);
+    if (filters.action) params.set('action', filters.action);
+    if (filters.dateFrom) params.set('dateFrom', filters.dateFrom);
+    if (filters.dateTo) params.set('dateTo', filters.dateTo);
+    
+    const query = params.toString();
+    return this.request(`/api/journal${query ? '?' + query : ''}`);
+  },
+
+  /**
+   * Get single journal entry
+   */
+  async getJournalEntry(id) {
+    return this.request(`/api/journal/${id}`);
+  },
+
+  /**
+   * Update journal entry
+   */
+  async updateJournalEntry(id, updates) {
+    return this.request(`/api/journal/${id}`, {
+      method: 'PUT',
+      body: updates,
+    });
+  },
+
+  /**
+   * Delete journal entry
+   */
+  async deleteJournalEntry(id) {
+    return this.request(`/api/journal/${id}`, {
+      method: 'DELETE',
+    });
+  },
+
+  /**
+   * Get journal statistics
+   */
+  async getJournalStats(dateFrom, dateTo) {
+    const params = new URLSearchParams();
+    if (dateFrom) params.set('dateFrom', dateFrom);
+    if (dateTo) params.set('dateTo', dateTo);
+    
+    const query = params.toString();
+    return this.request(`/api/journal/stats${query ? '?' + query : ''}`);
+  },
 };
 
 // Export for use in other scripts

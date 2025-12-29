@@ -10,6 +10,9 @@ const App = {
   results: [],
   currentFilter: 'all',
   isScanning: false,
+  journalEntries: [],
+  journalFilter: 'all',
+  currentTradeData: null,
 
   /**
    * Initialize the application
@@ -313,6 +316,10 @@ const App = {
    */
   switchScreen(screen) {
     UI.switchScreen(screen);
+    
+    if (screen === 'journal') {
+      this.loadJournal();
+    }
   },
 
   /**
@@ -398,6 +405,276 @@ const App = {
     }
   },
 
+  // ═══════════════════════════════════════════════════════════════
+  // JOURNAL FUNCTIONALITY
+  // ═══════════════════════════════════════════════════════════════
+
+  /**
+   * Log trade from signal card
+   */
+  logTrade(symbol, action) {
+    const decision = this.results.find(d => d.symbol === symbol);
+    if (!decision) {
+      UI.toast('Signal not found', 'error');
+      return;
+    }
+
+    if (action === 'taken') {
+      this.openTradeModal(decision);
+    } else {
+      this.quickLogTrade(decision, action);
+    }
+  },
+
+  /**
+   * Quick log for skipped/missed trades
+   */
+  async quickLogTrade(decision, action) {
+    try {
+      const entry = {
+        source: 'signal',
+        symbol: decision.symbol,
+        direction: decision.direction,
+        style: decision.style,
+        grade: decision.grade,
+        tradeType: 'pullback',
+        entryZoneLow: decision.entryZone?.low,
+        entryZoneHigh: decision.entryZone?.high,
+        entryPrice: decision.entryZone ? (decision.entryZone.low + decision.entryZone.high) / 2 : 0,
+        stopLoss: decision.stopLoss?.price || 0,
+        takeProfit: decision.takeProfit?.price || 0,
+        lots: decision.position?.lots || 0,
+        status: 'closed',
+        action: action,
+      };
+
+      await API.addJournalEntry(entry);
+      UI.toast(`Trade ${action}`, 'success');
+    } catch (error) {
+      UI.toast(`Failed to log trade: ${error.message}`, 'error');
+    }
+  },
+
+  /**
+   * Open trade modal
+   */
+  openTradeModal(decision) {
+    this.currentTradeData = decision;
+
+    UI.$('trade-modal-title').textContent = `Log Trade: ${decision.displayName} ${decision.direction.toUpperCase()}`;
+    UI.$('trade-symbol').value = decision.symbol;
+    UI.$('trade-action').value = 'taken';
+    
+    const entryMid = decision.entryZone ? (decision.entryZone.low + decision.entryZone.high) / 2 : 0;
+    UI.$('trade-entry-price').value = entryMid.toFixed(5);
+    UI.$('trade-lots').value = decision.position?.lots || 0.1;
+    UI.$('trade-stop-loss').value = decision.stopLoss?.price?.toFixed(5) || '';
+    UI.$('trade-take-profit').value = decision.takeProfit?.price?.toFixed(5) || '';
+    UI.$('trade-notes').value = '';
+
+    document.querySelector('input[name="trade-status"][value="running"]').checked = true;
+    UI.hide('trade-closed-fields');
+
+    UI.show('trade-modal');
+  },
+
+  /**
+   * Close trade modal
+   */
+  closeTradeModal() {
+    UI.hide('trade-modal');
+    this.currentTradeData = null;
+  },
+
+  /**
+   * Save trade entry from modal
+   */
+  async saveTradeEntry() {
+    const decision = this.currentTradeData;
+    if (!decision) return;
+
+    const status = document.querySelector('input[name="trade-status"]:checked')?.value || 'running';
+    
+    try {
+      const entry = {
+        source: 'signal',
+        symbol: decision.symbol,
+        direction: decision.direction,
+        style: decision.style,
+        grade: decision.grade,
+        tradeType: 'pullback',
+        entryZoneLow: decision.entryZone?.low,
+        entryZoneHigh: decision.entryZone?.high,
+        entryPrice: parseFloat(UI.$('trade-entry-price').value),
+        stopLoss: parseFloat(UI.$('trade-stop-loss').value),
+        takeProfit: parseFloat(UI.$('trade-take-profit').value),
+        lots: parseFloat(UI.$('trade-lots').value),
+        status: status,
+        action: 'taken',
+        notes: UI.$('trade-notes').value || undefined,
+      };
+
+      if (status === 'closed') {
+        entry.exitPrice = parseFloat(UI.$('trade-exit-price').value);
+        entry.result = document.querySelector('input[name="trade-result"]:checked')?.value;
+      }
+
+      await API.addJournalEntry(entry);
+      UI.toast('Trade logged successfully', 'success');
+      this.closeTradeModal();
+    } catch (error) {
+      UI.toast(`Failed to log trade: ${error.message}`, 'error');
+    }
+  },
+
+  /**
+   * Load journal entries
+   */
+  async loadJournal() {
+    try {
+      const [entriesRes, statsRes] = await Promise.all([
+        API.getJournalEntries(),
+        API.getJournalStats(),
+      ]);
+
+      this.journalEntries = entriesRes.entries || [];
+      this.renderJournal();
+      this.renderJournalStats(statsRes.stats);
+    } catch (error) {
+      console.error('Failed to load journal:', error);
+    }
+  },
+
+  /**
+   * Render journal stats
+   */
+  renderJournalStats(stats) {
+    UI.$('stat-taken').textContent = stats.totalTaken;
+    UI.$('stat-winrate').textContent = `${stats.winRate.toFixed(1)}%`;
+    UI.$('stat-avgr').textContent = `${stats.avgR.toFixed(2)}R`;
+    UI.$('stat-pnl').textContent = `$${stats.totalPnlDollars.toFixed(0)}`;
+  },
+
+  /**
+   * Render journal entries
+   */
+  renderJournal() {
+    const container = UI.$('journal-container');
+    let entries = this.journalEntries;
+
+    switch (this.journalFilter) {
+      case 'taken':
+        entries = entries.filter(e => e.action === 'taken');
+        break;
+      case 'running':
+        entries = entries.filter(e => e.status === 'running');
+        break;
+      case 'closed':
+        entries = entries.filter(e => e.status === 'closed');
+        break;
+    }
+
+    if (entries.length === 0) {
+      container.innerHTML = `
+        <div class="empty-state">
+          <div class="empty-icon">📓</div>
+          <p>No trades found</p>
+        </div>
+      `;
+      return;
+    }
+
+    const runningFirst = entries.sort((a, b) => {
+      if (a.status === 'running' && b.status !== 'running') return -1;
+      if (a.status !== 'running' && b.status === 'running') return 1;
+      return new Date(b.createdAt) - new Date(a.createdAt);
+    });
+
+    container.innerHTML = runningFirst.map(e => this.createJournalEntryCard(e)).join('');
+  },
+
+  /**
+   * Create journal entry card HTML
+   */
+  createJournalEntryCard(entry) {
+    const date = new Date(entry.createdAt).toLocaleDateString();
+    const dirClass = entry.direction === 'long' ? 'long' : 'short';
+    const dirText = entry.direction.toUpperCase();
+    const isRunning = entry.status === 'running';
+    
+    let resultHtml = '';
+    if (entry.status === 'closed' && entry.result) {
+      const resultClass = entry.result === 'win' ? 'win' : entry.result === 'loss' ? 'loss' : '';
+      resultHtml = `<span class="journal-entry-result ${resultClass}">${entry.result.toUpperCase()} ${entry.pnlPips ? `(${entry.pnlPips} pips)` : ''}</span>`;
+    } else if (isRunning) {
+      resultHtml = `<span class="journal-entry-result" style="color: var(--accent-amber);">RUNNING</span>`;
+    } else if (entry.action !== 'taken') {
+      resultHtml = `<span class="journal-entry-result">${entry.action.toUpperCase()}</span>`;
+    }
+
+    let actionsHtml = '';
+    if (isRunning) {
+      actionsHtml = `
+        <div class="journal-entry-actions">
+          <button class="btn btn-small btn-taken" onclick="App.closeJournalTrade('${entry.id}', 'tp')">Hit TP</button>
+          <button class="btn btn-small btn-missed" onclick="App.closeJournalTrade('${entry.id}', 'sl')">Hit SL</button>
+          <button class="btn btn-small" onclick="App.editJournalEntry('${entry.id}')">Edit</button>
+        </div>
+      `;
+    }
+
+    return `
+      <div class="journal-entry ${isRunning ? 'running' : ''}" data-id="${entry.id}">
+        <div class="journal-entry-header">
+          <span class="journal-entry-symbol">${entry.symbol}</span>
+          <span class="journal-entry-direction ${dirClass}">${dirText}</span>
+        </div>
+        <div class="journal-entry-meta">
+          <span>${date}</span>
+          <span>Entry: ${entry.entryPrice}</span>
+          <span>${entry.lots} lots</span>
+          ${resultHtml}
+        </div>
+        ${actionsHtml}
+      </div>
+    `;
+  },
+
+  /**
+   * Close running trade quickly
+   */
+  async closeJournalTrade(id, type) {
+    try {
+      const entry = this.journalEntries.find(e => e.id === id);
+      if (!entry) return;
+
+      const exitPrice = type === 'tp' ? entry.takeProfit : entry.stopLoss;
+      
+      await API.updateJournalEntry(id, {
+        status: 'closed',
+        exitPrice: exitPrice,
+      });
+
+      UI.toast(`Trade closed at ${type.toUpperCase()}`, 'success');
+      this.loadJournal();
+    } catch (error) {
+      UI.toast(`Failed to close trade: ${error.message}`, 'error');
+    }
+  },
+
+  /**
+   * Filter journal
+   */
+  filterJournal(filter) {
+    this.journalFilter = filter;
+    
+    UI.$$('[data-journal-filter]').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.journalFilter === filter);
+    });
+
+    this.renderJournal();
+  },
+
   /**
    * Setup event listeners
    */
@@ -444,13 +721,29 @@ const App = {
     UI.$('symbol-search')?.addEventListener('input', (e) => this.searchSymbols(e.target.value));
 
     // Results
-    UI.$$('.filter-btn').forEach(btn => {
+    UI.$$('.filter-btn[data-filter]').forEach(btn => {
       btn.addEventListener('click', () => this.filterResults(btn.dataset.filter));
     });
 
     UI.$('refresh-btn')?.addEventListener('click', () => this.refresh());
     UI.$('export-btn')?.addEventListener('click', () => this.exportJSON());
     UI.$('copy-summary-btn')?.addEventListener('click', () => this.copySummary());
+
+    // Journal filters
+    UI.$$('[data-journal-filter]').forEach(btn => {
+      btn.addEventListener('click', () => this.filterJournal(btn.dataset.journalFilter));
+    });
+
+    // Trade modal status toggle
+    document.querySelectorAll('input[name="trade-status"]').forEach(radio => {
+      radio.addEventListener('change', (e) => {
+        if (e.target.value === 'closed') {
+          UI.show('trade-closed-fields');
+        } else {
+          UI.hide('trade-closed-fields');
+        }
+      });
+    });
 
     // Go to watchlist from empty results
     document.addEventListener('click', (e) => {

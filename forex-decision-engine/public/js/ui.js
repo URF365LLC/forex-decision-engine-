@@ -180,6 +180,13 @@ const UI = {
             ${!isNoTrade ? `<button class="btn btn-small" onclick="App.copySignal('${decision.symbol}')">📋 Copy</button>` : ''}
           </div>
         </div>
+        ${!isNoTrade ? `
+        <div class="card-journal-actions">
+          <button class="btn btn-journal btn-taken" onclick="App.logTrade('${decision.symbol}', 'taken')">✓ Took Trade</button>
+          <button class="btn btn-journal btn-skipped" onclick="App.logTrade('${decision.symbol}', 'skipped')">✗ Skipped</button>
+          <button class="btn btn-journal btn-missed" onclick="App.logTrade('${decision.symbol}', 'missed')">⏰ Missed</button>
+        </div>
+        ` : ''}
       </div>
     `;
   },
