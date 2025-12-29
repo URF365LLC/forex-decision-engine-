@@ -1,0 +1,123 @@
+Perfect. Let me create a concise patch document for Replit.
+
+---
+
+## 🔧 REPLIT PATCH PROMPT
+
+**Paste this into Replit before building:**
+
+---
+
+### CONTEXT
+
+I have uploaded 8 intraday strategy files to `/src/strategies/`. Before integrating them, I need you to apply these 4 critical bug fixes across all files. Do NOT rewrite the files - just make these surgical changes.
+
+---
+
+### FIX 1: Indicator/Bar Alignment (CRITICAL)
+
+**Problem:** Strategies compare `prevBar` against `latest(indicator)` which causes time misalignment.
+
+**Find this pattern:**
+```typescript
+const currentBar = bars[bars.length - 1];
+const prevBar = bars[bars.length - 2];
+const currentBB = latest(bbands)!;
+// Then using prevBar with currentBB
+```
+
+**Replace with:**
+```typescript
+const entryIdx = bars.length - 1;
+const signalIdx = bars.length - 2;
+const entryBar = bars[entryIdx];
+const signalBar = bars[signalIdx];
+// Use atIndex() to get indicator at signalIdx
+const bbSignal = atIndex(bbands, signalIdx);
+```
+
+**Apply to:** All 8 strategy files. Always evaluate setup conditions on `signalBar` with indicators at `signalIdx`.
+
+---
+
+### FIX 2: Entry Price (CRITICAL)
+
+**Problem:** Entry uses `currentBar.close` which assumes you can execute on the same candle you're confirming.
+
+**Find:**
+```typescript
+entryPrice: price  // where price = currentBar.close
+```
+
+**Replace with:**
+```typescript
+const entryPrice = entryBar.open;
+```
+
+**Apply to:** All 8 strategy files. Entry should be `entryBar.open` (next bar after signal).
+
+---
+
+### FIX 3: Entry Zone Math
+
+**Problem:** Entry zone uses percent-based calculation which breaks on JPY pairs and crypto.
+
+**Find in `utils.ts`:**
+```typescript
+entryZone: {
+  low: entryPrice * 0.9998,
+  high: entryPrice * 1.0002,
+```
+
+**Replace with:**
+```typescript
+const { pipSize } = getPipInfo(symbol);
+const zoneSize = 2 * pipSize;
+entryZone: {
+  low: entryPrice - zoneSize,
+  high: entryPrice + zoneSize,
+```
+
+---
+
+### FIX 4: Add Order Validation
+
+**Problem:** No check that SL/TP make sense for direction (can cause inverted orders).
+
+**Add to `utils.ts`:**
+```typescript
+export function validateOrder(
+  direction: 'long' | 'short',
+  entry: number,
+  sl: number,
+  tp: number
+): boolean {
+  if (![entry, sl, tp].every(n => typeof n === 'number' && Number.isFinite(n))) return false;
+  if (direction === 'long') return sl < entry && tp > entry;
+  return sl > entry && tp < entry;
+}
+```
+
+**Then in each strategy, before `return buildDecision(...)`, add:**
+```typescript
+if (!validateOrder(direction, entryPrice, stopLossPrice, takeProfitPrice)) {
+  return null;
+}
+```
+
+---
+
+### SUMMARY
+
+| Fix | Files | Priority |
+|-----|-------|----------|
+| 1. Indicator alignment | All 8 strategies | 🔴 Critical |
+| 2. Entry = next bar open | All 8 strategies | 🔴 Critical |
+| 3. Pip-based entry zone | utils.ts | 🟡 Medium |
+| 4. Order validation | utils.ts + all strategies | 🟡 Medium |
+
+Apply these fixes first, then proceed with integration.
+
+---
+
+**Does this format work for you?** I can adjust if you want more/less detail, or split into separate prompts per fix.

@@ -1,0 +1,98 @@
+Yes — **this consolidated patch is paste-ready** and it correctly captures everything we aligned on.
+
+That said, if you want *maximum “Replit won’t accidentally ruin this” safety*, there are **4 surgical tweaks** I’d add to the patch before you paste it. These aren’t “nice-to-haves” — they prevent silent regressions.
+
+---
+
+## ✅ Keep as-is (solid decisions)
+
+* `NEXT_OPEN` with `signalIdx = len-2`, `entryIdx = len-1` ✅
+* `atIndex()` ✅
+* `validateOrder()` + mandatory check ✅
+* `safeDiv()` / `isRejectionCandle()` / `normalizedSlope()` / `clamp()` ✅
+* Fix type consistency in **registry + validateIndicators** ✅
+* `entryZone: null` ✅ (correct under NEXT_OPEN)
+* `executionModel` + `version` ✅
+* `isApproximate` for FX ✅ (honest)
+
+---
+
+## 🔧 4 tweaks to make this bulletproof
+
+### 1) Add a hard guard for `bars.length`
+
+Right now the patch assumes you always have 2 bars. In real feeds, you’ll occasionally get shorter arrays.
+
+Add in each strategy near the top:
+
+```ts
+if (!bars || bars.length < 3) return null;
+```
+
+(3 gives you headroom because some logic uses lookback windows, previous bars, etc.)
+
+---
+
+### 2) Strengthen `atIndex()` usage expectation
+
+Replit devs tend to do this wrong:
+
+> `atIndex(rsi, signalIdx)` only works if `rsi.length === bars.length`
+
+If your indicator arrays are computed from the same bars, great. If not, misalignment returns silently.
+
+**Add a comment in the patch**:
+“Indicator arrays must be generated 1:1 with `bars` length, aligned by bar index.”
+
+Otherwise, Replit might fetch indicators separately and you’ll be back to misalignment — just hidden.
+
+---
+
+### 3) `normalizedSlope()` should accept undefined series
+
+Some strategies might pass `ema200` sometimes undefined depending on fetch.
+
+Change signature to:
+
+```ts
+export function normalizedSlope(series: number[] | undefined, lookback: number): number
+```
+
+and guard inside.
+
+That prevents runtime errors when indicator fetch changes.
+
+---
+
+### 4) Make `validateIndicators()` enforce array shapes
+
+Your current `validateIndicators()` likely checks presence + bars length. It should also enforce that required indicator arrays have enough length.
+
+Add checks like:
+
+* indicator exists
+* is array
+* has length >= minBars (or at least >= 3)
+
+This saves you from returning garbage decisions with half-populated indicators.
+
+---
+
+## One opinionated recommendation (do it, trust me)
+
+In your patch, keep `entryZone: null`. ✅
+But also ensure UI doesn’t assume it exists. In the signal card rendering:
+
+* if `entryZone === null`, don’t display zone
+* show `Entry: <price> (NEXT_OPEN)`
+
+This prevents front-end runtime errors.
+
+---
+
+## Verdict
+
+**Yes, paste it.**
+If you add the 4 tweaks above, you’ll have a clean, deterministic, non-repainting MVP foundation that won’t betray you in backtests or live MT5.
+
+If you want, drop your current `validateIndicators()` function body (from `utils.ts`) and I’ll rewrite it in a way that is strict-but-not-annoying, so Replit doesn’t mess it up.

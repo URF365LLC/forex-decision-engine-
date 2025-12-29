@@ -1,0 +1,316 @@
+## 🔧 REPLIT CONSOLIDATED PATCH (All 13 Fixes)
+
+**Paste this into Replit before building:**
+
+---
+
+### CONTEXT
+
+I have uploaded 8 intraday strategy files. Before integrating them, apply ALL 13 fixes below. Do NOT rewrite files entirely - make surgical changes.
+
+**Execution Model:** `NEXT_OPEN`
+- Signal candle = `bars.length - 2` (closed, confirmed)
+- Entry candle = `bars.length - 1`
+- Entry price = `entryBar.open`
+
+---
+
+## CRITICAL FIXES (Apply First)
+
+### FIX 1: Indicator/Bar Alignment
+
+**Problem:** Strategies compare `prevBar` against `latest(indicator)` causing time misalignment.
+
+**Find this pattern:**
+```typescript
+const currentBar = bars[bars.length - 1];
+const prevBar = bars[bars.length - 2];
+const currentBB = latest(bbands)!;
+```
+
+**Replace with:**
+```typescript
+const entryIdx = bars.length - 1;
+const signalIdx = bars.length - 2;
+const entryBar = bars[entryIdx];
+const signalBar = bars[signalIdx];
+
+// Use atIndex() for aligned indicator access
+const bbSignal = atIndex(bbands, signalIdx);
+const rsiSignal = atIndex(rsi, signalIdx);
+```
+
+**Apply to:** All 8 strategy files. Evaluate setup on `signalBar` with indicators at `signalIdx`.
+
+---
+
+### FIX 2: Entry Price = Next Bar Open
+
+**Problem:** Entry uses `currentBar.close` which assumes same-candle execution.
+
+**Find:**
+```typescript
+entryPrice: price  // where price = currentBar.close
+```
+
+**Replace with:**
+```typescript
+const entryPrice = entryBar.open;
+```
+
+**Apply to:** All 8 strategy files.
+
+---
+
+### FIX 3: Add `atIndex()` Helper
+
+**Add to `utils.ts`:**
+```typescript
+export function atIndex<T>(arr: T[] | undefined, idx: number): T | null {
+  if (!arr || idx < 0 || idx >= arr.length) return null;
+  return arr[idx];
+}
+```
+
+---
+
+### FIX 4: Add `validateOrder()` Helper
+
+**Add to `utils.ts`:**
+```typescript
+export function validateOrder(
+  direction: 'long' | 'short',
+  entry: number,
+  sl: number,
+  tp: number
+): boolean {
+  if (![entry, sl, tp].every(n => typeof n === 'number' && Number.isFinite(n))) return false;
+  if (direction === 'long') return sl < entry && tp > entry;
+  return sl > entry && tp < entry;
+}
+```
+
+**In each strategy, before `return buildDecision(...)`, add:**
+```typescript
+if (!validateOrder(direction, entryPrice, stopLossPrice, takeProfitPrice)) {
+  return null;
+}
+```
+
+**Apply to:** All 8 strategy files.
+
+---
+
+## MEDIUM FIXES (Apply After Critical)
+
+### FIX 5: Add `safeDiv()` Helper
+
+**Add to `utils.ts`:**
+```typescript
+export function safeDiv(n: number, d: number, fallback = 0): number {
+  return d === 0 ? fallback : n / d;
+}
+```
+
+**Apply throughout:** Replace any `x / y` where `y` could be zero (band width, wick ratios, etc.)
+
+---
+
+### FIX 6: Add `isRejectionCandle()` Helper
+
+**Add to `utils.ts`:**
+```typescript
+export function isRejectionCandle(
+  bar: { open: number; high: number; low: number; close: number },
+  direction: 'long' | 'short',
+  minWickRatio = 0.5,
+  maxBodyRatio = 0.5
+): { ok: boolean; wickRatio: number; bodyRatio: number } {
+  const range = bar.high - bar.low;
+  if (range <= 0) return { ok: false, wickRatio: 0, bodyRatio: 0 };
+
+  const body = Math.abs(bar.close - bar.open);
+  const bodyRatio = safeDiv(body, range, 1);
+
+  if (direction === 'long') {
+    const lowerWick = Math.min(bar.open, bar.close) - bar.low;
+    const wickRatio = safeDiv(lowerWick, range, 0);
+    const ok = wickRatio >= minWickRatio && bodyRatio <= maxBodyRatio && bar.close > bar.open;
+    return { ok, wickRatio, bodyRatio };
+  } else {
+    const upperWick = bar.high - Math.max(bar.open, bar.close);
+    const wickRatio = safeDiv(upperWick, range, 0);
+    const ok = wickRatio >= minWickRatio && bodyRatio <= maxBodyRatio && bar.close < bar.open;
+    return { ok, wickRatio, bodyRatio };
+  }
+}
+```
+
+**Apply to:** BollingerMR, BreakRetest, any strategy checking rejection candles.
+
+---
+
+### FIX 7: Add `normalizedSlope()` Helper
+
+**Add to `utils.ts`:**
+```typescript
+export function normalizedSlope(series: number[], lookback: number): number {
+  if (!series || series.length < lookback + 1) return 0;
+  const end = series[series.length - 1];
+  const start = series[series.length - 1 - lookback];
+  if (!Number.isFinite(end) || !Number.isFinite(start) || start === 0) return 0;
+
+  const raw = end - start;
+  const pct = raw / start;
+  return pct / lookback;
+}
+```
+
+**Apply to:** Any strategy using EMA slope for trend filtering. Replace raw slope with normalized.
+
+---
+
+### FIX 8: Add `clamp()` Helper
+
+**Add to `utils.ts`:**
+```typescript
+export function clamp(n: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, n));
+}
+```
+
+---
+
+### FIX 9: Fix Type Consistency (TWO places)
+
+**9a. In `registry.ts`, find:**
+```typescript
+export function getRequiredIndicators(strategyId: string): string[] {
+```
+
+**Replace with:**
+```typescript
+import type { RequiredIndicator } from './types';
+
+export function getRequiredIndicators(strategyId: string): RequiredIndicator[] {
+  const strategy = STRATEGIES[strategyId];
+  return strategy ? strategy.meta.requiredIndicators : [];
+}
+```
+
+**9b. In `utils.ts`, find `validateIndicators` and update signature:**
+```typescript
+import type { RequiredIndicator } from './types';
+
+export function validateIndicators(
+  data: Record<string, unknown>,
+  required: RequiredIndicator[],
+  minBars: number = 50
+): boolean { ... }
+```
+
+---
+
+### FIX 10: Add `isApproximate` Flag to Position Sizing
+
+**Update `calculatePositionSize()` return and add flag:**
+```typescript
+const isCrypto = ['BTC', 'ETH', 'SOL', 'XRP', 'ADA'].some(c => symbol.includes(c));
+
+// Crypto = accurate, ALL FX = approximate until proper pip-value conversion
+const isApproximate = !isCrypto;
+
+return { lots, units, riskAmount, isApproximate };
+```
+
+**Update return type in `types.ts` Decision interface:**
+```typescript
+position: {
+  lots: number;
+  units: number;
+  riskAmount: number;
+  isApproximate: boolean;
+} | null;
+```
+
+**In `buildDecision()`, add warning:**
+```typescript
+if (position.isApproximate) {
+  warnings.push('Lot size is approximate - verify with broker');
+}
+```
+
+---
+
+### FIX 11: Set `entryZone` to `null`
+
+**Problem:** Percent-based entry zone contradicts deterministic NEXT_OPEN execution.
+
+**In `buildDecision()`, replace entry zone logic:**
+```typescript
+// NEXT_OPEN model: entry is deterministic, no zone needed
+entryZone: null,
+```
+
+---
+
+### FIX 12: Add `executionModel` to Decision Output
+
+**Add to `Decision` interface in `types.ts`:**
+```typescript
+executionModel: 'NEXT_OPEN' | 'SAME_CLOSE';
+```
+
+**In `buildDecision()` return object:**
+```typescript
+executionModel: 'NEXT_OPEN',
+```
+
+---
+
+### FIX 13: Add `version` to Strategy Meta
+
+**Add to `StrategyMeta` interface in `types.ts`:**
+```typescript
+version: string;
+```
+
+**Add to each strategy's meta object:**
+```typescript
+version: '2025-12-29',
+```
+
+---
+
+## SUMMARY
+
+| # | Fix | File(s) | Priority |
+|---|-----|---------|----------|
+| 1 | Indicator/bar alignment | All strategies | 🔴 Critical |
+| 2 | Entry = next bar open | All strategies | 🔴 Critical |
+| 3 | `atIndex()` helper | utils.ts | 🔴 Critical |
+| 4 | `validateOrder()` + apply | utils.ts + strategies | 🔴 Critical |
+| 5 | `safeDiv()` | utils.ts | 🟡 Medium |
+| 6 | `isRejectionCandle()` | utils.ts + strategies | 🟡 Medium |
+| 7 | `normalizedSlope()` | utils.ts + strategies | 🟡 Medium |
+| 8 | `clamp()` | utils.ts | 🟢 Low |
+| 9 | Type consistency | registry.ts + utils.ts | 🟡 Medium |
+| 10 | `isApproximate` flag | utils.ts + types.ts | 🟡 Medium |
+| 11 | `entryZone: null` | utils.ts | 🟡 Medium |
+| 12 | `executionModel` tracking | types.ts + utils.ts | 🟢 Low |
+| 13 | `version` in meta | types.ts + strategies | 🟢 Low |
+
+---
+
+## INTEGRATION RULES
+
+After applying all 13 fixes:
+
+1. **Default strategy:** `ema-pullback-intra`
+2. **Persist selection:** Save to localStorage (`selectedStyle`, `selectedStrategyId`)
+3. **Show in results:** Display strategy name, ID, confidence, style on signal cards
+4. **Do NOT change strategy logic** - only wire: indicator fetch → aligned indexing → run strategy → render results
+
+---
+
+**Ready to paste.** 🚀
