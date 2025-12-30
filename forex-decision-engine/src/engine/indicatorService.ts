@@ -5,6 +5,7 @@
 
 import { alphaVantage, OHLCVBar, IndicatorValue } from '../services/alphaVantageClient.js';
 import { STRATEGY, TradingStyle, getStyleConfig } from '../config/strategy.js';
+import { getAssetClass } from '../config/universe.js';
 import { createLogger } from '../services/logger.js';
 
 const logger = createLogger('IndicatorService');
@@ -59,7 +60,14 @@ export async function fetchIndicators(
   const config = getStyleConfig(style);
   const errors: string[] = [];
   
-  logger.info(`Fetching indicators for ${symbol} (${style})`);
+  const assetClass = getAssetClass(symbol);
+  const isMetals = assetClass === 'metals';
+  
+  // Metals: Alpha Vantage only provides daily data (intraday requires premium)
+  // Use daily timeframe for both trend and entry analysis
+  const entryInterval = isMetals ? 'daily' : '60min';
+  
+  logger.info(`Fetching indicators for ${symbol} (${style})${isMetals ? ' [metals: daily only]' : ''}`);
 
   // Initialize with empty arrays
   const data: IndicatorData = {
@@ -88,9 +96,9 @@ export async function fetchIndicators(
     // 1. OHLCV DATA
     // ═══════════════════════════════════════════════════════════
     
-    // Entry timeframe bars (H1 for intraday, need to aggregate to H4 for swing)
+    // Entry timeframe bars (H1 for forex, daily for metals)
     try {
-      data.entryBars = await alphaVantage.getOHLCV(symbol, '60min', 'full');
+      data.entryBars = await alphaVantage.getOHLCV(symbol, entryInterval, 'full');
       logger.debug(`Got ${data.entryBars.length} entry bars for ${symbol}`);
     } catch (e) {
       errors.push(`Entry bars: ${e instanceof Error ? e.message : 'Unknown error'}`);
@@ -133,33 +141,33 @@ export async function fetchIndicators(
     // 3. ENTRY INDICATORS (Lower Timeframe)
     // ═══════════════════════════════════════════════════════════
 
-    // EMA 20 on 60min
+    // EMA 20 on entry timeframe
     try {
-      data.ema20 = await alphaVantage.getEMA(symbol, '60min', STRATEGY.entry.emaFast.period);
+      data.ema20 = await alphaVantage.getEMA(symbol, entryInterval, STRATEGY.entry.emaFast.period);
       logger.debug(`Got ${data.ema20.length} EMA20 values for ${symbol}`);
     } catch (e) {
       errors.push(`EMA20: ${e instanceof Error ? e.message : 'Unknown error'}`);
     }
 
-    // EMA 50 on 60min
+    // EMA 50 on entry timeframe
     try {
-      data.ema50 = await alphaVantage.getEMA(symbol, '60min', STRATEGY.entry.emaSlow.period);
+      data.ema50 = await alphaVantage.getEMA(symbol, entryInterval, STRATEGY.entry.emaSlow.period);
       logger.debug(`Got ${data.ema50.length} EMA50 values for ${symbol}`);
     } catch (e) {
       errors.push(`EMA50: ${e instanceof Error ? e.message : 'Unknown error'}`);
     }
 
-    // RSI on 60min
+    // RSI on entry timeframe
     try {
-      data.rsi = await alphaVantage.getRSI(symbol, '60min', STRATEGY.entry.rsi.period);
+      data.rsi = await alphaVantage.getRSI(symbol, entryInterval, STRATEGY.entry.rsi.period);
       logger.debug(`Got ${data.rsi.length} RSI values for ${symbol}`);
     } catch (e) {
       errors.push(`RSI: ${e instanceof Error ? e.message : 'Unknown error'}`);
     }
 
-    // ATR on 60min (for stop loss calculation)
+    // ATR on entry timeframe (for stop loss calculation)
     try {
-      data.atr = await alphaVantage.getATR(symbol, '60min', STRATEGY.stopLoss.atr.period);
+      data.atr = await alphaVantage.getATR(symbol, entryInterval, STRATEGY.stopLoss.atr.period);
       logger.debug(`Got ${data.atr.length} ATR values for ${symbol}`);
     } catch (e) {
       errors.push(`ATR: ${e instanceof Error ? e.message : 'Unknown error'}`);
@@ -169,41 +177,41 @@ export async function fetchIndicators(
     // 4. ADDITIONAL INDICATORS FOR MULTI-STRATEGY SYSTEM
     // ═══════════════════════════════════════════════════════════
 
-    // Stochastic Oscillator on 60min (for Stochastic Momentum strategy)
+    // Stochastic Oscillator (for Stochastic Momentum strategy)
     try {
-      data.stoch = await alphaVantage.getStochastic(symbol, '60min', 14, 3, 3);
+      data.stoch = await alphaVantage.getStochastic(symbol, entryInterval, 14, 3, 3);
       logger.debug(`Got ${data.stoch.length} STOCH values for ${symbol}`);
     } catch (e) {
       errors.push(`STOCH: ${e instanceof Error ? e.message : 'Unknown error'}`);
     }
 
-    // Williams %R on 60min (for Williams %R Reversal strategy)
+    // Williams %R (for Williams %R Reversal strategy)
     try {
-      data.willr = await alphaVantage.getWilliamsR(symbol, '60min', 14);
+      data.willr = await alphaVantage.getWilliamsR(symbol, entryInterval, 14);
       logger.debug(`Got ${data.willr.length} WILLR values for ${symbol}`);
     } catch (e) {
       errors.push(`WILLR: ${e instanceof Error ? e.message : 'Unknown error'}`);
     }
 
-    // CCI on 60min (for CCI Trend strategy)
+    // CCI (for CCI Trend strategy)
     try {
-      data.cci = await alphaVantage.getCCI(symbol, '60min', 20);
+      data.cci = await alphaVantage.getCCI(symbol, entryInterval, 20);
       logger.debug(`Got ${data.cci.length} CCI values for ${symbol}`);
     } catch (e) {
       errors.push(`CCI: ${e instanceof Error ? e.message : 'Unknown error'}`);
     }
 
-    // Bollinger Bands on 60min (for Bollinger Breakout strategy)
+    // Bollinger Bands (for Bollinger Breakout strategy)
     try {
-      data.bbands = await alphaVantage.getBBands(symbol, '60min', 20, 2, 2);
+      data.bbands = await alphaVantage.getBBands(symbol, entryInterval, 20, 2, 2);
       logger.debug(`Got ${data.bbands.length} BBANDS values for ${symbol}`);
     } catch (e) {
       errors.push(`BBANDS: ${e instanceof Error ? e.message : 'Unknown error'}`);
     }
 
-    // SMA 20 on 60min (for Multi-Timeframe Alignment strategy)
+    // SMA 20 (for Multi-Timeframe Alignment strategy)
     try {
-      data.sma20 = await alphaVantage.getSMA(symbol, '60min', 20);
+      data.sma20 = await alphaVantage.getSMA(symbol, entryInterval, 20);
       logger.debug(`Got ${data.sma20.length} SMA20 values for ${symbol}`);
     } catch (e) {
       errors.push(`SMA20: ${e instanceof Error ? e.message : 'Unknown error'}`);

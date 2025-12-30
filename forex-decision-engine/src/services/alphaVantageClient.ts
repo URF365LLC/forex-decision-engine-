@@ -130,7 +130,22 @@ class AlphaVantageClient {
     const assetClass = getAssetClass(symbol);
     let data: Record<string, unknown>;
 
-    if (assetClass === 'forex') {
+    if (assetClass === 'metals') {
+      if (interval === 'daily') {
+        data = await this.fetch({
+          function: 'TIME_SERIES_DAILY',
+          symbol,
+          outputsize: outputSize,
+        });
+      } else {
+        data = await this.fetch({
+          function: 'TIME_SERIES_INTRADAY',
+          symbol,
+          interval,
+          outputsize: outputSize,
+        });
+      }
+    } else if (assetClass === 'forex') {
       const { from, to } = this.splitForexPair(symbol);
       
       if (interval === 'daily') {
@@ -150,7 +165,6 @@ class AlphaVantageClient {
         });
       }
     } else {
-      // Crypto
       const { symbol: cryptoSym, market } = this.splitCryptoSymbol(symbol);
       
       if (interval === 'daily') {
@@ -182,7 +196,7 @@ class AlphaVantageClient {
   /**
    * Parse OHLCV response from Alpha Vantage
    */
-  private parseOHLCV(data: Record<string, unknown>, assetClass: 'forex' | 'crypto'): OHLCVBar[] {
+  private parseOHLCV(data: Record<string, unknown>, assetClass: 'forex' | 'metals' | 'crypto'): OHLCVBar[] {
     // Find the time series key
     const seriesKey = Object.keys(data).find(k => 
       k.includes('Time Series') || k.includes('time series')

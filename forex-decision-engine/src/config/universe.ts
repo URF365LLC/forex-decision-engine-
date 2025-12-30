@@ -1,6 +1,6 @@
 /**
  * Trading Universe - All supported symbols
- * Forex: 28 pairs | Crypto: 8 pairs
+ * Forex: 28 pairs | Metals: 2 pairs | Crypto: 8 pairs
  */
 
 export const FOREX_SYMBOLS = [
@@ -12,21 +12,27 @@ export const FOREX_SYMBOLS = [
   'USDCAD', 'USDCHF', 'USDJPY',
 ] as const;
 
+export const METALS_SYMBOLS = [
+  'XAUUSD', 'XAGUSD',
+] as const;
+
 export const CRYPTO_SYMBOLS = [
   'BTCUSD', 'ETHUSD', 'SOLUSD', 'XRPUSD',
   'ADAUSD', 'BCHUSD', 'BNBUSD', 'LTCUSD',
 ] as const;
 
-export const ALL_SYMBOLS = [...FOREX_SYMBOLS, ...CRYPTO_SYMBOLS] as const;
+export const ALL_SYMBOLS = [...FOREX_SYMBOLS, ...METALS_SYMBOLS, ...CRYPTO_SYMBOLS] as const;
 
 export type ForexSymbol = typeof FOREX_SYMBOLS[number];
+export type MetalsSymbol = typeof METALS_SYMBOLS[number];
 export type CryptoSymbol = typeof CRYPTO_SYMBOLS[number];
 export type Symbol = typeof ALL_SYMBOLS[number];
 
-export type AssetClass = 'forex' | 'crypto';
+export type AssetClass = 'forex' | 'metals' | 'crypto';
 
 export function getAssetClass(symbol: string): AssetClass {
   if (CRYPTO_SYMBOLS.includes(symbol as CryptoSymbol)) return 'crypto';
+  if (METALS_SYMBOLS.includes(symbol as MetalsSymbol)) return 'metals';
   return 'forex';
 }
 
@@ -80,6 +86,10 @@ export const SYMBOL_META: Record<string, {
   NZDJPY: { pipDecimals: 2, displayName: 'NZD/JPY', category: 'Cross' },
   NZDCAD: { pipDecimals: 4, displayName: 'NZD/CAD', category: 'Cross' },
   NZDCHF: { pipDecimals: 4, displayName: 'NZD/CHF', category: 'Cross' },
+  
+  // Metals
+  XAUUSD: { pipDecimals: 2, displayName: 'XAU/USD (Gold)', category: 'Metals' },
+  XAGUSD: { pipDecimals: 3, displayName: 'XAG/USD (Silver)', category: 'Metals' },
   
   // Crypto
   BTCUSD: { pipDecimals: 2, displayName: 'BTC/USD', category: 'Crypto' },
