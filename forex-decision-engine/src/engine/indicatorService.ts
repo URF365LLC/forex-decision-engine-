@@ -63,8 +63,7 @@ export async function fetchIndicators(
   const assetClass = getAssetClass(symbol);
   const isMetals = assetClass === 'metals';
   
-  // Metals: Alpha Vantage only provides daily data (intraday requires premium)
-  // Use daily timeframe for both trend and entry analysis
+  // Metals: Alpha Vantage only provides daily data (no intraday available)
   const entryInterval = isMetals ? 'daily' : '60min';
   
   logger.info(`Fetching indicators for ${symbol} (${style})${isMetals ? ' [metals: daily only]' : ''}`);
@@ -96,7 +95,7 @@ export async function fetchIndicators(
     // 1. OHLCV DATA
     // ═══════════════════════════════════════════════════════════
     
-    // Entry timeframe bars (H1 for forex, daily for metals)
+    // Entry timeframe bars (H1 for forex/crypto, daily for metals)
     try {
       data.entryBars = await alphaVantage.getOHLCV(symbol, entryInterval, 'full');
       logger.debug(`Got ${data.entryBars.length} entry bars for ${symbol}`);
