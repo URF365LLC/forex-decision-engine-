@@ -89,6 +89,19 @@ PUT  /api/signals/:id - Update signal result
 
 ## Recent Updates
 
+### P0 Critical Fixes - 2025-12-30
+- **Indicator Mapping Fix**: Added stoch, willr, cci, bbands, sma20 to both IndicatorData and CryptoIndicatorData interfaces
+  - Enables 5 additional strategies: RSI Bounce, Stochastic Oversold, Bollinger MR, Williams %R + EMA, CCI Zero-Line
+  - Crypto indicators calculated locally (Stochastic, Williams %R, CCI, Bollinger Bands, SMA) since Alpha Vantage doesn't support crypto indicator endpoints
+- **Cache TTL Optimization**: Reduced for premium API utilization
+  - H1: 60min → 5min (real-time data)
+  - H4: 4hrs → 30min
+  - D1: 24hrs → 4hrs
+  - Added `noTrade` TTL: 2 minutes
+- **No-Trade Decision Caching**: Separate cache for no-trade decisions with 2-minute TTL
+  - Prevents wasted API calls on repeated scans of non-trending symbols
+  - Actionable signals cached 5 minutes, no-trade cached 2 minutes
+
 ### Strategy Cache Isolation & Journal Enhancement - 2025-12-29
 - **Cache Isolation Fix**: Different strategies now get isolated decision caches
   - Raw indicators (EMA, RSI, etc.) shared across strategies (efficient)
