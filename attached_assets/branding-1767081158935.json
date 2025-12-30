@@ -1,0 +1,142 @@
+{
+  "colorScheme": "light",
+  "fonts": [
+    {
+      "family": "system-ui",
+      "count": 32
+    },
+    {
+      "family": "Segoe UI",
+      "count": 32
+    },
+    {
+      "family": "Roboto",
+      "count": 32
+    },
+    {
+      "family": "Helvetica",
+      "count": 32
+    },
+    {
+      "family": "Arial",
+      "count": 32
+    },
+    {
+      "family": "sans-serif",
+      "count": 32
+    },
+    {
+      "family": "Apple Color Emoji",
+      "count": 32
+    },
+    {
+      "family": "Segoe UI Emoji",
+      "count": 32
+    },
+    {
+      "family": "Segoe UI Symbol",
+      "count": 32
+    }
+  ],
+  "colors": {
+    "primary": "#929BA5",
+    "accent": "#30D5F1",
+    "background": "#F2F2F2",
+    "textPrimary": "#1A1A1A",
+    "link": "#30D5F1"
+  },
+  "typography": {
+    "fontFamilies": {
+      "primary": "system-ui",
+      "heading": "system-ui"
+    },
+    "fontStacks": {
+      "body": [
+        "system-ui",
+        "Segoe UI",
+        "Roboto",
+        "Helvetica",
+        "Arial",
+        "sans-serif",
+        "Apple Color Emoji",
+        "Segoe UI Emoji",
+        "Segoe UI Symbol"
+      ],
+      "heading": [
+        "system-ui",
+        "Segoe UI",
+        "Roboto",
+        "Helvetica",
+        "Arial",
+        "sans-serif",
+        "Apple Color Emoji",
+        "Segoe UI Emoji",
+        "Segoe UI Symbol"
+      ],
+      "paragraph": [
+        "system-ui",
+        "Segoe UI",
+        "Roboto",
+        "Helvetica",
+        "Arial",
+        "sans-serif",
+        "Apple Color Emoji",
+        "Segoe UI Emoji",
+        "Segoe UI Symbol"
+      ]
+    },
+    "fontSizes": {
+      "h1": "32px",
+      "h2": "32px",
+      "body": "16px"
+    }
+  },
+  "spacing": {
+    "baseUnit": 4,
+    "borderRadius": "0px"
+  },
+  "components": {
+    "input": {
+      "background": "#F5F5F5",
+      "textColor": "#FFFFFF",
+      "borderColor": "#DFDFDF",
+      "borderRadius": "10px",
+      "borderRadiusCorners": {
+        "topLeft": "10px",
+        "topRight": "10px",
+        "bottomRight": "10px",
+        "bottomLeft": "10px"
+      },
+      "shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0.05) 0px 1px 2px 0px"
+    }
+  },
+  "images": {
+    "logo": "https://downloads.intercomcdn.com/i/o/xi8tmbo0/608628/8dcbf9bf0b119a83b78a7df9f674/bfc449655c18f331877aeb36e109d5a7.png",
+    "favicon": "https://intercom.help/e8/assets/favicon",
+    "ogImage": null
+  },
+  "__framework_hints": [],
+  "__llm_logo_reasoning": {
+    "selectedIndex": 0,
+    "reasoning": "Strong indicators: variant bonus (+8), in header, header location, visible, class contains logo, reasonable size. Score: 78 (clear winner by 42 points)",
+    "confidence": 0.9
+  },
+  "__llm_button_reasoning": {
+    "primary": {
+      "index": -1,
+      "text": "N/A",
+      "reasoning": "LLM failed"
+    },
+    "secondary": {
+      "index": -1,
+      "text": "N/A",
+      "reasoning": "LLM failed"
+    },
+    "confidence": 0
+  },
+  "confidence": {
+    "buttons": 0,
+    "colors": 0,
+    "overall": 0
+  }
+}
