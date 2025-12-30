@@ -89,6 +89,38 @@ PUT  /api/signals/:id - Update signal result
 
 ## Recent Updates
 
+### P2 Code Quality Improvements - 2025-12-30
+- **Position Sizing** (`src/strategies/utils.ts`):
+  - Enhanced with input validation for account size, risk percent, stop loss pips
+  - Uses proper pipValue from metadata (JPY pairs: 8.5, crypto: 1, standard: from getPipInfo)
+  - Returns PositionSizeResult with isValid flag and warnings array
+  - Marks isValid=false when lots capped at min/max
+
+- **Strategy Timeframes** (`src/strategies/utils.ts`):
+  - New getStrategyTimeframes() helper reads from strategy metadata
+  - Falls back to style defaults (intraday: H4/H1, swing: D1/H4)
+  - Eliminates hardcoded timeframes in strategies
+
+- **Strategy-Aware Scan Lock** (`src/server.ts`):
+  - Replaced global scanInProgress with Map-based activeScans
+  - Allows up to 3 concurrent scans for different strategies
+  - 5-minute timeout auto-releases stale locks
+  - `force=true` parameter overrides existing lock for same strategy
+
+- **Journal Validation** (`src/utils/validation.ts`, `src/server.ts`):
+  - validateJournalUpdate() validates field types and enum values
+  - sanitizeNotes() strips HTML/script tags to prevent XSS
+  - Returns 400 with validation errors instead of silently failing
+
+- **Frontend Cache Expiry** (`public/js/storage.js`):
+  - localStorage cache entries include timestamp
+  - 15-minute TTL validation on retrieval
+  - Auto-clears expired entries and shows age in UI
+
+- **Code Quality**:
+  - Replaced deprecated substr() with substring() in journalStore.ts
+  - Replaced console.warn with structured logger.warn() with context objects
+
 ### P1 Safety Gates & Upgrade Detection - 2025-12-30
 - **Safety Gates Integration** (`src/engine/strategyAnalyzer.ts`):
   - Volatility gate checks ATR levels before allowing signals
