@@ -135,6 +135,7 @@ export interface PositionSizeResult {
 function getLeverage(symbol: string, isCrypto: boolean): number {
   if (isCrypto) return DEFAULTS.leverage.crypto;
   if (symbol.includes('XAU') || symbol.includes('XAG')) return DEFAULTS.leverage.metals;
+  if (symbol.includes('US30') || symbol.includes('NAS') || symbol.includes('SP500')) return DEFAULTS.leverage.indices;
   return DEFAULTS.leverage.forex;
 }
 
@@ -233,7 +234,11 @@ export function calculatePositionSize(
     });
   }
   
-  if (lots < 0.01) {
+  if (marginLimited && lots < 0.01) {
+    warnings.push('Cannot trade: margin insufficient for minimum lot');
+    lots = 0;
+    isValid = false;
+  } else if (lots < 0.01) {
     warnings.push('Position size below minimum lot (0.01)');
     lots = 0.01;
     isValid = false;

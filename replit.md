@@ -89,6 +89,19 @@ PUT  /api/signals/:id - Update signal result
 
 ## Recent Updates
 
+### E8 One Margin Constraints & Leverage Fix - 2025-12-30
+- **Leverage Settings** (`src/config/defaults.ts`):
+  - Updated for E8 One account type (source: E8 help docs)
+  - Forex: 1:30, Indices: 1:15, Metals: 1:15, Crypto: 1:1 (NO leverage!)
+
+- **Margin-Aware Position Sizing** (`src/engine/positionSizer.ts`, `src/strategies/utils.ts`):
+  - Added margin constraint: maxLots = (accountSize × leverage) / (entryPrice × contractSize)
+  - Crypto with 1:1 leverage now capped at what account can actually afford
+  - Example: BNBUSD at $853 with $10k account → max 11.72 lots (not 19.36)
+  - Example: BTCUSD at $87k → max 0.11 lots
+  - Warning displayed when position reduced due to margin limit
+  - If margin insufficient for 0.01 lot, position set to 0 with clear message
+
 ### Crypto Position Sizing Fix (E8 Markets MT5) - 2025-12-30
 - **Contract Size Config** (`src/config/defaults.ts`):
   - Added CRYPTO_CONTRACT_SIZES with E8 Markets MT5 specifications
