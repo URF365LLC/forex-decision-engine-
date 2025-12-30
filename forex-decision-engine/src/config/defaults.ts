@@ -25,12 +25,14 @@ export const DEFAULTS = {
   },
 
   // ═══════════════════════════════════════════════════════════════
-  // LEVERAGE (E8 Markets)
+  // LEVERAGE (E8 One Account Type)
+  // Source: https://help.e8markets.com/en/articles/11775980-e8-one
   // ═══════════════════════════════════════════════════════════════
   leverage: {
-    forex: 50,                 // 1:50 for forex majors
-    indices: 25,               // 1:25 for indices/metals
-    crypto: 2,                 // 1:2 for crypto
+    forex: 30,                 // 1:30 for forex
+    indices: 15,               // 1:15 for indices
+    metals: 15,                // 1:15 for metals (XAUUSD, XAGUSD)
+    crypto: 1,                 // 1:1 for crypto (NO LEVERAGE!)
   },
 
   // ═══════════════════════════════════════════════════════════════

@@ -20,7 +20,7 @@ import {
   calculatePips 
 } from './types.js';
 import { createLogger } from '../services/logger.js';
-import { getCryptoContractSize } from '../config/defaults.js';
+import { getCryptoContractSize, DEFAULTS } from '../config/defaults.js';
 
 const logger = createLogger('StrategyUtils');
 
@@ -132,6 +132,12 @@ export interface PositionSizeResult {
   warnings: string[];
 }
 
+function getLeverage(symbol: string, isCrypto: boolean): number {
+  if (isCrypto) return DEFAULTS.leverage.crypto;
+  if (symbol.includes('XAU') || symbol.includes('XAG')) return DEFAULTS.leverage.metals;
+  return DEFAULTS.leverage.forex;
+}
+
 export function calculatePositionSize(
   symbol: string,
   accountSize: number,
@@ -155,9 +161,11 @@ export function calculatePositionSize(
   
   const riskAmount = accountSize * (riskPercent / 100);
   const isCrypto = ['BTC', 'ETH', 'SOL', 'XRP', 'ADA', 'BNB', 'BCH', 'LTC'].some(c => symbol.includes(c));
+  const leverage = getLeverage(symbol, isCrypto);
   
   let lots: number;
   let isApproximate: boolean;
+  let marginLimited = false;
   
   if (isCrypto) {
     const contractSize = getCryptoContractSize(symbol);
@@ -170,14 +178,34 @@ export function calculatePositionSize(
       return { lots: 0, units: 0, riskAmount: 0, isApproximate: false, isValid: false, warnings: ['Invalid stop distance'] };
     }
     
+    const maxLotsByMargin = (accountSize * leverage) / (entryPrice * contractSize);
+    
     lots = riskAmount / (stopDistance * contractSize);
+    
+    if (lots > maxLotsByMargin) {
+      marginLimited = true;
+      logger.info('Crypto margin limit hit', {
+        symbol,
+        riskBasedLots: Math.round(lots * 100) / 100,
+        maxLotsByMargin: Math.round(maxLotsByMargin * 100) / 100,
+        leverage,
+        entryPrice,
+      });
+      lots = maxLotsByMargin;
+      warnings.push(`Margin limit: reduced to ${Math.round(lots * 100) / 100} lots (${leverage}:1 leverage)`);
+      isValid = false;
+    }
+    
     isApproximate = false;
     
     logger.debug('Crypto position size (E8 formula)', { 
       symbol, 
       contractSize, 
       stopDistance, 
-      riskAmount, 
+      riskAmount,
+      leverage,
+      maxLotsByMargin: Math.round(maxLotsByMargin * 100) / 100,
+      marginLimited,
       lots: Math.round(lots * 100) / 100 
     });
   } else {
@@ -200,6 +228,7 @@ export function calculatePositionSize(
       pipValue: effectivePipValue, 
       stopLossPips, 
       riskAmount, 
+      leverage,
       lots: Math.round(lots * 100) / 100 
     });
   }
