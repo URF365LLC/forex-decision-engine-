@@ -89,6 +89,20 @@ PUT  /api/signals/:id - Update signal result
 
 ## Recent Updates
 
+### Crypto Position Sizing Fix (E8 Markets MT5) - 2025-12-30
+- **Contract Size Config** (`src/config/defaults.ts`):
+  - Added CRYPTO_CONTRACT_SIZES with E8 Markets MT5 specifications
+  - BTCUSD=1, ETHUSD=1, LTCUSD=1, BCHUSD=1, SOLUSD=1 (1 lot = 1 coin)
+  - XRPUSD=100, ADAUSD=100 (1 lot = 100 coins)
+  - getCryptoContractSize() helper function
+
+- **Position Sizing Formula** (`src/strategies/utils.ts`, `src/engine/positionSizer.ts`):
+  - Crypto now uses E8-compatible formula: Lots = RiskAmount / (StopDistance$ × ContractSize)
+  - Example: $50 risk, $500 BTC stop → 0.10 lots
+  - Example: $50 risk, $0.10 XRP stop → 5.00 lots
+  - Forex continues pip-based calculation (marked approximate)
+  - Fixed: buildDecision now passes actual stop loss price for accurate calculation
+
 ### P2 Code Quality Improvements - 2025-12-30
 - **Position Sizing** (`src/strategies/utils.ts`):
   - Enhanced with input validation for account size, risk percent, stop loss pips
