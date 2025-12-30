@@ -14,10 +14,14 @@ import {
   UserSettings, 
   RequiredIndicator,
   ReasonCode,
+  TradingStyle,
   getPipInfo, 
   formatPrice, 
   calculatePips 
 } from './types.js';
+import { createLogger } from '../services/logger.js';
+
+const logger = createLogger('StrategyUtils');
 
 export function latest<T>(arr: T[] | undefined): T | null {
   if (!arr || arr.length === 0) return null;
@@ -99,7 +103,11 @@ export function validateIndicators(
     if (!indicator || !Array.isArray(indicator)) return false;
     if (indicator.length < minBars) return false;
     if (indicator.length !== (data.bars as unknown[]).length) {
-      console.warn(`Indicator ${ind} length mismatch: ${indicator.length} vs ${(data.bars as unknown[]).length} bars`);
+      logger.warn('Indicator length mismatch', { 
+        indicator: ind, 
+        indicatorLength: indicator.length, 
+        barsLength: (data.bars as unknown[]).length 
+      });
     }
   }
   return true;
@@ -114,32 +122,78 @@ export function calculateGrade(confidence: number): SignalGrade {
   return 'no-trade';
 }
 
+export interface PositionSizeResult {
+  lots: number;
+  units: number;
+  riskAmount: number;
+  isApproximate: boolean;
+  isValid: boolean;
+  warnings: string[];
+}
+
 export function calculatePositionSize(
   symbol: string,
   accountSize: number,
   riskPercent: number,
   stopLossPips: number,
   entryPrice: number
-): { lots: number; units: number; riskAmount: number; isApproximate: boolean } {
+): PositionSizeResult {
+  const warnings: string[] = [];
+  let isValid = true;
+  
+  if (!accountSize || accountSize <= 0 || !isFinite(accountSize)) {
+    logger.warn('Invalid account size for position sizing', { symbol, accountSize });
+    return { lots: 0, units: 0, riskAmount: 0, isApproximate: false, isValid: false, warnings: ['Invalid account size'] };
+  }
+  
+  if (!riskPercent || riskPercent <= 0 || riskPercent > 100) {
+    logger.warn('Invalid risk percent for position sizing', { symbol, riskPercent });
+    return { lots: 0, units: 0, riskAmount: 0, isApproximate: false, isValid: false, warnings: ['Invalid risk percent'] };
+  }
+  
+  if (!stopLossPips || stopLossPips <= 0 || !isFinite(stopLossPips)) {
+    logger.warn('Invalid stop loss pips for position sizing', { symbol, stopLossPips });
+    return { lots: 0, units: 0, riskAmount: 0, isApproximate: false, isValid: false, warnings: ['Invalid stop loss'] };
+  }
+  
   const riskAmount = accountSize * (riskPercent / 100);
   const { pipValue } = getPipInfo(symbol);
   const isCrypto = ['BTC', 'ETH', 'SOL', 'XRP', 'ADA', 'BNB', 'BCH', 'LTC'].some(c => symbol.includes(c));
   
-  let units: number;
-  if (isCrypto) {
-    units = riskAmount / (stopLossPips * pipValue);
-  } else {
-    units = riskAmount / (stopLossPips * pipValue);
+  let effectivePipValue = pipValue;
+  if (symbol.endsWith('JPY')) {
+    effectivePipValue = 8.5;
+  } else if (isCrypto) {
+    effectivePipValue = 1;
   }
   
-  const lots = units / 100000;
+  let lots = riskAmount / (stopLossPips * effectivePipValue);
+  
+  if (lots < 0.01) {
+    warnings.push('Position size below minimum lot (0.01)');
+    lots = 0.01;
+    isValid = false;
+  }
+  
+  if (lots > 100) {
+    warnings.push('Position size capped at 100 lots');
+    lots = 100;
+    isValid = false;
+  }
+  
+  lots = Math.round(lots * 100) / 100;
+  const units = Math.round(lots * 100000);
   const isApproximate = !isCrypto;
   
+  logger.debug('Position size calculated', { symbol, lots, stopLossPips, riskAmount, pipValue: effectivePipValue });
+  
   return { 
-    lots: Math.round(lots * 100) / 100, 
-    units: Math.round(units), 
+    lots, 
+    units, 
     riskAmount: Math.round(riskAmount * 100) / 100,
-    isApproximate
+    isApproximate,
+    isValid,
+    warnings
   };
 }
 
@@ -155,6 +209,22 @@ export interface DecisionParams {
   triggers: string[];
   reasonCodes: ReasonCode[];
   settings: UserSettings;
+  timeframes?: { trend: string; entry: string };
+}
+
+const STYLE_TIMEFRAMES: Record<TradingStyle, { trend: string; entry: string }> = {
+  intraday: { trend: 'H4', entry: 'H1' },
+  swing: { trend: 'D1', entry: 'H4' },
+};
+
+export function getStrategyTimeframes(
+  strategyTimeframes: { trend: string; entry: string } | undefined,
+  style: TradingStyle
+): { trend: string; entry: string } {
+  if (strategyTimeframes) {
+    return strategyTimeframes;
+  }
+  return STYLE_TIMEFRAMES[style] || STYLE_TIMEFRAMES.intraday;
 }
 
 export function buildDecision(params: DecisionParams): Decision {
@@ -170,6 +240,7 @@ export function buildDecision(params: DecisionParams): Decision {
     triggers,
     reasonCodes,
     settings,
+    timeframes: strategyTimeframes,
   } = params;
 
   const grade = calculateGrade(confidence);
@@ -223,7 +294,7 @@ export function buildDecision(params: DecisionParams): Decision {
     warnings,
     style: settings.style,
     executionModel: 'NEXT_OPEN',
-    timeframes: { trend: 'daily', entry: '60min' },
+    timeframes: getStrategyTimeframes(strategyTimeframes, settings.style),
     timestamp: now.toISOString(),
     validUntil: validUntil.toISOString(),
   };

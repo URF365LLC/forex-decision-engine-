@@ -10,6 +10,10 @@ const Storage = {
     FIRST_VISIT: 'fde_first_visit',
     RESULTS: 'fde_results',
   },
+  
+  TTL: {
+    SCAN_RESULTS: 15 * 60 * 1000,  // 15 minutes
+  },
 
   /**
    * Get item from localStorage
@@ -91,17 +95,77 @@ const Storage = {
   },
 
   /**
-   * Get cached results
+   * Get cached results with TTL check
    */
   getResults() {
-    return this.get(this.KEYS.RESULTS, []);
+    try {
+      const raw = localStorage.getItem(this.KEYS.RESULTS);
+      if (!raw) return [];
+      
+      const data = JSON.parse(raw);
+      
+      if (!data.timestamp) {
+        console.warn('Scan results missing timestamp, clearing cache');
+        this.clearResults();
+        return [];
+      }
+      
+      const age = Date.now() - new Date(data.timestamp).getTime();
+      
+      if (age > this.TTL.SCAN_RESULTS) {
+        console.info(`Scan results expired (${Math.round(age / 60000)} min old)`);
+        this.clearResults();
+        return [];
+      }
+      
+      data._cacheAge = age;
+      data._cacheAgeMinutes = Math.round(age / 60000);
+      
+      return data.results || [];
+    } catch {
+      this.clearResults();
+      return [];
+    }
   },
 
   /**
-   * Save results
+   * Save results with timestamp
    */
   saveResults(results) {
-    return this.set(this.KEYS.RESULTS, results);
+    const data = {
+      results,
+      timestamp: new Date().toISOString(),
+      cachedAt: Date.now(),
+    };
+    return this.set(this.KEYS.RESULTS, data);
+  },
+  
+  /**
+   * Clear cached results
+   */
+  clearResults() {
+    this.remove(this.KEYS.RESULTS);
+  },
+  
+  /**
+   * Check if cached results exist and are fresh
+   */
+  checkResultsStatus() {
+    try {
+      const raw = localStorage.getItem(this.KEYS.RESULTS);
+      if (!raw) {
+        return { exists: false, fresh: false, ageMinutes: 0 };
+      }
+      
+      const data = JSON.parse(raw);
+      const age = Date.now() - new Date(data.timestamp).getTime();
+      const ageMinutes = Math.round(age / 60000);
+      const fresh = age <= this.TTL.SCAN_RESULTS;
+      
+      return { exists: true, fresh, ageMinutes };
+    } catch {
+      return { exists: false, fresh: false, ageMinutes: 0 };
+    }
   },
 
   /**

@@ -210,3 +210,96 @@ export function sanitizeSymbol(input: string): string {
 export function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
 }
+
+// ═══════════════════════════════════════════════════════════════
+// JOURNAL ENTRY VALIDATION
+// ═══════════════════════════════════════════════════════════════
+
+export interface JournalValidationError {
+  field: string;
+  message: string;
+  value?: unknown;
+}
+
+/**
+ * Validate journal entry update data
+ */
+export function validateJournalUpdate(data: Record<string, unknown>): JournalValidationError[] {
+  const errors: JournalValidationError[] = [];
+  
+  if (data.symbol !== undefined && typeof data.symbol !== 'string') {
+    errors.push({ field: 'symbol', message: 'Symbol must be a string', value: data.symbol });
+  }
+  
+  if (data.direction !== undefined && !['long', 'short'].includes(data.direction as string)) {
+    errors.push({ field: 'direction', message: 'Direction must be "long" or "short"', value: data.direction });
+  }
+  
+  if (data.entryPrice !== undefined) {
+    const price = Number(data.entryPrice);
+    if (isNaN(price) || price <= 0 || !isFinite(price)) {
+      errors.push({ field: 'entryPrice', message: 'Entry price must be a positive number', value: data.entryPrice });
+    }
+  }
+  
+  if (data.exitPrice !== undefined && data.exitPrice !== null) {
+    const price = Number(data.exitPrice);
+    if (isNaN(price) || price <= 0 || !isFinite(price)) {
+      errors.push({ field: 'exitPrice', message: 'Exit price must be a positive number', value: data.exitPrice });
+    }
+  }
+  
+  if (data.stopLoss !== undefined) {
+    const sl = Number(data.stopLoss);
+    if (isNaN(sl) || sl <= 0 || !isFinite(sl)) {
+      errors.push({ field: 'stopLoss', message: 'Stop loss must be a positive number', value: data.stopLoss });
+    }
+  }
+  
+  if (data.takeProfit !== undefined) {
+    const tp = Number(data.takeProfit);
+    if (isNaN(tp) || tp <= 0 || !isFinite(tp)) {
+      errors.push({ field: 'takeProfit', message: 'Take profit must be a positive number', value: data.takeProfit });
+    }
+  }
+  
+  if (data.lots !== undefined) {
+    const lots = Number(data.lots);
+    if (isNaN(lots) || lots <= 0 || !isFinite(lots)) {
+      errors.push({ field: 'lots', message: 'Lot size must be a positive number', value: data.lots });
+    }
+  }
+  
+  if (data.status !== undefined && !['pending', 'running', 'closed'].includes(data.status as string)) {
+    errors.push({ field: 'status', message: 'Status must be "pending", "running", or "closed"', value: data.status });
+  }
+  
+  if (data.action !== undefined && !['taken', 'skipped', 'missed'].includes(data.action as string)) {
+    errors.push({ field: 'action', message: 'Action must be "taken", "skipped", or "missed"', value: data.action });
+  }
+  
+  if (data.result !== undefined && data.result !== null && !['win', 'loss', 'breakeven'].includes(data.result as string)) {
+    errors.push({ field: 'result', message: 'Result must be "win", "loss", or "breakeven"', value: data.result });
+  }
+  
+  if (data.notes !== undefined && typeof data.notes !== 'string') {
+    errors.push({ field: 'notes', message: 'Notes must be a string', value: typeof data.notes });
+  } else if (typeof data.notes === 'string' && data.notes.length > 10000) {
+    errors.push({ field: 'notes', message: 'Notes cannot exceed 10,000 characters', value: data.notes.length });
+  }
+  
+  return errors;
+}
+
+/**
+ * Sanitize notes field to prevent XSS
+ */
+export function sanitizeNotes(notes: string | undefined): string | undefined {
+  if (!notes) return notes;
+  
+  return notes
+    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+    .replace(/on\w+\s*=/gi, '')
+    .replace(/<iframe/gi, '&lt;iframe')
+    .trim();
+}
