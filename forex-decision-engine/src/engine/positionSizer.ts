@@ -40,21 +40,45 @@ export interface SizingInput {
 // POSITION SIZING
 // ═══════════════════════════════════════════════════════════════
 
+function getLeverage(symbol: string, assetClass: string): number {
+  if (assetClass === 'crypto') return DEFAULTS.leverage.crypto;
+  if (symbol.includes('XAU') || symbol.includes('XAG')) return DEFAULTS.leverage.metals;
+  return DEFAULTS.leverage.forex;
+}
+
 export function calculatePositionSize(input: SizingInput): PositionSize {
   const { symbol, entryPrice, stopLossPrice, accountSize, riskPercent } = input;
   
   const riskAmount = accountSize * (riskPercent / 100);
   const stopLossDistance = Math.abs(entryPrice - stopLossPrice);
   const assetClass = getAssetClass(symbol);
+  const leverage = getLeverage(symbol, assetClass);
   
   let lots = 0;
   let pipValue: number = PIP_VALUES.standard;
   let stopLossPips = 0;
   let units = 0;
+  let maxLotsByMargin = Infinity;
+  let marginLimited = false;
   
   if (assetClass === 'crypto') {
     const contractSize = getCryptoContractSize(symbol);
+    
+    maxLotsByMargin = (accountSize * leverage) / (entryPrice * contractSize);
+    
     lots = riskAmount / (stopLossDistance * contractSize);
+    
+    if (lots > maxLotsByMargin) {
+      marginLimited = true;
+      logger.info(`Crypto margin limit hit for ${symbol}`, {
+        riskBasedLots: Math.round(lots * 100) / 100,
+        maxLotsByMargin: Math.round(maxLotsByMargin * 100) / 100,
+        leverage,
+        entryPrice,
+      });
+      lots = maxLotsByMargin;
+    }
+    
     pipValue = contractSize;
     stopLossPips = stopLossDistance;
     units = lots * contractSize;
@@ -63,7 +87,10 @@ export function calculatePositionSize(input: SizingInput): PositionSize {
       contractSize,
       stopLossDistance,
       riskAmount,
+      leverage,
+      maxLotsByMargin: Math.round(maxLotsByMargin * 100) / 100,
       lots: Math.round(lots * 100) / 100,
+      marginLimited,
     });
   } else {
     const pipDecimals = getPipDecimals(symbol);
@@ -86,6 +113,7 @@ export function calculatePositionSize(input: SizingInput): PositionSize {
       stopLossPips,
       pipValue,
       riskAmount,
+      leverage,
       lots: Math.round(lots * 100) / 100,
     });
   }
@@ -95,7 +123,10 @@ export function calculatePositionSize(input: SizingInput): PositionSize {
   let isValid = true;
   let warning: string | null = null;
   
-  if (lots > DEFAULTS.risk.maxLotForex) {
+  if (marginLimited) {
+    warning = `Position reduced to ${lots} lots (margin limit with ${leverage}:1 leverage)`;
+    isValid = false;
+  } else if (lots > DEFAULTS.risk.maxLotForex) {
     warning = `Position size ${lots} exceeds E8 max lot limit (${DEFAULTS.risk.maxLotForex})`;
     lots = DEFAULTS.risk.maxLotForex;
     isValid = false;
