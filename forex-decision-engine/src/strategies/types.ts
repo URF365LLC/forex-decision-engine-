@@ -109,6 +109,29 @@ export interface StrategyMeta {
   version: string;
 }
 
+export type VolatilityLevel = 'low' | 'normal' | 'high' | 'extreme';
+
+export interface GatingInfo {
+  cooldownBlocked: boolean;
+  cooldownReason?: string;
+  cooldownUntil?: string;
+  volatilityBlocked: boolean;
+  volatilityLevel: VolatilityLevel;
+  volatilityReason?: string;
+}
+
+export interface GradeUpgrade {
+  symbol: string;
+  strategyId: string;
+  strategyName: string;
+  previousGrade: SignalGrade;
+  newGrade: SignalGrade;
+  direction: SignalDirection;
+  upgradeType: 'new-signal' | 'grade-improvement' | 'direction-flip';
+  timestamp: string;
+  message: string;
+}
+
 export interface Decision {
   symbol: string;
   displayName: string;
@@ -136,6 +159,8 @@ export interface Decision {
   timeframes: { trend: string; entry: string };
   timestamp: string;
   validUntil: string;
+  gating?: GatingInfo;
+  upgrade?: GradeUpgrade;
 }
 
 export interface IStrategy {

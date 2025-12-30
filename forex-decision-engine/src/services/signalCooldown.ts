@@ -11,8 +11,9 @@
  */
 
 import { TradingStyle } from '../config/strategy.js';
-import { Grade } from '../engine/grader.js';
 import { createLogger } from './logger.js';
+
+export type Grade = 'A+' | 'A' | 'B+' | 'B' | 'C' | 'no-trade';
 
 const logger = createLogger('Cooldown');
 
@@ -47,8 +48,11 @@ export const COOLDOWN_CONFIG = {
   // Grade hierarchy for upgrade detection
   gradeRank: {
     'no-trade': 0,
-    'B': 1,
-    'A+': 2,
+    'C': 1,
+    'B': 2,
+    'B+': 3,
+    'A': 4,
+    'A+': 5,
   } as Record<Grade, number>,
 };
 
