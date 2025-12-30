@@ -89,6 +89,34 @@ PUT  /api/signals/:id - Update signal result
 
 ## Recent Updates
 
+### P1 Safety Gates & Upgrade Detection - 2025-12-30
+- **Safety Gates Integration** (`src/engine/strategyAnalyzer.ts`):
+  - Volatility gate checks ATR levels before allowing signals
+  - Signal cooldown prevents duplicate signals unless grade improves or direction flips
+  - Volatility takes precedence over cooldown checks for safety
+  - Blocked decisions cached as no-trade with shorter TTL (2 min)
+  - Original reason preserved in messages for blocked decisions
+  - Logs show [COOLDOWN] and [VOL-BLOCKED] tags for visibility
+
+- **Grade Upgrade Detection** (`src/services/gradeTracker.ts`):
+  - Tracks grades per symbol/strategy to detect improvements
+  - Detects 3 types: new-signal (no-trade→trade), grade-improvement (B→A), direction-flip (long↔short)
+  - SSE endpoint `/api/upgrades/stream` for real-time notifications
+  - Heartbeat every 30 seconds to keep connections alive
+  - Recent upgrades stored at `/api/upgrades/recent`
+
+- **Frontend Notifications** (`public/js/app.js`, `public/css/styles.css`):
+  - Notification container fixed in top-right corner
+  - SSE connection with auto-reconnect on error (5s delay)
+  - Auto-dismiss notifications after 10 seconds
+  - Slide-in/slide-out animations
+  - Different colors by upgrade type (green=new, amber=improvement, blue=flip)
+
+- **New Types** (`src/strategies/types.ts`):
+  - `GatingInfo`: Tracks cooldown/volatility block status and reason
+  - `GradeUpgrade`: Contains upgrade metadata (type, from/to grade, message)
+  - Extended `Grade` type: 'A+' | 'A' | 'B+' | 'B' | 'C' | 'no-trade'
+
 ### P0 Critical Fixes - 2025-12-30
 - **Indicator Mapping Fix**: Added stoch, willr, cci, bbands, sma20 to both IndicatorData and CryptoIndicatorData interfaces
   - Enables 5 additional strategies: RSI Bounce, Stochastic Oversold, Bollinger MR, Williams %R + EMA, CCI Zero-Line
