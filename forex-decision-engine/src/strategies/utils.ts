@@ -21,7 +21,6 @@ import {
 } from './types.js';
 import { createLogger } from '../services/logger.js';
 import { getCryptoContractSize, DEFAULTS } from '../config/defaults.js';
-import { getAssetClass } from '../config/universe.js';
 
 const logger = createLogger('StrategyUtils');
 
@@ -289,10 +288,6 @@ export function getStrategyTimeframes(
   style: TradingStyle,
   symbol?: string
 ): { trend: string; entry: string } {
-  // Metals use daily-only data (Alpha Vantage intraday requires Premium)
-  if (symbol && getAssetClass(symbol) === 'metals') {
-    return { trend: 'D1', entry: 'D1' };
-  }
   if (strategyTimeframes) {
     return strategyTimeframes;
   }

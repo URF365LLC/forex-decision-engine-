@@ -96,9 +96,9 @@ export function checkVolatility(
     };
   }
 
-  // Calculate average ATR
-  const averageAtr = atrHistory.slice(0, VOLATILITY_CONFIG.averagePeriod)
-    .reduce((sum, v) => sum + v, 0) / Math.min(atrHistory.length, VOLATILITY_CONFIG.averagePeriod);
+  // Calculate average ATR (use most recent values - array is sorted oldest to newest)
+  const recentAtr = atrHistory.slice(-VOLATILITY_CONFIG.averagePeriod);
+  const averageAtr = recentAtr.reduce((sum, v) => sum + v, 0) / recentAtr.length;
 
   // Calculate ratio
   let ratio = averageAtr > 0 ? currentAtr / averageAtr : 1.0;

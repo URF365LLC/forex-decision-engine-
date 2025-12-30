@@ -232,8 +232,8 @@ export async function analyzeSymbol(
     timestamp: now.toISOString(),
     validUntil: validUntil.toISOString(),
     validCandles: styleConfig.validCandles,
-    timeframes: getAssetClass(symbol) === 'metals' 
-      ? { trend: 'D1', entry: 'D1' }  // Metals use daily-only data
+    timeframes: getAssetClass(symbol) === 'metals'
+      ? { trend: 'D1', entry: 'D1' }  // Metals use daily-only (no intraday available)
       : { trend: styleConfig.trendTimeframe, entry: styleConfig.entryTimeframe },
     gating: {
       cooldownBlocked: !cooldownCheck.allowed && !options.skipCooldown,
@@ -463,7 +463,7 @@ function createErrorDecision(
     validUntil: now.toISOString(),
     validCandles: styleConfig.validCandles,
     timeframes: getAssetClass(symbol) === 'metals'
-      ? { trend: 'D1', entry: 'D1' }  // Metals use daily-only data
+      ? { trend: 'D1', entry: 'D1' }  // Metals use daily-only (no intraday available)
       : { trend: styleConfig.trendTimeframe, entry: styleConfig.entryTimeframe },
     gating: {
       cooldownBlocked: false,

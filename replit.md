@@ -81,7 +81,8 @@ Orchestrates trade signal generation:
 -   **Purpose**: Market data and technical indicators for Forex, Metals, and most Cryptocurrencies.
 -   **Configuration**: `ALPHAVANTAGE_API_KEY` environment variable.
 -   **Rate Limit**: 150 calls/minute (Premium tier for Forex/Crypto).
--   **Endpoints Used**: FX_INTRADAY, CRYPTO_INTRADAY, TIME_SERIES_DAILY, EMA, RSI, ADX, ATR, STOCH, WILLR, CCI, BBANDS, SMA.
+-   **Endpoints Used**: FX_INTRADAY, FX_DAILY (forex), CRYPTO_INTRADAY (crypto), TIME_SERIES_DAILY (metals), EMA, RSI, ADX, ATR, STOCH, WILLR, CCI, BBANDS, SMA.
+-   **Metals Limitation**: Alpha Vantage does NOT support intraday data for metals (XAUUSD, XAGUSD). TIME_SERIES_DAILY is used for both price data and indicators. Metals use D1/D1 timeframes only.
 
 ### KuCoin API
 -   **Purpose**: Fallback OHLCV data for BNBUSD and BCHUSD, which are not fully supported by Alpha Vantage.

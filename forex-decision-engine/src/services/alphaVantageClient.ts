@@ -98,6 +98,16 @@ class AlphaVantageClient {
   }
 
   /**
+   * Split metals symbol into from/to currencies
+   * XAUUSD -> XAU, USD  |  XAGUSD -> XAG, USD
+   */
+  private splitMetalsSymbol(symbol: string): { from: string; to: string } {
+    if (symbol === 'XAUUSD') return { from: 'XAU', to: 'USD' };
+    if (symbol === 'XAGUSD') return { from: 'XAG', to: 'USD' };
+    return { from: symbol.slice(0, 3), to: symbol.slice(3, 6) };
+  }
+
+  /**
    * Split crypto symbol into symbol/market
    */
   private splitCryptoSymbol(symbol: string): { symbol: string; market: string } {
@@ -131,19 +141,16 @@ class AlphaVantageClient {
     let data: Record<string, unknown>;
 
     if (assetClass === 'metals') {
-      if (interval === 'daily') {
-        data = await this.fetch({
-          function: 'TIME_SERIES_DAILY',
-          symbol,
-          outputsize: outputSize,
-        });
-      } else {
-        data = await this.fetch({
-          function: 'TIME_SERIES_INTRADAY',
-          symbol,
-          interval,
-          outputsize: outputSize,
-        });
+      // Metals only support daily data via TIME_SERIES_DAILY
+      // Alpha Vantage does not support intraday for XAUUSD/XAGUSD
+      data = await this.fetch({
+        function: 'TIME_SERIES_DAILY',
+        symbol,
+        outputsize: outputSize,
+      });
+      
+      if (interval !== 'daily') {
+        logger.warn(`Metals only support daily data, returning daily bars for ${symbol}`);
       }
     } else if (assetClass === 'forex') {
       const { from, to } = this.splitForexPair(symbol);
