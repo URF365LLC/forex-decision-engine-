@@ -92,6 +92,32 @@
       "id": "1767052443167-7n47gzslj",
       "createdAt": "2025-12-29T23:54:03.167Z",
       "updatedAt": "2025-12-29T23:54:03.167Z"
+    },
+    {
+      "source": "signal",
+      "symbol": "XRPUSD",
+      "direction": "short",
+      "style": "intraday",
+      "grade": "B+",
+      "strategyId": "triple-ema",
+      "strategyName": "Triple EMA Crossover",
+      "confidence": 70,
+      "reasonCodes": [
+        "EMA_BEARISH_STACK",
+        "EMA_PULLBACK",
+        "TREND_ALIGNED",
+        "RR_FAVORABLE"
+      ],
+      "tradeType": "pullback",
+      "action": "taken",
+      "entryPrice": 1.858,
+      "stopLoss": 1.86908,
+      "takeProfit": 1.83794,
+      "lots": 0.05,
+      "status": "pending",
+      "id": "1767072933527-n5czyimxl",
+      "createdAt": "2025-12-30T05:35:33.527Z",
+      "updatedAt": "2025-12-30T05:35:33.527Z"
     }
   ]
 }
