@@ -5,7 +5,7 @@
  * Formula: Position Size = Risk Amount / (Stop Loss Distance × Pip Value)
  */
 
-import { DEFAULTS, LOT_SIZES, PIP_VALUES } from '../config/defaults.js';
+import { DEFAULTS, LOT_SIZES, PIP_VALUES, getCryptoContractSize } from '../config/defaults.js';
 import { getPipDecimals, getAssetClass } from '../config/universe.js';
 import { createLogger } from '../services/logger.js';
 
@@ -43,51 +43,55 @@ export interface SizingInput {
 export function calculatePositionSize(input: SizingInput): PositionSize {
   const { symbol, entryPrice, stopLossPrice, accountSize, riskPercent } = input;
   
-  // Calculate risk amount in dollars
   const riskAmount = accountSize * (riskPercent / 100);
-  
-  // Calculate stop loss distance
   const stopLossDistance = Math.abs(entryPrice - stopLossPrice);
-  
-  // Get pip decimals for this symbol
-  const pipDecimals = getPipDecimals(symbol);
-  
-  // Calculate pips (for JPY pairs, 1 pip = 0.01, for others 1 pip = 0.0001)
-  const pipSize = pipDecimals === 2 ? 0.01 : 0.0001;
-  const stopLossPips = stopLossDistance / pipSize;
-  
-  // Calculate pip value per standard lot
-  // For USD quote pairs (EURUSD, GBPUSD): $10 per pip per lot
-  // For JPY pairs: need to convert
-  // For crypto: different calculation
   const assetClass = getAssetClass(symbol);
-  let pipValue: number = PIP_VALUES.standard;
   
-  if (symbol.endsWith('JPY')) {
-    // JPY pairs: pip value = (pip size / current price) × lot size
-    // Simplified: approximately $8-9 per pip per lot
-    pipValue = 8.5;
-  } else if (assetClass === 'crypto') {
-    // Crypto: much larger movements, adjust accordingly
-    // BTC: 1 pip = $0.01 × contract size
-    pipValue = 1; // Will be adjusted by lot size
-  }
-  
-  // Calculate position size in lots
-  // Formula: Risk Amount / (Stop Loss Pips × Pip Value)
   let lots = 0;
+  let pipValue: number = PIP_VALUES.standard;
+  let stopLossPips = 0;
+  let units = 0;
   
-  if (stopLossPips > 0 && pipValue > 0) {
-    lots = riskAmount / (stopLossPips * pipValue);
+  if (assetClass === 'crypto') {
+    const contractSize = getCryptoContractSize(symbol);
+    lots = riskAmount / (stopLossDistance * contractSize);
+    pipValue = contractSize;
+    stopLossPips = stopLossDistance;
+    units = lots * contractSize;
+    
+    logger.debug(`Crypto position sizing (E8 formula) for ${symbol}`, {
+      contractSize,
+      stopLossDistance,
+      riskAmount,
+      lots: Math.round(lots * 100) / 100,
+    });
+  } else {
+    const pipDecimals = getPipDecimals(symbol);
+    const pipSize = pipDecimals === 2 ? 0.01 : 0.0001;
+    stopLossPips = stopLossDistance / pipSize;
+    
+    if (symbol.endsWith('JPY')) {
+      pipValue = 8.5;
+    }
+    
+    if (stopLossPips > 0 && pipValue > 0) {
+      lots = riskAmount / (stopLossPips * pipValue);
+    }
+    
+    units = Math.round(lots * LOT_SIZES.standard);
+    
+    logger.debug(`Forex position sizing for ${symbol}`, {
+      entryPrice,
+      stopLossPrice,
+      stopLossPips,
+      pipValue,
+      riskAmount,
+      lots: Math.round(lots * 100) / 100,
+    });
   }
   
-  // Round to 2 decimal places (standard lot precision)
   lots = Math.round(lots * 100) / 100;
   
-  // Calculate units
-  const units = Math.round(lots * LOT_SIZES.standard);
-  
-  // Validate against E8 limits
   let isValid = true;
   let warning: string | null = null;
   
@@ -102,14 +106,6 @@ export function calculatePositionSize(input: SizingInput): PositionSize {
     lots = 0.01;
     isValid = false;
   }
-  
-  logger.debug(`Position sizing for ${symbol}`, {
-    entryPrice,
-    stopLossPrice,
-    stopLossPips,
-    riskAmount,
-    lots,
-  });
   
   return {
     lots,

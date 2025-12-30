@@ -20,6 +20,7 @@ import {
   calculatePips 
 } from './types.js';
 import { createLogger } from '../services/logger.js';
+import { getCryptoContractSize } from '../config/defaults.js';
 
 const logger = createLogger('StrategyUtils');
 
@@ -136,7 +137,8 @@ export function calculatePositionSize(
   accountSize: number,
   riskPercent: number,
   stopLossPips: number,
-  entryPrice: number
+  entryPrice: number,
+  stopLossPrice?: number
 ): PositionSizeResult {
   const warnings: string[] = [];
   let isValid = true;
@@ -151,23 +153,56 @@ export function calculatePositionSize(
     return { lots: 0, units: 0, riskAmount: 0, isApproximate: false, isValid: false, warnings: ['Invalid risk percent'] };
   }
   
-  if (!stopLossPips || stopLossPips <= 0 || !isFinite(stopLossPips)) {
-    logger.warn('Invalid stop loss pips for position sizing', { symbol, stopLossPips });
-    return { lots: 0, units: 0, riskAmount: 0, isApproximate: false, isValid: false, warnings: ['Invalid stop loss'] };
-  }
-  
   const riskAmount = accountSize * (riskPercent / 100);
-  const { pipValue } = getPipInfo(symbol);
   const isCrypto = ['BTC', 'ETH', 'SOL', 'XRP', 'ADA', 'BNB', 'BCH', 'LTC'].some(c => symbol.includes(c));
   
-  let effectivePipValue = pipValue;
-  if (symbol.endsWith('JPY')) {
-    effectivePipValue = 8.5;
-  } else if (isCrypto) {
-    effectivePipValue = 1;
-  }
+  let lots: number;
+  let isApproximate: boolean;
   
-  let lots = riskAmount / (stopLossPips * effectivePipValue);
+  if (isCrypto) {
+    const contractSize = getCryptoContractSize(symbol);
+    const stopDistance = stopLossPrice 
+      ? Math.abs(entryPrice - stopLossPrice)
+      : stopLossPips;
+    
+    if (!stopDistance || stopDistance <= 0 || !isFinite(stopDistance)) {
+      logger.warn('Invalid stop distance for crypto position sizing', { symbol, stopDistance });
+      return { lots: 0, units: 0, riskAmount: 0, isApproximate: false, isValid: false, warnings: ['Invalid stop distance'] };
+    }
+    
+    lots = riskAmount / (stopDistance * contractSize);
+    isApproximate = false;
+    
+    logger.debug('Crypto position size (E8 formula)', { 
+      symbol, 
+      contractSize, 
+      stopDistance, 
+      riskAmount, 
+      lots: Math.round(lots * 100) / 100 
+    });
+  } else {
+    if (!stopLossPips || stopLossPips <= 0 || !isFinite(stopLossPips)) {
+      logger.warn('Invalid stop loss pips for position sizing', { symbol, stopLossPips });
+      return { lots: 0, units: 0, riskAmount: 0, isApproximate: false, isValid: false, warnings: ['Invalid stop loss pips'] };
+    }
+    
+    const { pipValue } = getPipInfo(symbol);
+    let effectivePipValue = pipValue;
+    if (symbol.endsWith('JPY')) {
+      effectivePipValue = 8.5;
+    }
+    
+    lots = riskAmount / (stopLossPips * effectivePipValue);
+    isApproximate = true;
+    
+    logger.debug('Forex position size (pip-based)', { 
+      symbol, 
+      pipValue: effectivePipValue, 
+      stopLossPips, 
+      riskAmount, 
+      lots: Math.round(lots * 100) / 100 
+    });
+  }
   
   if (lots < 0.01) {
     warnings.push('Position size below minimum lot (0.01)');
@@ -182,10 +217,7 @@ export function calculatePositionSize(
   }
   
   lots = Math.round(lots * 100) / 100;
-  const units = Math.round(lots * 100000);
-  const isApproximate = !isCrypto;
-  
-  logger.debug('Position size calculated', { symbol, lots, stopLossPips, riskAmount, pipValue: effectivePipValue });
+  const units = isCrypto ? lots * getCryptoContractSize(symbol) : Math.round(lots * 100000);
   
   return { 
     lots, 
@@ -255,7 +287,8 @@ export function buildDecision(params: DecisionParams): Decision {
     settings.accountSize,
     settings.riskPercent,
     stopLossPips,
-    entryPrice
+    entryPrice,
+    stopLoss
   );
   
   const warnings: string[] = [];
