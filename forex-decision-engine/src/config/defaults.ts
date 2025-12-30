@@ -83,6 +83,25 @@ export const LOT_SIZES = {
 // Pip values per standard lot (for USD quote pairs)
 export const PIP_VALUES = {
   standard: 10,                // $10 per pip per standard lot
-  mini: 1,                     // $1 per pip per mini lot
-  micro: 0.1,                  // $0.10 per pip per micro lot
 } as const;
+
+// ═══════════════════════════════════════════════════════════════
+// CRYPTO CONTRACT SIZES (E8 Markets MT5)
+// 1 lot = X coins (source: E8 Markets contract specifications)
+// ═══════════════════════════════════════════════════════════════
+
+export const CRYPTO_CONTRACT_SIZES: Record<string, number> = {
+  BTCUSD: 1,       // 1 lot = 1 BTC
+  ETHUSD: 1,       // 1 lot = 1 ETH
+  LTCUSD: 1,       // 1 lot = 1 LTC
+  BCHUSD: 1,       // 1 lot = 1 BCH
+  SOLUSD: 1,       // 1 lot = 1 SOL
+  XRPUSD: 100,     // 1 lot = 100 XRP
+  ADAUSD: 100,     // 1 lot = 100 ADA
+  BNBUSD: 1,       // 1 lot = 1 BNB
+} as const;
+
+export function getCryptoContractSize(symbol: string): number {
+  const normalized = symbol.toUpperCase().replace(/[^A-Z]/g, '');
+  return CRYPTO_CONTRACT_SIZES[normalized] ?? 1;
+}
