@@ -181,13 +181,14 @@ class CacheService {
 // ═══════════════════════════════════════════════════════════════
 
 export const CACHE_TTL = {
-  H1: 60 * 60,
-  H4: 4 * 60 * 60,
-  D1: 24 * 60 * 60,
+  H1: 5 * 60,           // 5 minutes - optimized for premium API real-time data
+  H4: 30 * 60,          // 30 minutes - multiple checks per H4 candle
+  D1: 4 * 60 * 60,      // 4 hours - daily data is stable
   indicator: {
-    '60min': 60 * 60,
-    'daily': 24 * 60 * 60,
+    '60min': 5 * 60,    // 5 minutes for H1 indicators
+    'daily': 4 * 60 * 60, // 4 hours for daily indicators
   },
+  noTrade: 2 * 60,      // 2 minutes for no-trade decisions
   exchangeRate: 5 * 60,
 } as const;
 

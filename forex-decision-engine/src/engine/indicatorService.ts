@@ -32,6 +32,13 @@ export interface IndicatorData {
   rsi: IndicatorValue[];
   atr: IndicatorValue[];
   
+  // Additional indicators for multi-strategy system
+  stoch: { timestamp: string; k: number; d: number }[];
+  willr: IndicatorValue[];
+  cci: IndicatorValue[];
+  bbands: { timestamp: string; upper: number; middle: number; lower: number }[];
+  sma20: IndicatorValue[];
+  
   // Metadata
   fetchedAt: string;
   errors: string[];
@@ -67,6 +74,11 @@ export async function fetchIndicators(
     ema50: [],
     rsi: [],
     atr: [],
+    stoch: [],
+    willr: [],
+    cci: [],
+    bbands: [],
+    sma20: [],
     fetchedAt: new Date().toISOString(),
     errors: [],
   };
@@ -151,6 +163,50 @@ export async function fetchIndicators(
       logger.debug(`Got ${data.atr.length} ATR values for ${symbol}`);
     } catch (e) {
       errors.push(`ATR: ${e instanceof Error ? e.message : 'Unknown error'}`);
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // 4. ADDITIONAL INDICATORS FOR MULTI-STRATEGY SYSTEM
+    // ═══════════════════════════════════════════════════════════
+
+    // Stochastic Oscillator on 60min (for Stochastic Momentum strategy)
+    try {
+      data.stoch = await alphaVantage.getStochastic(symbol, '60min', 14, 3, 3);
+      logger.debug(`Got ${data.stoch.length} STOCH values for ${symbol}`);
+    } catch (e) {
+      errors.push(`STOCH: ${e instanceof Error ? e.message : 'Unknown error'}`);
+    }
+
+    // Williams %R on 60min (for Williams %R Reversal strategy)
+    try {
+      data.willr = await alphaVantage.getWilliamsR(symbol, '60min', 14);
+      logger.debug(`Got ${data.willr.length} WILLR values for ${symbol}`);
+    } catch (e) {
+      errors.push(`WILLR: ${e instanceof Error ? e.message : 'Unknown error'}`);
+    }
+
+    // CCI on 60min (for CCI Trend strategy)
+    try {
+      data.cci = await alphaVantage.getCCI(symbol, '60min', 20);
+      logger.debug(`Got ${data.cci.length} CCI values for ${symbol}`);
+    } catch (e) {
+      errors.push(`CCI: ${e instanceof Error ? e.message : 'Unknown error'}`);
+    }
+
+    // Bollinger Bands on 60min (for Bollinger Breakout strategy)
+    try {
+      data.bbands = await alphaVantage.getBBands(symbol, '60min', 20, 2, 2);
+      logger.debug(`Got ${data.bbands.length} BBANDS values for ${symbol}`);
+    } catch (e) {
+      errors.push(`BBANDS: ${e instanceof Error ? e.message : 'Unknown error'}`);
+    }
+
+    // SMA 20 on 60min (for Multi-Timeframe Alignment strategy)
+    try {
+      data.sma20 = await alphaVantage.getSMA(symbol, '60min', 20);
+      logger.debug(`Got ${data.sma20.length} SMA20 values for ${symbol}`);
+    } catch (e) {
+      errors.push(`SMA20: ${e instanceof Error ? e.message : 'Unknown error'}`);
     }
 
   } catch (e) {

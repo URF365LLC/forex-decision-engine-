@@ -23,10 +23,15 @@ import { createLogger } from '../services/logger.js';
 
 const logger = createLogger('StrategyAnalyzer');
 
-const DECISION_CACHE_TTL = 60 * 60;
+const DECISION_CACHE_TTL = 5 * 60;       // 5 minutes for actionable signals
+const NO_TRADE_CACHE_TTL = CACHE_TTL.noTrade;  // 2 minutes for no-trade decisions
 
 function makeDecisionCacheKey(symbol: string, strategyId: string): string {
   return `decision:${symbol}:${strategyId}`;
+}
+
+function makeNoTradeCacheKey(symbol: string, strategyId: string): string {
+  return `no-trade:${symbol}:${strategyId}`;
 }
 
 function convertToStrategyIndicatorData(
@@ -47,13 +52,28 @@ function convertToStrategyIndicatorData(
     return arr.map(v => v.value ?? 0);
   };
 
+  // Extract stochastic data (k and d values)
+  const stochData = oldData.stoch?.map(s => ({ k: s.k, d: s.d })) || [];
+  
+  // Extract Bollinger Bands data
+  const bbandsData = oldData.bbands?.map(b => ({ 
+    upper: b.upper, 
+    middle: b.middle, 
+    lower: b.lower 
+  })) || [];
+
   return {
     symbol,
     bars,
     ema20: extractValues(oldData.ema20),
     ema50: extractValues(oldData.ema50),
     ema200: extractValues(oldData.ema200),
+    sma20: extractValues(oldData.sma20),
     rsi: extractValues(oldData.rsi),
+    stoch: stochData,
+    willr: extractValues(oldData.willr),
+    cci: extractValues(oldData.cci),
+    bbands: bbandsData,
     atr: extractValues(oldData.atr),
     adx: extractValues(oldData.adx),
   };
@@ -76,12 +96,26 @@ export async function analyzeWithStrategy(
   
   logger.info(`Analyzing ${symbol} with strategy ${strategyId}`);
   
+  // Check for cached actionable decision first
   const cacheKey = makeDecisionCacheKey(symbol, strategyId);
   const cachedDecision = cache.get<StrategyDecision>(cacheKey);
   if (cachedDecision) {
     logger.debug(`Cache HIT for decision: ${symbol}:${strategyId}`);
     return {
       decision: cachedDecision,
+      fromCache: true,
+      strategyId,
+      errors: [],
+    };
+  }
+  
+  // Check for cached no-trade decision (shorter TTL to allow quick re-checks)
+  const noTradeCacheKey = makeNoTradeCacheKey(symbol, strategyId);
+  const cachedNoTrade = cache.get<StrategyDecision>(noTradeCacheKey);
+  if (cachedNoTrade) {
+    logger.debug(`Cache HIT for no-trade: ${symbol}:${strategyId}`);
+    return {
+      decision: cachedNoTrade,
       fromCache: true,
       strategyId,
       errors: [],
@@ -142,8 +176,14 @@ export async function analyzeWithStrategy(
       decision.timeframes = meta.timeframes;
     }
     
-    cache.set(cacheKey, decision, DECISION_CACHE_TTL);
-    logger.debug(`Cached decision: ${symbol}:${strategyId}`);
+    // Cache based on grade - actionable signals cached longer than no-trade
+    if (decision.grade === 'no-trade') {
+      cache.set(noTradeCacheKey, decision, NO_TRADE_CACHE_TTL);
+      logger.debug(`Cached no-trade decision: ${symbol}:${strategyId} (TTL: ${NO_TRADE_CACHE_TTL}s)`);
+    } else {
+      cache.set(cacheKey, decision, DECISION_CACHE_TTL);
+      logger.debug(`Cached actionable decision: ${symbol}:${strategyId}`);
+    }
   }
   
   const elapsed = Date.now() - startTime;
