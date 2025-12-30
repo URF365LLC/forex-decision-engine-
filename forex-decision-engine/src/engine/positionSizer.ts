@@ -42,6 +42,7 @@ export interface SizingInput {
 
 function getLeverage(symbol: string, assetClass: string): number {
   if (assetClass === 'crypto') return DEFAULTS.leverage.crypto;
+  if (assetClass === 'index') return DEFAULTS.leverage.indices;
   if (symbol.includes('XAU') || symbol.includes('XAG')) return DEFAULTS.leverage.metals;
   return DEFAULTS.leverage.forex;
 }
@@ -126,13 +127,15 @@ export function calculatePositionSize(input: SizingInput): PositionSize {
   if (marginLimited) {
     warning = `Position reduced to ${lots} lots (margin limit with ${leverage}:1 leverage)`;
     isValid = false;
+    if (lots < 0.01) {
+      warning = `Cannot trade: margin insufficient for minimum lot (need ${leverage}x more capital or use smaller position)`;
+      lots = 0;
+    }
   } else if (lots > DEFAULTS.risk.maxLotForex) {
     warning = `Position size ${lots} exceeds E8 max lot limit (${DEFAULTS.risk.maxLotForex})`;
     lots = DEFAULTS.risk.maxLotForex;
     isValid = false;
-  }
-  
-  if (lots < 0.01) {
+  } else if (lots < 0.01) {
     warning = 'Position size too small (minimum 0.01 lots)';
     lots = 0.01;
     isValid = false;
