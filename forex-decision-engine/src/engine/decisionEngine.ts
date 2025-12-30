@@ -10,7 +10,7 @@
 import { TradingStyle, getStyleConfig } from '../config/strategy.js';
 import { STRATEGY } from '../config/strategy.js';
 import { DEFAULTS } from '../config/defaults.js';
-import { getDisplayName, getPipDecimals } from '../config/universe.js';
+import { getDisplayName, getPipDecimals, getAssetClass } from '../config/universe.js';
 import { IndicatorData, getLatestValue, findSwingHigh, findSwingLow } from './indicatorService.js';
 import { getIndicators, AnyIndicatorData } from './indicatorFactory.js';
 import { analyzeTrend, TrendAnalysis, TrendDirection } from './trendFilter.js';
@@ -232,10 +232,9 @@ export async function analyzeSymbol(
     timestamp: now.toISOString(),
     validUntil: validUntil.toISOString(),
     validCandles: styleConfig.validCandles,
-    timeframes: {
-      trend: styleConfig.trendTimeframe,
-      entry: styleConfig.entryTimeframe,
-    },
+    timeframes: getAssetClass(symbol) === 'metals' 
+      ? { trend: 'D1', entry: 'D1' }  // Metals use daily-only data
+      : { trend: styleConfig.trendTimeframe, entry: styleConfig.entryTimeframe },
     gating: {
       cooldownBlocked: !cooldownCheck.allowed && !options.skipCooldown,
       volatilityBlocked: !volatilityCheck.allowed,
@@ -463,10 +462,9 @@ function createErrorDecision(
     timestamp: now.toISOString(),
     validUntil: now.toISOString(),
     validCandles: styleConfig.validCandles,
-    timeframes: {
-      trend: styleConfig.trendTimeframe,
-      entry: styleConfig.entryTimeframe,
-    },
+    timeframes: getAssetClass(symbol) === 'metals'
+      ? { trend: 'D1', entry: 'D1' }  // Metals use daily-only data
+      : { trend: styleConfig.trendTimeframe, entry: styleConfig.entryTimeframe },
     gating: {
       cooldownBlocked: false,
       volatilityBlocked: false,

@@ -25,6 +25,7 @@ export async function getIndicators(
     return fetchCryptoIndicators(symbol, style);
   }
   
+  // Forex and metals use Alpha Vantage indicator endpoints
   return fetchIndicators(symbol, style);
 }
 

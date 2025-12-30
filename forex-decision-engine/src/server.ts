@@ -17,7 +17,7 @@ import cors from 'cors';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
-import { FOREX_SYMBOLS, CRYPTO_SYMBOLS, DEFAULT_WATCHLIST, SYMBOL_META } from './config/universe.js';
+import { FOREX_SYMBOLS, METALS_SYMBOLS, CRYPTO_SYMBOLS, DEFAULT_WATCHLIST, SYMBOL_META } from './config/universe.js';
 import { DEFAULTS, RISK_OPTIONS } from './config/defaults.js';
 import { STYLE_PRESETS } from './config/strategy.js';
 import { analyzeSymbol, scanSymbols, UserSettings, Decision } from './engine/decisionEngine.js';
@@ -114,6 +114,7 @@ app.get('/api/health', (req, res) => {
 app.get('/api/universe', (req, res) => {
   res.json({
     forex: FOREX_SYMBOLS,
+    metals: METALS_SYMBOLS,
     crypto: CRYPTO_SYMBOLS,
     defaultWatchlist: DEFAULT_WATCHLIST,
     metadata: SYMBOL_META,
@@ -630,7 +631,7 @@ app.listen(PORT, () => {
   logger.info(`🎯 Forex Decision Engine v1.0.0`);
   logger.info(`📡 Server running on port ${PORT}`);
   logger.info(`🔑 API Key: ${process.env.ALPHAVANTAGE_API_KEY ? 'Configured' : 'NOT CONFIGURED'}`);
-  logger.info(`📊 Symbols: ${FOREX_SYMBOLS.length} forex, ${CRYPTO_SYMBOLS.length} crypto`);
+  logger.info(`📊 Symbols: ${FOREX_SYMBOLS.length} forex, ${METALS_SYMBOLS.length} metals, ${CRYPTO_SYMBOLS.length} crypto`);
 });
 
 // Graceful shutdown
