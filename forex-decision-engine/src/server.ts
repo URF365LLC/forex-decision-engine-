@@ -30,6 +30,7 @@ import { journalStore, TradeJournalEntry, JournalFilters } from './storage/journ
 import { cache } from './services/cache.js';
 import { rateLimiter } from './services/rateLimiter.js';
 import { createLogger } from './services/logger.js';
+import { gradeTracker } from './services/gradeTracker.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -490,6 +491,57 @@ app.delete('/api/journal/:id', (req, res) => {
       error: error instanceof Error ? error.message : 'Failed to delete journal entry' 
     });
   }
+});
+
+// ═══════════════════════════════════════════════════════════════
+// GRADE UPGRADE SSE ENDPOINT
+// ═══════════════════════════════════════════════════════════════
+
+const sseClients = new Set<express.Response>();
+
+/**
+ * SSE endpoint for real-time grade upgrade notifications
+ */
+app.get('/api/upgrades/stream', (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  
+  res.write('data: {"type":"connected"}\n\n');
+  
+  sseClients.add(res);
+  logger.debug(`SSE client connected (${sseClients.size} total)`);
+  
+  const heartbeat = setInterval(() => {
+    res.write('data: {"type":"heartbeat"}\n\n');
+  }, 30000);
+  
+  req.on('close', () => {
+    clearInterval(heartbeat);
+    sseClients.delete(res);
+    logger.debug(`SSE client disconnected (${sseClients.size} remaining)`);
+  });
+});
+
+gradeTracker.onUpgrade((upgrade) => {
+  const data = JSON.stringify({ type: 'upgrade', upgrade });
+  for (const client of sseClients) {
+    try {
+      client.write(`data: ${data}\n\n`);
+    } catch (e) {
+      sseClients.delete(client);
+    }
+  }
+});
+
+/**
+ * Get recent grade upgrades
+ */
+app.get('/api/upgrades/recent', (req, res) => {
+  const minutes = parseInt(req.query.minutes as string) || 60;
+  const upgrades = gradeTracker.getRecentUpgrades(minutes);
+  res.json({ upgrades, count: upgrades.length });
 });
 
 // ═══════════════════════════════════════════════════════════════

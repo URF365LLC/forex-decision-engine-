@@ -15,11 +15,16 @@ import {
   IndicatorData as StrategyIndicatorData, 
   Decision as StrategyDecision,
   UserSettings,
-  Bar 
+  Bar,
+  GatingInfo,
+  VolatilityLevel
 } from '../strategies/types.js';
 import { getDisplayName } from '../config/universe.js';
 import { cache, CACHE_TTL } from '../services/cache.js';
 import { createLogger } from '../services/logger.js';
+import { signalCooldown, CooldownCheck } from '../services/signalCooldown.js';
+import { checkVolatility, VolatilityCheck } from '../services/volatilityGate.js';
+import { gradeTracker } from '../services/gradeTracker.js';
 
 const logger = createLogger('StrategyAnalyzer');
 
@@ -79,6 +84,12 @@ function convertToStrategyIndicatorData(
   };
 }
 
+export interface AnalysisOptions {
+  skipCooldown?: boolean;
+  skipCache?: boolean;
+  skipVolatility?: boolean;
+}
+
 export interface StrategyAnalysisResult {
   decision: StrategyDecision | null;
   fromCache: boolean;
@@ -89,37 +100,40 @@ export interface StrategyAnalysisResult {
 export async function analyzeWithStrategy(
   symbol: string,
   strategyId: string,
-  settings: UserSettings
+  settings: UserSettings,
+  options: AnalysisOptions = {}
 ): Promise<StrategyAnalysisResult> {
   const startTime = Date.now();
   const errors: string[] = [];
   
   logger.info(`Analyzing ${symbol} with strategy ${strategyId}`);
   
-  // Check for cached actionable decision first
-  const cacheKey = makeDecisionCacheKey(symbol, strategyId);
-  const cachedDecision = cache.get<StrategyDecision>(cacheKey);
-  if (cachedDecision) {
-    logger.debug(`Cache HIT for decision: ${symbol}:${strategyId}`);
-    return {
-      decision: cachedDecision,
-      fromCache: true,
-      strategyId,
-      errors: [],
-    };
-  }
-  
-  // Check for cached no-trade decision (shorter TTL to allow quick re-checks)
-  const noTradeCacheKey = makeNoTradeCacheKey(symbol, strategyId);
-  const cachedNoTrade = cache.get<StrategyDecision>(noTradeCacheKey);
-  if (cachedNoTrade) {
-    logger.debug(`Cache HIT for no-trade: ${symbol}:${strategyId}`);
-    return {
-      decision: cachedNoTrade,
-      fromCache: true,
-      strategyId,
-      errors: [],
-    };
+  // Check for cached actionable decision first (skip if force refresh)
+  if (!options.skipCache) {
+    const cacheKey = makeDecisionCacheKey(symbol, strategyId);
+    const cachedDecision = cache.get<StrategyDecision>(cacheKey);
+    if (cachedDecision) {
+      logger.debug(`Cache HIT for decision: ${symbol}:${strategyId}`);
+      return {
+        decision: cachedDecision,
+        fromCache: true,
+        strategyId,
+        errors: [],
+      };
+    }
+    
+    // Check for cached no-trade decision (shorter TTL to allow quick re-checks)
+    const noTradeCacheKey = makeNoTradeCacheKey(symbol, strategyId);
+    const cachedNoTrade = cache.get<StrategyDecision>(noTradeCacheKey);
+    if (cachedNoTrade) {
+      logger.debug(`Cache HIT for no-trade: ${symbol}:${strategyId}`);
+      return {
+        decision: cachedNoTrade,
+        fromCache: true,
+        strategyId,
+        errors: [],
+      };
+    }
   }
   
   const strategy = strategyRegistry.get(strategyId);
@@ -176,18 +190,114 @@ export async function analyzeWithStrategy(
       decision.timeframes = meta.timeframes;
     }
     
-    // Cache based on grade - actionable signals cached longer than no-trade
-    if (decision.grade === 'no-trade') {
-      cache.set(noTradeCacheKey, decision, NO_TRADE_CACHE_TTL);
-      logger.debug(`Cached no-trade decision: ${symbol}:${strategyId} (TTL: ${NO_TRADE_CACHE_TTL}s)`);
-    } else {
-      cache.set(cacheKey, decision, DECISION_CACHE_TTL);
-      logger.debug(`Cached actionable decision: ${symbol}:${strategyId}`);
+    // ════════════════════════════════════════════════════════════════════════════
+    // SAFETY GATE CHECKS
+    // ════════════════════════════════════════════════════════════════════════════
+    
+    const direction = decision.direction;
+    const grade = decision.grade;
+    
+    // 1. VOLATILITY GATE CHECK
+    const atrValues = oldIndicators.atr?.map(v => v.value).filter((v): v is number => v !== null) || [];
+    const currentAtr = atrValues.length > 0 ? atrValues[atrValues.length - 1] : 0;
+    
+    let volatilityCheck: VolatilityCheck = { 
+      allowed: true, 
+      level: 'normal' as VolatilityLevel, 
+      currentAtr, 
+      averageAtr: currentAtr, 
+      ratio: 1, 
+      reason: '' 
+    };
+    
+    if (!options.skipVolatility && atrValues.length >= 5) {
+      volatilityCheck = checkVolatility(symbol, currentAtr, atrValues);
+    }
+    
+    // 2. COOLDOWN CHECK (only if we have a trade signal)
+    let cooldownCheck: CooldownCheck = { allowed: true, reason: '' };
+    if (grade !== 'no-trade' && !options.skipCooldown) {
+      cooldownCheck = signalCooldown.check(symbol, settings.style, direction, grade);
+    }
+    
+    // 3. BUILD GATING INFO
+    const gating: GatingInfo = {
+      cooldownBlocked: !cooldownCheck.allowed,
+      cooldownReason: cooldownCheck.reason || undefined,
+      volatilityBlocked: !volatilityCheck.allowed,
+      volatilityLevel: volatilityCheck.level as VolatilityLevel,
+      volatilityReason: volatilityCheck.reason || undefined,
+    };
+    
+    decision.gating = gating;
+    
+    // 4. APPLY GATING - Volatility takes precedence
+    let isBlocked = false;
+    const originalReason = decision.reason;
+    
+    if (!volatilityCheck.allowed && grade !== 'no-trade') {
+      decision.reason = `${volatilityCheck.reason} (Original: ${originalReason})`;
+      isBlocked = true;
+      logger.info(`${symbol}/${strategyId}: Blocked by volatility gate - ${volatilityCheck.reason}`);
+    } else if (!cooldownCheck.allowed && grade !== 'no-trade') {
+      decision.reason = `${cooldownCheck.reason} (Original: ${originalReason})`;
+      isBlocked = true;
+      logger.info(`${symbol}/${strategyId}: Blocked by cooldown - ${cooldownCheck.reason}`);
+    }
+    
+    // 5. RECORD SIGNAL IN COOLDOWN (only if not blocked by volatility or cooldown)
+    if (!isBlocked && grade !== 'no-trade') {
+      signalCooldown.record(
+        symbol,
+        settings.style,
+        direction,
+        grade,
+        decision.validUntil
+      );
+    }
+    
+    // ════════════════════════════════════════════════════════════════════════════
+    // GRADE UPGRADE DETECTION
+    // ════════════════════════════════════════════════════════════════════════════
+    
+    // Always track grades to detect no-trade → trade transitions
+    // Only attach upgrade info if not blocked
+    const upgrade = gradeTracker.updateGrade(
+      symbol,
+      strategyId,
+      decision.strategyName,
+      decision.grade,
+      decision.direction
+    );
+    
+    if (upgrade && !isBlocked) {
+      decision.upgrade = upgrade;
+    }
+    
+    // ════════════════════════════════════════════════════════════════════════════
+    // CACHE DECISION
+    // ════════════════════════════════════════════════════════════════════════════
+    
+    const cacheKey = makeDecisionCacheKey(symbol, strategyId);
+    const noTradeCacheKey = makeNoTradeCacheKey(symbol, strategyId);
+    
+    if (!options.skipCache) {
+      // Don't cache blocked decisions as actionable - treat them as no-trade for caching
+      if (decision.grade === 'no-trade' || isBlocked) {
+        cache.set(noTradeCacheKey, decision, NO_TRADE_CACHE_TTL);
+        logger.debug(`Cached no-trade/blocked decision: ${symbol}:${strategyId} (TTL: ${NO_TRADE_CACHE_TTL}s)`);
+      } else {
+        cache.set(cacheKey, decision, DECISION_CACHE_TTL);
+        logger.debug(`Cached actionable decision: ${symbol}:${strategyId}`);
+      }
     }
   }
   
   const elapsed = Date.now() - startTime;
-  logger.info(`Strategy analysis complete for ${symbol}: ${decision?.grade || 'no-trade'} (${elapsed}ms)`);
+  const gatingTags = decision?.gating 
+    ? `${decision.gating.cooldownBlocked ? ' [COOLDOWN]' : ''}${decision.gating.volatilityBlocked ? ' [VOL-BLOCKED]' : ''}`
+    : '';
+  logger.info(`Strategy analysis complete for ${symbol}: ${decision?.grade || 'no-trade'} (${elapsed}ms)${gatingTags}`);
   
   return {
     decision,

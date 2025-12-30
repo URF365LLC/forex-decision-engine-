@@ -15,6 +15,7 @@ const App = {
   currentTradeData: null,
   selectedStrategy: localStorage.getItem('selectedStrategy') || 'ema-pullback-intra',
   strategies: [],
+  upgradeEventSource: null,
 
   /**
    * Initialize the application
@@ -46,8 +47,71 @@ const App = {
 
     // Check API health
     this.checkHealth();
+    
+    // Connect to upgrade notifications
+    this.connectUpgradeStream();
 
     console.log('✅ Application initialized');
+  },
+  
+  /**
+   * Connect to SSE stream for grade upgrade notifications
+   */
+  connectUpgradeStream() {
+    if (this.upgradeEventSource) {
+      this.upgradeEventSource.close();
+    }
+    
+    this.upgradeEventSource = new EventSource('/api/upgrades/stream');
+    
+    this.upgradeEventSource.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.type === 'upgrade') {
+          this.showUpgradeNotification(data.upgrade);
+        }
+      } catch (e) {
+        console.error('Failed to parse upgrade event:', e);
+      }
+    };
+    
+    this.upgradeEventSource.onerror = (e) => {
+      console.warn('Upgrade stream error, will reconnect...');
+      setTimeout(() => this.connectUpgradeStream(), 5000);
+    };
+  },
+  
+  /**
+   * Show upgrade notification in UI
+   */
+  showUpgradeNotification(upgrade) {
+    const container = document.getElementById('upgrade-notifications');
+    if (!container) return;
+    
+    const icon = upgrade.upgradeType === 'new-signal' ? '🆕' 
+               : upgrade.upgradeType === 'grade-improvement' ? '⬆️' 
+               : '🔄';
+    
+    const notification = document.createElement('div');
+    notification.className = `upgrade-notification ${upgrade.upgradeType}`;
+    notification.innerHTML = `
+      <span class="upgrade-notification-icon">${icon}</span>
+      <div class="upgrade-notification-content">
+        <div class="upgrade-notification-symbol">${upgrade.symbol}</div>
+        <div class="upgrade-notification-message">${upgrade.message}</div>
+      </div>
+      <button class="upgrade-notification-close" onclick="this.parentElement.remove()">×</button>
+    `;
+    
+    container.appendChild(notification);
+    
+    // Auto-remove after 10 seconds
+    setTimeout(() => {
+      if (notification.parentElement) {
+        notification.style.animation = 'slideOut 0.3s ease-out forwards';
+        setTimeout(() => notification.remove(), 300);
+      }
+    }, 10000);
   },
   
   /**
