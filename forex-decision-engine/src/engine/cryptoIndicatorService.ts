@@ -33,6 +33,13 @@ export interface CryptoIndicatorData {
   adx: IndicatorValue[];
   atr: IndicatorValue[];
   
+  // Additional indicators for multi-strategy system
+  stoch: { timestamp: string; k: number; d: number }[];
+  willr: IndicatorValue[];
+  cci: IndicatorValue[];
+  bbands: { timestamp: string; upper: number; middle: number; lower: number }[];
+  sma20: IndicatorValue[];
+  
   errors: string[];
   fetchedAt: string;
 }
@@ -129,6 +136,122 @@ function calculateATR(bars: OHLCVBar[], period: number = 14): IndicatorValue[] {
   return results;
 }
 
+function calculateSMA(bars: OHLCVBar[], period: number): IndicatorValue[] {
+  if (bars.length < period) return [];
+  
+  const results: IndicatorValue[] = [];
+  
+  for (let i = 0; i < period - 1; i++) {
+    results.push({ timestamp: bars[i].timestamp, value: 0 });
+  }
+  
+  for (let i = period - 1; i < bars.length; i++) {
+    const sum = bars.slice(i - period + 1, i + 1).reduce((acc, b) => acc + b.close, 0);
+    results.push({ timestamp: bars[i].timestamp, value: sum / period });
+  }
+  
+  return results;
+}
+
+function calculateStochastic(bars: OHLCVBar[], kPeriod: number = 14, dPeriod: number = 3): { timestamp: string; k: number; d: number }[] {
+  if (bars.length < kPeriod + dPeriod) return [];
+  
+  const results: { timestamp: string; k: number; d: number }[] = [];
+  const kValues: number[] = [];
+  
+  for (let i = kPeriod - 1; i < bars.length; i++) {
+    const window = bars.slice(i - kPeriod + 1, i + 1);
+    const high = Math.max(...window.map(b => b.high));
+    const low = Math.min(...window.map(b => b.low));
+    const close = bars[i].close;
+    
+    const k = high === low ? 50 : ((close - low) / (high - low)) * 100;
+    kValues.push(k);
+  }
+  
+  for (let i = 0; i < kPeriod - 1 + dPeriod - 1; i++) {
+    results.push({ timestamp: bars[i].timestamp, k: 50, d: 50 });
+  }
+  
+  for (let i = dPeriod - 1; i < kValues.length; i++) {
+    const d = kValues.slice(i - dPeriod + 1, i + 1).reduce((a, b) => a + b, 0) / dPeriod;
+    results.push({ timestamp: bars[kPeriod - 1 + i].timestamp, k: kValues[i], d });
+  }
+  
+  return results;
+}
+
+function calculateWilliamsR(bars: OHLCVBar[], period: number = 14): IndicatorValue[] {
+  if (bars.length < period) return [];
+  
+  const results: IndicatorValue[] = [];
+  
+  for (let i = 0; i < period - 1; i++) {
+    results.push({ timestamp: bars[i].timestamp, value: -50 });
+  }
+  
+  for (let i = period - 1; i < bars.length; i++) {
+    const window = bars.slice(i - period + 1, i + 1);
+    const high = Math.max(...window.map(b => b.high));
+    const low = Math.min(...window.map(b => b.low));
+    const close = bars[i].close;
+    
+    const willr = high === low ? -50 : ((high - close) / (high - low)) * -100;
+    results.push({ timestamp: bars[i].timestamp, value: willr });
+  }
+  
+  return results;
+}
+
+function calculateCCI(bars: OHLCVBar[], period: number = 20): IndicatorValue[] {
+  if (bars.length < period) return [];
+  
+  const results: IndicatorValue[] = [];
+  
+  for (let i = 0; i < period - 1; i++) {
+    results.push({ timestamp: bars[i].timestamp, value: 0 });
+  }
+  
+  for (let i = period - 1; i < bars.length; i++) {
+    const window = bars.slice(i - period + 1, i + 1);
+    const typicalPrices = window.map(b => (b.high + b.low + b.close) / 3);
+    const sma = typicalPrices.reduce((a, b) => a + b, 0) / period;
+    const meanDeviation = typicalPrices.reduce((a, b) => a + Math.abs(b - sma), 0) / period;
+    
+    const tp = (bars[i].high + bars[i].low + bars[i].close) / 3;
+    const cci = meanDeviation === 0 ? 0 : (tp - sma) / (0.015 * meanDeviation);
+    results.push({ timestamp: bars[i].timestamp, value: cci });
+  }
+  
+  return results;
+}
+
+function calculateBBands(bars: OHLCVBar[], period: number = 20, stdDev: number = 2): { timestamp: string; upper: number; middle: number; lower: number }[] {
+  if (bars.length < period) return [];
+  
+  const results: { timestamp: string; upper: number; middle: number; lower: number }[] = [];
+  
+  for (let i = 0; i < period - 1; i++) {
+    results.push({ timestamp: bars[i].timestamp, upper: 0, middle: 0, lower: 0 });
+  }
+  
+  for (let i = period - 1; i < bars.length; i++) {
+    const window = bars.slice(i - period + 1, i + 1).map(b => b.close);
+    const sma = window.reduce((a, b) => a + b, 0) / period;
+    const variance = window.reduce((a, b) => a + Math.pow(b - sma, 2), 0) / period;
+    const std = Math.sqrt(variance);
+    
+    results.push({
+      timestamp: bars[i].timestamp,
+      upper: sma + stdDev * std,
+      middle: sma,
+      lower: sma - stdDev * std,
+    });
+  }
+  
+  return results;
+}
+
 function calculateADX(bars: OHLCVBar[], period: number = 14): IndicatorValue[] {
   if (bars.length < period * 2) return [];
   
@@ -215,6 +338,11 @@ export async function fetchCryptoIndicators(
     rsi: [],
     adx: [],
     atr: [],
+    stoch: [],
+    willr: [],
+    cci: [],
+    bbands: [],
+    sma20: [],
     errors: [],
     fetchedAt: new Date().toISOString(),
   };
@@ -254,6 +382,13 @@ export async function fetchCryptoIndicators(
     data.rsi = calculateRSI(entryBars, STRATEGY.entry.rsi.period);
     data.adx = calculateADX(entryBars, STRATEGY.trend.adx.period);
     data.atr = calculateATR(entryBars, STRATEGY.stopLoss.atr.period);
+    
+    // Additional indicators for multi-strategy system
+    data.stoch = calculateStochastic(entryBars, 14, 3);
+    data.willr = calculateWilliamsR(entryBars, 14);
+    data.cci = calculateCCI(entryBars, 20);
+    data.bbands = calculateBBands(entryBars, 20, 2);
+    data.sma20 = calculateSMA(entryBars, 20);
     
     logger.info(`Crypto indicators computed for ${symbol}: ${entryBars.length} bars`);
     

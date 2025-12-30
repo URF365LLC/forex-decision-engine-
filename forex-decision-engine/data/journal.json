@@ -75,6 +75,23 @@
       "id": "1767038885092-vo9bulvet",
       "createdAt": "2025-12-29T20:08:05.092Z",
       "updatedAt": "2025-12-29T20:08:05.092Z"
+    },
+    {
+      "source": "signal",
+      "symbol": "XRPUSD",
+      "direction": "short",
+      "style": "intraday",
+      "grade": "C",
+      "tradeType": "pullback",
+      "action": "taken",
+      "entryPrice": 1.8523,
+      "stopLoss": 1.86739,
+      "takeProfit": 1.81433,
+      "lots": 0.03,
+      "status": "pending",
+      "id": "1767052443167-7n47gzslj",
+      "createdAt": "2025-12-29T23:54:03.167Z",
+      "updatedAt": "2025-12-29T23:54:03.167Z"
     }
   ]
 }

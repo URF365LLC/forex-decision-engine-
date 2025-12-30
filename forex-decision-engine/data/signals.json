@@ -4787,7 +4787,61 @@
       "valid_until": "2025-12-30T03:22:47.299Z",
       "result": null,
       "result_notes": null
+    },
+    {
+      "id": 267,
+      "symbol": "XRPUSD",
+      "style": "intraday",
+      "direction": "short",
+      "grade": "C",
+      "entry_low": null,
+      "entry_high": null,
+      "stop_loss": 1.8673858106159729,
+      "take_profit": 1.814328378768054,
+      "position_lots": 0.03,
+      "risk_amount": 50,
+      "reason": "Support at 1.85230 broken. Price retested broken support as resistance. Bearish candle confirmation",
+      "created_at": "2025-12-29T23:49:19.135Z",
+      "valid_until": "2025-12-30T03:49:19.135Z",
+      "result": null,
+      "result_notes": null
+    },
+    {
+      "id": 268,
+      "symbol": "XRPUSD",
+      "style": "intraday",
+      "direction": "short",
+      "grade": "C",
+      "entry_low": null,
+      "entry_high": null,
+      "stop_loss": 1.8673858106159729,
+      "take_profit": 1.814328378768054,
+      "position_lots": 0.03,
+      "risk_amount": 50,
+      "reason": "Support at 1.85230 broken. Price retested broken support as resistance. Bearish candle confirmation",
+      "created_at": "2025-12-29T23:49:19.135Z",
+      "valid_until": "2025-12-30T03:49:19.135Z",
+      "result": null,
+      "result_notes": null
+    },
+    {
+      "id": 269,
+      "symbol": "LTCUSD",
+      "style": "intraday",
+      "direction": "short",
+      "grade": "C",
+      "entry_low": null,
+      "entry_high": null,
+      "stop_loss": 78.6560543294224,
+      "take_profit": 77.1978913411552,
+      "position_lots": 0,
+      "risk_amount": 50,
+      "reason": "EMA8 < EMA21 < EMA55 (bearish stack). Price pulled back to EMA21 and closed below. Bearish candle confirmation",
+      "created_at": "2025-12-30T01:17:59.891Z",
+      "valid_until": "2025-12-30T05:17:59.891Z",
+      "result": null,
+      "result_notes": null
     }
   ],
-  "nextId": 267
+  "nextId": 270
 }
