@@ -24,7 +24,7 @@ import { analyzeSymbol, scanSymbols, UserSettings, Decision } from './engine/dec
 import { scanWithStrategy, clearStrategyCache } from './engine/strategyAnalyzer.js';
 import { strategyRegistry } from './strategies/index.js';
 import { Decision as StrategyDecision } from './strategies/types.js';
-import { validateSettings, validateSymbol, validateSymbols } from './utils/validation.js';
+import { validateSettings, validateSymbol, validateSymbols, validateJournalUpdate, sanitizeNotes } from './utils/validation.js';
 import { signalStore } from './storage/signalStore.js';
 import { journalStore, TradeJournalEntry, JournalFilters } from './storage/journalStore.js';
 import { cache } from './services/cache.js';
@@ -39,7 +39,40 @@ const logger = createLogger('Server');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-let scanInProgress = false;
+const activeScans = new Map<string, { startedAt: number; symbolCount: number }>();
+const MAX_CONCURRENT_SCANS = 3;
+const SCAN_TIMEOUT_MS = 5 * 60 * 1000;
+
+function acquireScanLock(strategyId: string, symbolCount: number): boolean {
+  const now = Date.now();
+  for (const [id, scan] of activeScans.entries()) {
+    if (now - scan.startedAt > SCAN_TIMEOUT_MS) {
+      logger.warn(`Releasing stale scan lock for ${id}`);
+      activeScans.delete(id);
+    }
+  }
+  
+  if (activeScans.has(strategyId)) {
+    logger.warn(`Scan already in progress for ${strategyId}`);
+    return false;
+  }
+  
+  if (activeScans.size >= MAX_CONCURRENT_SCANS) {
+    logger.warn(`Max concurrent scans (${MAX_CONCURRENT_SCANS}) reached`);
+    return false;
+  }
+  
+  activeScans.set(strategyId, { startedAt: now, symbolCount });
+  return true;
+}
+
+function releaseScanLock(strategyId: string): void {
+  activeScans.delete(strategyId);
+}
+
+function isScanInProgress(strategyId: string): boolean {
+  return activeScans.has(strategyId);
+}
 
 // ═══════════════════════════════════════════════════════════════
 // MIDDLEWARE
@@ -178,29 +211,44 @@ app.post('/api/analyze', async (req, res) => {
  * Scan multiple symbols
  */
 app.post('/api/scan', async (req, res) => {
-  if (scanInProgress) {
-    return res.status(429).json({ error: 'Scan already in progress. Please wait.' });
+  const { symbols, settings, strategyId, force } = req.body;
+  const lockKey = strategyId || 'default';
+  
+  if (isScanInProgress(lockKey)) {
+    if (force) {
+      logger.info(`Force releasing existing scan lock for ${lockKey}`);
+      releaseScanLock(lockKey);
+    } else {
+      return res.status(409).json({ 
+        error: 'scan_in_progress',
+        message: `Scan already in progress for strategy: ${lockKey}. Please wait.`,
+        strategyId: lockKey,
+      });
+    }
   }
   
-  scanInProgress = true;
+  // Validate inputs before acquiring lock
+  const symbolsResult = validateSymbols(symbols);
+  if (!symbolsResult.valid) {
+    return res.status(400).json({ error: symbolsResult.errors.join(', ') });
+  }
+  
+  const settingsResult = validateSettings(settings);
+  if (!settingsResult.valid) {
+    return res.status(400).json({ error: settingsResult.errors.join(', ') });
+  }
+  
+  const sanitizedSymbols = symbolsResult.sanitized as string[];
+  
+  if (!acquireScanLock(lockKey, sanitizedSymbols.length)) {
+    return res.status(429).json({ 
+      error: 'too_many_scans',
+      message: `Maximum concurrent scans (${MAX_CONCURRENT_SCANS}) reached. Please wait.`,
+    });
+  }
   
   try {
-    const { symbols, settings, strategyId } = req.body;
-    
-    // Validate symbols
-    const symbolsResult = validateSymbols(symbols);
-    if (!symbolsResult.valid) {
-      return res.status(400).json({ error: symbolsResult.errors.join(', ') });
-    }
-    
-    // Validate settings
-    const settingsResult = validateSettings(settings);
-    if (!settingsResult.valid) {
-      return res.status(400).json({ error: settingsResult.errors.join(', ') });
-    }
-    
     const userSettings = settingsResult.sanitized as UserSettings;
-    const sanitizedSymbols = symbolsResult.sanitized as string[];
     
     // Use strategy-specific scanning if strategyId provided
     let decisions: (Decision | StrategyDecision)[];
@@ -237,7 +285,7 @@ app.post('/api/scan', async (req, res) => {
       error: error instanceof Error ? error.message : 'Scan failed' 
     });
   } finally {
-    scanInProgress = false;
+    releaseScanLock(lockKey);
   }
 });
 
@@ -440,6 +488,19 @@ app.get('/api/journal/:id', (req, res) => {
 app.put('/api/journal/:id', (req, res) => {
   try {
     const updates = req.body;
+    
+    const validationErrors = validateJournalUpdate(updates);
+    if (validationErrors.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Validation failed',
+        errors: validationErrors,
+      });
+    }
+    
+    if (updates.notes) {
+      updates.notes = sanitizeNotes(updates.notes);
+    }
     
     if (updates.status === 'closed' && updates.exitPrice) {
       const existing = journalStore.get(req.params.id);
