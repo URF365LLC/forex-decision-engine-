@@ -1,0 +1,597 @@
+Boom — now that you’ve shown `indicatorService.ts` **and** the conversion layer in `strategyAnalyzer.ts`, the migration becomes *clean and minimal*:
+
+* **We do NOT change** `strategyAnalyzer.ts` (it already strips timestamps → `number[]`). 
+* **We do NOT change** strategies (they still receive aligned `number[]`). 
+* We **only swap the client** used by `indicatorService.ts` (Alpha → Twelve), and keep Alpha as backup. 
+
+Below is the exact deliverable you need: a **drop-in Twelve client** that matches the Alpha client interface used by `indicatorService.ts`, including **MACD** and your interval mapping.
+
+---
+
+# 1) CREATE: `src/services/twelveDataClient.ts`
+
+```ts
+/**
+ * Twelve Data API Client (drop-in replacement for AlphaVantage client)
+ * - Returns timestamped series: { timestamp, value }[]
+ * - StrategyAnalyzer strips timestamps -> number[] (no change needed)
+ * - Keeps caching + rate limiting pattern similar to alphaVantageClient
+ *
+ * NOTE: Arrays should be oldest -> newest, matching existing expectations.
+ */
+
+import { rateLimiter } from './rateLimiter.js';
+import { cache, CacheService, CACHE_TTL } from './cache.js';
+import { createLogger } from './logger.js';
+
+const logger = createLogger('TwelveDataClient');
+
+export interface OHLCVBar {
+  timestamp: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+}
+
+export interface IndicatorValue {
+  timestamp: string;
+  value: number | null;
+}
+
+export interface StochValue {
+  timestamp: string;
+  k: number;
+  d: number;
+}
+
+export interface BBandsValue {
+  timestamp: string;
+  upper: number;
+  middle: number;
+  lower: number;
+}
+
+export interface MACDValue {
+  timestamp: string;
+  macd: number;
+  signal: number;
+  histogram: number;
+}
+
+// Your internal interval standard + legacy Alpha strings currently used by indicatorService
+type InternalInterval = '1m' | '5m' | '15m' | '30m' | '1H' | '4H' | 'D';
+type AnyInterval =
+  | InternalInterval
+  | '1min' | '5min' | '15min' | '30min'
+  | '60min' | 'daily'
+  | '1h' | '4h' | '1day';
+
+type OutputSize = 'compact' | 'full';
+
+type TwelveError = { status?: string; code?: number; message?: string };
+
+type TwelveTimeSeriesResp = {
+  values?: Array<{
+    datetime: string;
+    open: string;
+    high: string;
+    low: string;
+    close: string;
+    volume?: string;
+  }>;
+  status?: string;
+  message?: string;
+  code?: number;
+};
+
+type TwelveIndicatorResp = {
+  values?: Array<Record<string, string>>;
+  status?: string;
+  message?: string;
+  code?: number;
+};
+
+function parseNumber(n: unknown, fallback = NaN): number {
+  const v = typeof n === 'string' ? parseFloat(n) : (typeof n === 'number' ? n : NaN);
+  return Number.isFinite(v) ? v : fallback;
+}
+
+function oldestFirst<T>(arr: T[] | undefined): T[] {
+  if (!arr) return [];
+  return [...arr].reverse();
+}
+
+function mapInterval(interval: AnyInterval): string {
+  // Your internal standard
+  const internal: Record<InternalInterval, string> = {
+    '1m': '1min',
+    '5m': '5min',
+    '15m': '15min',
+    '30m': '30min',
+    '1H': '1h',
+    '4H': '4h',
+    'D': '1day',
+  };
+  if (interval in internal) return internal[interval as InternalInterval];
+
+  // Legacy AlphaVantage strings used today in indicatorService.ts
+  if (interval === '60min') return '1h';
+  if (interval === 'daily') return '1day';
+
+  // Already Twelve-style
+  if (interval === '1min' || interval === '5min' || interval === '15min' || interval === '30min') return interval;
+  if (interval === '1h' || interval === '4h' || interval === '1day') return interval;
+
+  return '1h';
+}
+
+function normalizeSymbol(raw: string): string {
+  const s = raw.trim().toUpperCase();
+
+  // Already Twelve format
+  if (s.includes('/')) return s;
+
+  // FX pairs like EURUSD -> EUR/USD
+  if (s.length === 6) return `${s.slice(0, 3)}/${s.slice(3, 6)}`;
+
+  // Crypto like BTCUSD -> BTC/USD
+  const cryptoBases = ['BTC', 'ETH', 'SOL', 'XRP', 'ADA', 'BNB', 'BCH', 'LTC'];
+  for (const base of cryptoBases) {
+    if (s.startsWith(base) && s.length > base.length) {
+      const quote = s.slice(base.length);
+      return `${base}/${quote || 'USD'}`;
+    }
+  }
+
+  // Metals like XAUUSD -> XAU/USD
+  if ((s.startsWith('XAU') || s.startsWith('XAG')) && s.length === 6) {
+    return `${s.slice(0, 3)}/${s.slice(3, 6)}`;
+  }
+
+  // Indices/stocks: pass through as-is
+  return s;
+}
+
+function outputSizeToNumber(size: OutputSize): string {
+  // Twelve expects numeric outputsize
+  return size === 'full' ? '5000' : '300';
+}
+
+class TwelveDataClient {
+  private baseUrl = 'https://api.twelvedata.com';
+  private apiKey = process.env.TWELVE_DATA_API_KEY || '';
+
+  constructor() {
+    if (!this.apiKey) {
+      logger.warn('TWELVE_DATA_API_KEY not set - Twelve Data calls will fail');
+    }
+  }
+
+  private async request<T>(path: string, params: Record<string, string>): Promise<T> {
+    await rateLimiter.acquire();
+
+    const url = new URL(`${this.baseUrl}${path}`);
+    url.searchParams.set('apikey', this.apiKey);
+    for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
+
+    const res = await fetch(url.toString());
+    if (!res.ok) throw new Error(`API error: ${res.status} ${res.statusText}`);
+
+    const json = await res.json();
+
+    if (json?.status === 'error') {
+      const err: TwelveError = json;
+      throw new Error(`Twelve error: ${err.message ?? 'Unknown error'} (code=${err.code ?? 'n/a'})`);
+    }
+
+    return json as T;
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // OHLCV
+  // ─────────────────────────────────────────────────────────────
+
+  async getOHLCV(symbol: string, interval: AnyInterval, outputSize: OutputSize): Promise<OHLCVBar[]> {
+    const twelveSymbol = normalizeSymbol(symbol);
+    const twelveInterval = mapInterval(interval);
+
+    const cacheKey = CacheService.makeKey(twelveSymbol, twelveInterval, 'ohlcv', { outputSize });
+    const cached = cache.get<OHLCVBar[]>(cacheKey);
+    if (cached) return cached;
+
+    const data = await this.request<TwelveTimeSeriesResp>('/time_series', {
+      symbol: twelveSymbol,
+      interval: twelveInterval,
+      outputsize: outputSizeToNumber(outputSize),
+      format: 'JSON',
+    });
+
+    const values = oldestFirst(data.values);
+    const bars: OHLCVBar[] = values.map(v => ({
+      timestamp: v.datetime,
+      open: parseNumber(v.open, 0),
+      high: parseNumber(v.high, 0),
+      low: parseNumber(v.low, 0),
+      close: parseNumber(v.close, 0),
+      volume: parseNumber(v.volume ?? '0', 0),
+    }));
+
+    // TTL: daily vs intraday
+    const ttl = twelveInterval === '1day' ? CACHE_TTL.D1 : CACHE_TTL.H1;
+    cache.set(cacheKey, bars, ttl);
+
+    return bars;
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // PRICE / QUOTE
+  // ─────────────────────────────────────────────────────────────
+
+  async getCurrentPrice(symbol: string): Promise<number> {
+    const twelveSymbol = normalizeSymbol(symbol);
+
+    // Prefer lightweight /price; fallback /quote; final fallback to last close
+    try {
+      const price = await this.request<{ price?: string }>('/price', { symbol: twelveSymbol, format: 'JSON' });
+      const p = parseNumber(price?.price, NaN);
+      if (Number.isFinite(p)) return p;
+    } catch {
+      // ignore
+    }
+
+    try {
+      const quote = await this.request<{ price?: string; close?: string }>('/quote', { symbol: twelveSymbol, format: 'JSON' });
+      const p = parseNumber(quote?.price ?? quote?.close, NaN);
+      if (Number.isFinite(p)) return p;
+    } catch {
+      // ignore
+    }
+
+    const bars = await this.getOHLCV(symbol, '60min', 'compact');
+    if (!bars.length) throw new Error(`No price data for ${symbol}`);
+    return bars[bars.length - 1].close;
+  }
+
+  async getExchangeRate(fromCurrency: string, toCurrency: string): Promise<number> {
+    const pair = `${fromCurrency.toUpperCase()}/${toCurrency.toUpperCase()}`;
+
+    const cacheKey = CacheService.makeKey(fromCurrency, toCurrency, 'fxrate', {});
+    const cached = cache.get<number>(cacheKey);
+    if (cached) return cached;
+
+    // Try dedicated endpoint; fallback to /price on pair
+    try {
+      const data = await this.request<{ rate?: string; value?: string }>('/exchange_rate', { symbol: pair, format: 'JSON' });
+      const r = parseNumber(data?.rate ?? data?.value, NaN);
+      if (Number.isFinite(r)) {
+        cache.set(cacheKey, r, CACHE_TTL.exchangeRate);
+        return r;
+      }
+    } catch {
+      // ignore
+    }
+
+    const p = await this.getCurrentPrice(pair);
+    cache.set(cacheKey, p, CACHE_TTL.exchangeRate);
+    return p;
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // INDICATORS (timestamped arrays)
+  // ─────────────────────────────────────────────────────────────
+
+  private async getIndicator(endpoint: string, params: Record<string, string>): Promise<TwelveIndicatorResp> {
+    return this.request<TwelveIndicatorResp>(endpoint, { ...params, format: 'JSON' });
+  }
+
+  private parseSingleValue(resp: TwelveIndicatorResp, candidates: string[], label: string): IndicatorValue[] {
+    const values = oldestFirst(resp.values);
+    if (!values.length) return [];
+
+    const sample = values[0];
+    const key =
+      candidates.find(k => k in sample) ??
+      Object.keys(sample).find(k => k !== 'datetime');
+
+    if (!key) {
+      logger.warn(`No value key found for ${label}`);
+      return [];
+    }
+
+    return values.map(v => ({
+      timestamp: v.datetime,
+      value: Number.isFinite(parseNumber(v[key], NaN)) ? parseNumber(v[key], NaN) : null,
+    }));
+  }
+
+  async getEMA(symbol: string, interval: AnyInterval, period: number): Promise<IndicatorValue[]> {
+    const twelveSymbol = normalizeSymbol(symbol);
+    const twelveInterval = mapInterval(interval);
+
+    const cacheKey = CacheService.makeKey(twelveSymbol, twelveInterval, 'ema', { period });
+    const cached = cache.get<IndicatorValue[]>(cacheKey);
+    if (cached) return cached;
+
+    const resp = await this.getIndicator('/ema', {
+      symbol: twelveSymbol,
+      interval: twelveInterval,
+      time_period: String(period),
+      series_type: 'close',
+    });
+
+    const out = this.parseSingleValue(resp, ['ema', 'EMA'], 'EMA');
+    cache.set(cacheKey, out, twelveInterval === '1day' ? CACHE_TTL.D1 : CACHE_TTL.H1);
+    return out;
+  }
+
+  async getSMA(symbol: string, interval: AnyInterval, period: number): Promise<IndicatorValue[]> {
+    const twelveSymbol = normalizeSymbol(symbol);
+    const twelveInterval = mapInterval(interval);
+
+    const cacheKey = CacheService.makeKey(twelveSymbol, twelveInterval, 'sma', { period });
+    const cached = cache.get<IndicatorValue[]>(cacheKey);
+    if (cached) return cached;
+
+    const resp = await this.getIndicator('/sma', {
+      symbol: twelveSymbol,
+      interval: twelveInterval,
+      time_period: String(period),
+      series_type: 'close',
+    });
+
+    const out = this.parseSingleValue(resp, ['sma', 'SMA'], 'SMA');
+    cache.set(cacheKey, out, twelveInterval === '1day' ? CACHE_TTL.D1 : CACHE_TTL.H1);
+    return out;
+  }
+
+  async getRSI(symbol: string, interval: AnyInterval, period: number): Promise<IndicatorValue[]> {
+    const twelveSymbol = normalizeSymbol(symbol);
+    const twelveInterval = mapInterval(interval);
+
+    const cacheKey = CacheService.makeKey(twelveSymbol, twelveInterval, 'rsi', { period });
+    const cached = cache.get<IndicatorValue[]>(cacheKey);
+    if (cached) return cached;
+
+    const resp = await this.getIndicator('/rsi', {
+      symbol: twelveSymbol,
+      interval: twelveInterval,
+      time_period: String(period),
+      series_type: 'close',
+    });
+
+    const out = this.parseSingleValue(resp, ['rsi', 'RSI'], 'RSI');
+    cache.set(cacheKey, out, twelveInterval === '1day' ? CACHE_TTL.D1 : CACHE_TTL.H1);
+    return out;
+  }
+
+  async getATR(symbol: string, interval: AnyInterval, period: number): Promise<IndicatorValue[]> {
+    const twelveSymbol = normalizeSymbol(symbol);
+    const twelveInterval = mapInterval(interval);
+
+    const cacheKey = CacheService.makeKey(twelveSymbol, twelveInterval, 'atr', { period });
+    const cached = cache.get<IndicatorValue[]>(cacheKey);
+    if (cached) return cached;
+
+    const resp = await this.getIndicator('/atr', {
+      symbol: twelveSymbol,
+      interval: twelveInterval,
+      time_period: String(period),
+    });
+
+    const out = this.parseSingleValue(resp, ['atr', 'ATR'], 'ATR');
+    cache.set(cacheKey, out, twelveInterval === '1day' ? CACHE_TTL.D1 : CACHE_TTL.H1);
+    return out;
+  }
+
+  async getADX(symbol: string, interval: AnyInterval, period: number): Promise<IndicatorValue[]> {
+    const twelveSymbol = normalizeSymbol(symbol);
+    const twelveInterval = mapInterval(interval);
+
+    const cacheKey = CacheService.makeKey(twelveSymbol, twelveInterval, 'adx', { period });
+    const cached = cache.get<IndicatorValue[]>(cacheKey);
+    if (cached) return cached;
+
+    const resp = await this.getIndicator('/adx', {
+      symbol: twelveSymbol,
+      interval: twelveInterval,
+      time_period: String(period),
+    });
+
+    const out = this.parseSingleValue(resp, ['adx', 'ADX'], 'ADX');
+    cache.set(cacheKey, out, twelveInterval === '1day' ? CACHE_TTL.D1 : CACHE_TTL.H1);
+    return out;
+  }
+
+  async getCCI(symbol: string, interval: AnyInterval, period: number): Promise<IndicatorValue[]> {
+    const twelveSymbol = normalizeSymbol(symbol);
+    const twelveInterval = mapInterval(interval);
+
+    const cacheKey = CacheService.makeKey(twelveSymbol, twelveInterval, 'cci', { period });
+    const cached = cache.get<IndicatorValue[]>(cacheKey);
+    if (cached) return cached;
+
+    const resp = await this.getIndicator('/cci', {
+      symbol: twelveSymbol,
+      interval: twelveInterval,
+      time_period: String(period),
+    });
+
+    const out = this.parseSingleValue(resp, ['cci', 'CCI'], 'CCI');
+    cache.set(cacheKey, out, twelveInterval === '1day' ? CACHE_TTL.D1 : CACHE_TTL.H1);
+    return out;
+  }
+
+  async getWilliamsR(symbol: string, interval: AnyInterval, period: number): Promise<IndicatorValue[]> {
+    const twelveSymbol = normalizeSymbol(symbol);
+    const twelveInterval = mapInterval(interval);
+
+    const cacheKey = CacheService.makeKey(twelveSymbol, twelveInterval, 'willr', { period });
+    const cached = cache.get<IndicatorValue[]>(cacheKey);
+    if (cached) return cached;
+
+    const resp = await this.getIndicator('/willr', {
+      symbol: twelveSymbol,
+      interval: twelveInterval,
+      time_period: String(period),
+    });
+
+    const out = this.parseSingleValue(resp, ['willr', 'WILLR'], 'WILLR');
+    cache.set(cacheKey, out, twelveInterval === '1day' ? CACHE_TTL.D1 : CACHE_TTL.H1);
+    return out;
+  }
+
+  async getStochastic(symbol: string, interval: AnyInterval, kPeriod: number, dPeriod: number, _smooth: number): Promise<StochValue[]> {
+    const twelveSymbol = normalizeSymbol(symbol);
+    const twelveInterval = mapInterval(interval);
+
+    const cacheKey = CacheService.makeKey(twelveSymbol, twelveInterval, 'stoch', { kPeriod, dPeriod });
+    const cached = cache.get<StochValue[]>(cacheKey);
+    if (cached) return cached;
+
+    const resp = await this.getIndicator('/stoch', {
+      symbol: twelveSymbol,
+      interval: twelveInterval,
+      k_period: String(kPeriod),
+      d_period: String(dPeriod),
+    });
+
+    const values = oldestFirst(resp.values);
+    const out: StochValue[] = values.map(v => ({
+      timestamp: v.datetime,
+      k: parseNumber(v.slow_k ?? v.k ?? v['SlowK'], NaN),
+      d: parseNumber(v.slow_d ?? v.d ?? v['SlowD'], NaN),
+    }));
+
+    cache.set(cacheKey, out, twelveInterval === '1day' ? CACHE_TTL.D1 : CACHE_TTL.H1);
+    return out;
+  }
+
+  async getBBands(symbol: string, interval: AnyInterval, period: number, nbdevup: number, nbdevdn: number): Promise<BBandsValue[]> {
+    const twelveSymbol = normalizeSymbol(symbol);
+    const twelveInterval = mapInterval(interval);
+
+    const cacheKey = CacheService.makeKey(twelveSymbol, twelveInterval, 'bbands', { period, nbdevup, nbdevdn });
+    const cached = cache.get<BBandsValue[]>(cacheKey);
+    if (cached) return cached;
+
+    // Twelve typically uses single sd param; use the larger of up/down so bands are not too tight.
+    const sd = String(Math.max(nbdevup, nbdevdn));
+
+    const resp = await this.getIndicator('/bbands', {
+      symbol: twelveSymbol,
+      interval: twelveInterval,
+      time_period: String(period),
+      sd,
+      series_type: 'close',
+    });
+
+    const values = oldestFirst(resp.values);
+    const out: BBandsValue[] = values.map(v => ({
+      timestamp: v.datetime,
+      upper: parseNumber(v.upper_band ?? v.upper ?? v['upper_band'], NaN),
+      middle: parseNumber(v.middle_band ?? v.middle ?? v['middle_band'], NaN),
+      lower: parseNumber(v.lower_band ?? v.lower ?? v['lower_band'], NaN),
+    }));
+
+    cache.set(cacheKey, out, twelveInterval === '1day' ? CACHE_TTL.D1 : CACHE_TTL.H1);
+    return out;
+  }
+
+  async getMACD(
+    symbol: string,
+    interval: AnyInterval,
+    fast: number = 12,
+    slow: number = 26,
+    signal: number = 9
+  ): Promise<MACDValue[]> {
+    const twelveSymbol = normalizeSymbol(symbol);
+    const twelveInterval = mapInterval(interval);
+
+    const cacheKey = CacheService.makeKey(twelveSymbol, twelveInterval, 'macd', { fast, slow, signal });
+    const cached = cache.get<MACDValue[]>(cacheKey);
+    if (cached) return cached;
+
+    const resp = await this.getIndicator('/macd', {
+      symbol: twelveSymbol,
+      interval: twelveInterval,
+      fast_period: String(fast),
+      slow_period: String(slow),
+      signal_period: String(signal),
+      series_type: 'close',
+    });
+
+    const values = oldestFirst(resp.values);
+    const out: MACDValue[] = values.map(v => ({
+      timestamp: v.datetime,
+      macd: parseNumber(v.macd ?? v.MACD, NaN),
+      signal: parseNumber(v.macd_signal ?? v.signal ?? v.MACD_Signal, NaN),
+      histogram: parseNumber(v.macd_hist ?? v.histogram ?? v.MACD_Hist, NaN),
+    }));
+
+    cache.set(cacheKey, out, twelveInterval === '1day' ? CACHE_TTL.D1 : CACHE_TTL.H1);
+    return out;
+  }
+}
+
+export const twelveData = new TwelveDataClient();
+export { TwelveDataClient };
+```
+
+---
+
+# 2) UPDATE: `src/engine/indicatorService.ts`
+
+### Change the import
+
+```ts
+// FROM:
+import { alphaVantage, OHLCVBar, IndicatorValue } from '../services/alphaVantageClient.js';
+
+// TO:
+import { twelveData, OHLCVBar, IndicatorValue } from '../services/twelveDataClient.js';
+```
+
+### Replace calls
+
+Search/replace in that file:
+
+* `alphaVantage.` → `twelveData.`
+
+That’s it.
+
+Your conversion layer stays intact and continues to strip timestamps to raw arrays. 
+
+---
+
+# 3) Add secret
+
+Set environment variable:
+
+* `TWELVE_DATA_API_KEY`
+
+---
+
+# 4) Two “tell it like it is” gotchas (important)
+
+### Gotcha A — Metals “daily only” comment is now a legacy assumption
+
+Your indicatorService currently forces metals to `daily`. With Twelve Data you *may* be able to do intraday for metals depending on plan/symbol availability. But for migration safety, keep it unchanged until everything is stable.
+
+### Gotcha B — Alignment is still your silent failure mode
+
+Your strategies’ utilities assume indicator arrays align with bars by index. 
+Right now `strategyAnalyzer.ts` maps values blindly (`arr.map(v => v.value ?? 0)`), so if Twelve returns fewer datapoints (warmup), you’ll get shorter arrays and weird `atIndex()` nulls.
+
+**Safe move (optional, but smart):**
+Add a pad/trim step inside `convertToStrategyIndicatorData()` later:
+
+* if `indicator.length !== bars.length`, pad the front with first value
+* or trim the front to match bars
+
+Not required to compile, but it prevents ghost signals.
+
+---
+
+If you want, paste `indicatorFactory.ts` next — I’ll tell you whether you can now delete the asset-class routing (or keep it) once Twelve becomes the only provider.

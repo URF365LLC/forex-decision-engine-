@@ -1,0 +1,129 @@
+Perfect. Let's execute.
+
+---
+
+## 🚀 Final Migration Prompt for Replit
+
+```
+TWELVE DATA MIGRATION - EXCLUSIVE MODE (No Alpha, No KuCoin)
+
+CONFIRMED: TWELVE_DATA_API_KEY is set (16 chars verified earlier).
+
+=== STEP 1: Create src/services/twelveDataClient.ts ===
+
+[Paste the FULL corrected twelveDataClient.ts code from ChatGPT - the version with:
+- Retry logic + exponential backoff (MAX_RETRIES=3)
+- OBV with local fallback
+- Crypto exchange parameter handling (DEFAULT_CRYPTO_EXCHANGE)
+- isCryptoPair() helper
+- All indicator methods: getEMA, getSMA, getRSI, getATR, getADX, getCCI, 
+  getWilliamsR, getStochastic, getBBands, getMACD, getOBV
+- Symbol normalization (EURUSD → EUR/USD)
+- Interval mapping (60min → 1h, daily → 1day)]
+
+=== STEP 2: Update src/engine/indicatorService.ts ===
+
+a) Replace import (line ~6):
+   // FROM:
+   import { alphaVantage, OHLCVBar, IndicatorValue } from '../services/alphaVantageClient.js';
+   // TO:
+   import { twelveData, OHLCVBar, IndicatorValue, MACDValue } from '../services/twelveDataClient.js';
+
+b) Update IndicatorData interface - add:
+   ema8?: IndicatorValue[];
+   ema21?: IndicatorValue[];
+   ema55?: IndicatorValue[];
+   macd?: MACDValue[];
+   obv?: IndicatorValue[];
+
+c) Search/replace throughout file:
+   alphaVantage. → twelveData.
+
+d) Add new indicator fetches (after existing indicator calls):
+   data.ema8  = await twelveData.getEMA(symbol, entryInterval, 8);
+   data.ema21 = await twelveData.getEMA(symbol, entryInterval, 21);
+   data.ema55 = await twelveData.getEMA(symbol, entryInterval, 55);
+   data.macd  = await twelveData.getMACD(symbol, entryInterval, 12, 26, 9);
+   data.obv   = await twelveData.getOBV(symbol, entryInterval);
+
+=== STEP 3: Update src/engine/indicatorFactory.ts ===
+
+Replace entire file with:
+
+import { fetchIndicators, IndicatorData } from './indicatorService.js';
+import { TradingStyle } from '../config/strategy.js';
+import { createLogger } from '../services/logger.js';
+
+const logger = createLogger('IndicatorFactory');
+
+export type AnyIndicatorData = IndicatorData;
+
+export async function getIndicators(symbol: string, style: TradingStyle): Promise<AnyIndicatorData> {
+  logger.debug(`Routing ${symbol} to Twelve-only indicator service`);
+  return fetchIndicators(symbol, style);
+}
+
+export function isCryptoData(_data: AnyIndicatorData): _data is AnyIndicatorData {
+  return false;
+}
+
+=== STEP 4: Update src/engine/strategyAnalyzer.ts ===
+
+Replace convertToStrategyIndicatorData() function with corrected version that:
+- Uses NaN instead of zero-fill
+- Fixes object reference bug in padding  
+- Adds MACD, OBV, EMA8/21/55 conversion
+- Logs alignment warnings
+
+[Paste ChatGPT's corrected convertToStrategyIndicatorData function]
+
+=== STEP 5: Add tripwires to old files (safety) ===
+
+At TOP of src/services/alphaVantageClient.ts:
+throw new Error('alphaVantageClient.ts should not be used: Twelve-only mode is enabled.');
+
+At TOP of src/engine/cryptoIndicatorService.ts:
+throw new Error('cryptoIndicatorService.ts should not be used: Twelve-only mode is enabled.');
+
+=== STEP 6: Add environment variable ===
+
+TWELVE_DATA_CRYPTO_EXCHANGE=Binance
+
+=== STEP 7: Verify no stale imports ===
+
+Search entire codebase for these - should return ZERO results after changes:
+- alphaVantageClient (except the file itself)
+- kucoinClient
+- fetchCryptoIndicators  
+- cryptoIndicatorService (except the file itself)
+
+=== STEP 8: SMOKE TEST ===
+
+After implementation, test:
+- EUR/USD (forex)
+- BTC/USD (crypto)
+- XAU/USD (metal)
+
+Verify:
+- Data returns successfully
+- bars.length === rsi.length === ema20.length
+- No runtime errors
+- Tripwires do NOT throw (old code never executes)
+
+Proceed with implementation.
+```
+
+---
+
+## 📋 Files Replit Will Need (Full Code)
+
+When Replit asks, you'll paste:
+
+1. **`twelveDataClient.ts`** - ChatGPT's corrected version (~400 lines)
+2. **`convertToStrategyIndicatorData()`** - ChatGPT's corrected version (~80 lines)
+
+Both are in ChatGPT's Document 21 above.
+
+---
+
+Ready to send to Replit?

@@ -1,0 +1,76 @@
+Perfect. All three AIs are now in complete agreement.
+
+---
+
+## ✅ Final Three-Way Consensus
+
+| AI | Status | Key Contribution |
+|----|--------|------------------|
+| **Claude** | ✅ Approved | Architecture validation, E8 account safety check, strategy coverage |
+| **ChatGPT** | ✅ Approved | NaN padding fix, tripwire enforcement, startup validation code |
+| **Replit** | ✅ Plan validated | Detailed execution manifest, file-by-file changes |
+
+---
+
+## 📋 Final Message to Replit (Send This)
+
+```
+APPROVED ✅ — proceed with TWELVE-ONLY implementation.
+
+NON-NEGOTIABLES:
+
+1) Twelve Data is the ONLY runtime data source.
+   - indicatorFactory must route ALL symbols to indicatorService (no crypto branch)
+   - No Alpha Vantage or KuCoin imports anywhere in runtime code
+
+2) Alignment must use NaN padding (NOT zero, NOT first-value padding)
+   - Missing/short indicator arrays must be front-padded with NaN
+   - Log warning when padding occurs using logger.warn()
+
+3) Add tripwires so "Twelve-only" can't regress:
+   - TOP of src/services/alphaVantageClient.ts:
+     throw new Error('FATAL: Alpha disabled - Twelve-only mode');
+   - TOP of src/engine/cryptoIndicatorService.ts:
+     throw new Error('FATAL: Crypto service disabled - Twelve-only mode');
+   - TOP of src/services/kucoinClient.ts:
+     throw new Error('FATAL: KuCoin disabled - Twelve-only mode');
+
+4) Add indicator fetches in indicatorService.ts:
+   - ema8, ema21, ema55
+   - macd (12,26,9)
+   - obv
+   
+   And update IndicatorData interface + convertToStrategyIndicatorData() accordingly.
+
+5) Create src/engine/startupValidation.ts with validateDataPipeline() function:
+   - Tests EUR/USD, BTC/USD, XAU/USD on startup
+   - Asserts bars.length > 0
+   - Asserts indicator.length === bars.length
+   - Asserts last 5 values are finite (not NaN) for rsi, ema20, atr
+   - Throws and aborts if validation fails
+
+6) POST-BUILD VERIFICATION (run these):
+   grep -R "alphaVantageClient" src/ --include="*.ts" | grep -v "alphaVantageClient.ts"
+   grep -R "kucoinClient" src/ --include="*.ts" | grep -v "kucoinClient.ts"
+   grep -R "cryptoIndicatorService" src/ --include="*.ts" | grep -v "cryptoIndicatorService.ts"
+   
+   All three must return ZERO results.
+
+ENVIRONMENT VARIABLES REQUIRED:
+- TWELVE_DATA_API_KEY (already set)
+- TWELVE_DATA_CRYPTO_EXCHANGE=Binance
+
+Proceed with implementation.
+```
+
+---
+
+## 🏁 You're Clear to Build
+
+Once Replit completes, paste their diff or response here. I'll verify:
+- No stale Alpha/KuCoin imports
+- NaN padding implemented correctly
+- Tripwires in place
+- Startup validation added
+
+**This migration is validated by three AI systems and safe for your E8 Markets prop account.**

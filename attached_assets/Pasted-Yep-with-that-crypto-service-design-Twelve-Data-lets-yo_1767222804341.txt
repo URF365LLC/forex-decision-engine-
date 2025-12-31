@@ -1,0 +1,94 @@
+Yep — with that crypto service design, Twelve Data lets you **delete ~320 lines of local math** and the KuCoin duct tape. The only “adult supervision” you need is **symbol + exchange resolution**.
+
+## 1) Crypto coverage: what we can confirm (and what you must verify)
+
+Twelve Data **does** support crypto pairs and provides a **reference endpoint** to list/confirm them:
+
+* List all supported crypto pairs: `https://api.twelvedata.com/cryptocurrencies` ([Twelve Data Support][1])
+* The response includes `symbol` and `available_exchanges`, and you can filter by `symbol`, `exchange`, etc. ([Twelve Data Support][1])
+* Twelve’s SDK/docs also note an `exchange` parameter when a symbol is traded on multiple exchanges (applies to crypto too). ([GitHub][2])
+
+What I *cannot* truthfully guarantee from public pages alone is that **all 8 of your exact pairs** exist in *your plan’s dataset* without a live call. So here’s the deterministic check.
+
+### One-shot verification you (or Replit) can run
+
+Run these against Twelve (with your API key):
+
+* `GET /cryptocurrencies?symbol=BTC/USD`
+* `GET /cryptocurrencies?symbol=ETH/USD`
+* `GET /cryptocurrencies?symbol=SOL/USD`
+* `GET /cryptocurrencies?symbol=XRP/USD`
+* `GET /cryptocurrencies?symbol=ADA/USD`
+* `GET /cryptocurrencies?symbol=BNB/USD`
+* `GET /cryptocurrencies?symbol=BCH/USD`
+* `GET /cryptocurrencies?symbol=LTC/USD`
+
+That endpoint is explicitly designed for this. ([Twelve Data Support][1])
+
+If any return multiple exchanges, pick a default (ex: `Binance`) and pass `exchange=...` on **every** `/time_series` + indicator request for that symbol. ([GitHub][2])
+
+---
+
+## 2) Best migration move: kill `cryptoIndicatorService` in two steps
+
+### Phase 1 (safe): Route crypto to the same indicatorService (keep file as dead code backup)
+
+Change `indicatorFactory.ts` to:
+
+```ts
+import { fetchIndicators, IndicatorData } from './indicatorService.js';
+import { TradingStyle } from '../config/strategy.js';
+import { createLogger } from '../services/logger.js';
+
+const logger = createLogger('IndicatorFactory');
+
+export type AnyIndicatorData = IndicatorData;
+
+export async function getIndicators(symbol: string, style: TradingStyle): Promise<AnyIndicatorData> {
+  logger.debug(`Routing ${symbol} to unified indicator service`);
+  return fetchIndicators(symbol, style);
+}
+
+export function isCryptoData(_data: AnyIndicatorData): _data is AnyIndicatorData {
+  return false;
+}
+```
+
+Now your entire pipeline becomes:
+
+**indicatorFactory → indicatorService → twelveDataClient → strategyAnalyzer conversion → strategies**
+
+No extra types, no KuCoin, no duplicate code paths.
+
+### Phase 2 (cleanup): Delete `cryptoIndicatorService.ts` and `CryptoIndicatorData`
+
+After you see it running clean for a few days.
+
+---
+
+## 3) One important tweak to your Twelve client (because your services use Alpha intervals)
+
+Your `indicatorService.ts` uses:
+
+* entry interval: `'60min'` (and `'daily'` for metals)
+
+So your Twelve client **must** accept those legacy interval strings and map them (you already gave the mapping standard). Otherwise you’ll get silent mis-requests.
+
+---
+
+## 4) Quick “don’t get stabbed later” note: exchange parameter
+
+If crypto pairs come back with multiple exchanges, you must lock a single exchange (e.g., `Binance`) or you’ll get inconsistent OHLCV vs indicator alignment.
+
+This is a real thing; Twelve explicitly supports `exchange` for symbols traded on multiple exchanges. ([GitHub][2])
+
+---
+
+### What I need from you (only if you want me to make this bulletproof)
+
+Paste your current `cryptoIndicatorService.ts` type header (the `CryptoIndicatorData` interface) **or** confirm you’re okay with Phase 1 where we route everything through `IndicatorData` and delete the crypto type.
+
+If you’re good with the unified path (my recommendation), you’re basically done: update the factory + swap Alpha→Twelve in `indicatorService.ts`, and crypto local calcs disappear overnight.
+
+[1]: https://support.twelvedata.com/en/articles/5620513-how-to-find-all-available-symbols-at-twelve-data "How to find all available symbols at Twelve Data | Twelve Data Support"
+[2]: https://github.com/twelvedata/twelvedata-python?utm_source=chatgpt.com "Twelve Data Python Client - Financial data API & WebSocket"
