@@ -1,0 +1,96 @@
+Nice — this confirms the real migration scope.
+
+Right now your factory is literally hard-coding the Alpha Vantage pain point:
+
+* **crypto → `cryptoIndicatorService`**
+* **everything else → `indicatorService`**
+* and the comment admits it: “Forex and metals use Alpha Vantage indicator endpoints”
+
+With Twelve Data, that split becomes optional (you can keep it short-term, delete it later).
+
+## What you should do now (minimal risk, fastest win)
+
+### Phase 1 (recommended): **Swap both services to Twelve, keep the factory split**
+
+Why? Because you don’t want to refactor the engine while changing providers. Controlled blast radius.
+
+So:
+
+1. Implement `twelveDataClient.ts` (already provided)
+2. Update **both**:
+
+   * `indicatorService.ts` to import `twelveData`
+   * `cryptoIndicatorService.ts` to import `twelveData`
+3. Keep `indicatorFactory.ts` unchanged for now
+
+This gives you:
+
+* unified crypto indicators (the whole point)
+* no risk of breaking the asset-routing logic yet
+
+## Phase 2 (cleanup later): **Delete cryptoIndicatorService entirely**
+
+Once Twelve is stable for crypto:
+
+* remove `fetchCryptoIndicators`
+* remove `CryptoIndicatorData`
+* delete the branching in `indicatorFactory.ts`
+* route everything to `fetchIndicators`
+
+That’s the “clean architecture” version.
+
+---
+
+# What changes are needed in *this* file?
+
+If you follow Phase 1: **none**.
+
+If you want Phase 2: here’s the exact patch.
+
+## Phase 2 patch: Simplify `indicatorFactory.ts`
+
+```ts
+/**
+ * Indicator Factory
+ * Twelve Data unified endpoints: one indicator service for all asset classes
+ */
+
+import { fetchIndicators, IndicatorData } from './indicatorService.js';
+import { TradingStyle } from '../config/strategy.js';
+import { createLogger } from '../services/logger.js';
+
+const logger = createLogger('IndicatorFactory');
+
+export type AnyIndicatorData = IndicatorData;
+
+export async function getIndicators(
+  symbol: string,
+  style: TradingStyle
+): Promise<AnyIndicatorData> {
+  logger.debug(`Routing ${symbol} to unified indicator service`);
+  return fetchIndicators(symbol, style);
+}
+
+export function isCryptoData(_data: AnyIndicatorData): _data is AnyIndicatorData {
+  // No-op: everything is unified now
+  return false;
+}
+```
+
+But again — **do this after you confirm Twelve is stable**.
+
+---
+
+# The one thing I need to finish this migration cleanly
+
+Paste your `cryptoIndicatorService.ts`.
+
+Because right now:
+
+* even if `indicatorService.ts` moves to Twelve…
+* your crypto flow might still be Alpha-limited or different shaped,
+* and you’ll keep “two pipelines” forever.
+
+Once I see `cryptoIndicatorService.ts`, I’ll give you the exact Twelve swap + any field-shape differences to keep `strategyAnalyzer.ts` happy.
+
+No guesswork.

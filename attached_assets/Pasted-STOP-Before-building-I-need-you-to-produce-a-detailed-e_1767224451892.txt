@@ -1,0 +1,65 @@
+STOP. Before building, I need you to produce a detailed execution plan for my review.
+
+This is a critical migration from Alpha Vantage to Twelve Data. I have two other AI systems (Claude and ChatGPT) that have cross-validated the architecture. Before I approve the build, I need YOU to demonstrate full understanding.
+
+PRODUCE A DETAILED EXECUTION PLAN that includes:
+
+1. CURRENT STATE ANALYSIS
+   - List every file that currently imports alphaVantageClient
+   - List every file that currently imports kucoinClient  
+   - List every file that currently imports cryptoIndicatorService
+   - Show the current data flow: factory → service → client → strategies
+
+2. TARGET STATE ARCHITECTURE
+   - Describe the new unified data flow (Twelve-only)
+   - Explain why crypto no longer needs separate handling
+   - Explain the exchange parameter strategy for crypto consistency
+
+3. FILE-BY-FILE CHANGE MANIFEST
+   For each file being modified, list:
+   - File path
+   - Current state (what it does now)
+   - Changes required (line-by-line if possible)
+   - New state (what it will do after)
+   - Risk level (low/medium/high)
+
+4. NEW FILES TO CREATE
+   - twelveDataClient.ts: List all exported functions/types
+   - Any other new files
+
+5. INTERFACE CONTRACTS
+   - Show the IndicatorData interface BEFORE and AFTER
+   - Show the StrategyIndicatorData interface BEFORE and AFTER
+   - Confirm all indicator arrays will align with bars.length
+
+6. INDICATOR COVERAGE MATRIX
+   Show a table:
+   | Indicator | Alpha Vantage | Twelve Data | Period | Used By Strategy |
+   
+   Include: RSI, EMA (8,20,21,50,55,200), SMA (20,50,200), ATR, ADX, MACD, BBands, Stoch, WillR, CCI, OBV
+
+7. SYMBOL NORMALIZATION RULES
+   Show exactly how each symbol type will be normalized:
+   - Forex: EURUSD → ?
+   - Crypto: BTCUSD → ?
+   - Metals: XAUUSD → ?
+   - Stocks: AAPL → ?
+
+8. ERROR HANDLING & RETRY STRATEGY
+   - Describe the retry logic for transient failures
+   - Describe what happens when an indicator returns fewer points than bars
+
+9. ROLLBACK PLAN
+   - How do we revert if something breaks?
+   - What files are kept as backup?
+
+10. VALIDATION CHECKLIST
+    - List the exact smoke tests to run post-implementation
+    - What constitutes PASS vs FAIL for each test?
+
+11. POTENTIAL RISKS & MITIGATIONS
+    - What could go wrong?
+    - How is each risk mitigated?
+
+Do NOT start building until I review and approve this plan.
+Produce the execution plan now.

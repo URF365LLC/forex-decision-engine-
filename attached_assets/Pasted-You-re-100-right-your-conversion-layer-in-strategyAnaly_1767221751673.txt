@@ -1,0 +1,99 @@
+You’re 100% right: **your conversion layer in `strategyAnalyzer.ts` means the Twelve client should mimic the Alpha client’s “timestamped series” output**, and you do **not** need my earlier “align-to-bars number[]” builder *at the client level*.
+
+So the clean migration is:
+
+* **Keep the existing pipeline** (indicatorFactory → indicatorService → client → strategyAnalyzer conversion → strategies)
+* Swap **only the client** and the **import + method calls** in `indicatorService.ts`
+
+This matches your “almost drop-in” summary.
+
+## What we should build (corrected to your actual architecture)
+
+### ✅ Create `src/services/twelveDataClient.ts`
+
+It must export the same shapes your current Alpha client exports:
+
+* `OHLCVBar`
+* `IndicatorValue` (`{ timestamp, value }`)
+* `MACDValue` (`{ timestamp, macd, signal, histogram }`)
+* and `twelveData` singleton with methods mirroring Alpha’s names:
+
+  * `getOHLCV`
+  * `getEMA`, `getSMA`, `getRSI`, `getADX`, `getATR`
+  * `getStochastic`, `getWilliamsR`, `getCCI`, `getBBands`
+  * `getMACD` (new)
+  * `getExchangeRate`
+  * `getCurrentPrice`
+
+That ensures `strategyAnalyzer.ts` can keep stripping timestamps exactly as it does today.
+
+This mirrors your current Alpha client contract (caching + rate limiting + timestamped returns). 
+
+---
+
+## One critical rule you still must honor
+
+Even though `strategyAnalyzer.ts` strips timestamps, **the arrays still need to be aligned by bar index** for `atIndex()`-based strategy logic to behave. Your shared utilities explicitly warn that `atIndex()` assumes equal length and index alignment. 
+
+So the Twelve client should:
+
+* fetch `/time_series` for bars
+* fetch indicators using the same `interval`
+* **sort everything oldest → newest**
+* and ideally request the **same outputsize** so lengths are comparable
+
+(If Twelve returns fewer indicator points due to warmup, your existing system likely tolerates it via minBars checks; but if you rely on strict equality later, you’ll want to pad or trim in `indicatorService.ts`—not in strategies.)
+
+---
+
+## The minimal code change you listed is exactly right
+
+### ✅ Update `src/engine/indicatorService.ts` (line ~6)
+
+```ts
+// FROM:
+import { alphaVantage, OHLCVBar, IndicatorValue } from '../services/alphaVantageClient.js';
+
+// TO:
+import { twelveData, OHLCVBar, IndicatorValue } from '../services/twelveDataClient.js';
+```
+
+### ✅ Replace calls
+
+Search/replace inside `indicatorService.ts`:
+
+* `alphaVantage.` → `twelveData.`
+
+### ✅ Add secret
+
+* `TWELVE_DATA_API_KEY`
+
+### ✅ Keep Alpha as rollback
+
+Do not touch `src/services/alphaVantageClient.ts`. 
+
+---
+
+## What I want you to sanity-check in `indicatorService.ts` (fast)
+
+Before you commit:
+
+1. Does `indicatorService.ts` ever assume **Alpha-only symbol formats** (like `EURUSD` without slash)?
+
+   * If yes, the Twelve client should normalize internally (`EURUSD → EUR/USD`, `BTCUSD → BTC/USD`).
+
+2. Does `indicatorService.ts` enforce `indicator.length === bars.length` anywhere?
+
+   * If yes, you’ll need a small “trim/pad” utility there (not in strategies). Your utils warn about mismatch but don’t fail hard by default. 
+
+---
+
+## Next step (so you can paste into Replit cleanly)
+
+Upload/paste **`indicatorService.ts`** (and if possible `strategyAnalyzer.ts` just the `convertToStrategyIndicatorData()` function). Then I’ll give you:
+
+* a complete `twelveDataClient.ts` tailored to your exact method calls
+* exact outputsize + interval mapping aligned to your engine
+* and a tiny optional helper if your pipeline requires strict array equality
+
+No guessing, no “should work”—we’ll match your codebase precisely.

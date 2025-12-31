@@ -1,0 +1,127 @@
+Crystal clear: **Twelve Data only. No Alpha. No KuCoin. One source of truth.**
+
+Here’s exactly what to change so your app is **exclusively Twelve** (and won’t silently fall back to anything else).
+
+## 1) Hard-disable Alpha + KuCoin at the routing layer
+
+Update `src/engine/indicatorFactory.ts` to unified routing (you already planned this):
+
+```ts
+import { fetchIndicators, IndicatorData } from './indicatorService.js';
+import { TradingStyle } from '../config/strategy.js';
+import { createLogger } from '../services/logger.js';
+
+const logger = createLogger('IndicatorFactory');
+
+export type AnyIndicatorData = IndicatorData;
+
+export async function getIndicators(symbol: string, style: TradingStyle): Promise<AnyIndicatorData> {
+  logger.debug(`Routing ${symbol} to Twelve-only indicator service`);
+  return fetchIndicators(symbol, style);
+}
+
+export function isCryptoData(_data: AnyIndicatorData): _data is AnyIndicatorData {
+  return false;
+}
+```
+
+✅ This guarantees **cryptoIndicatorService.ts never runs**.
+
+---
+
+## 2) Make `indicatorService.ts` Twelve-only
+
+In `src/engine/indicatorService.ts`:
+
+* Replace the import:
+
+```ts
+import { twelveData, OHLCVBar, IndicatorValue, MACDValue } from '../services/twelveDataClient.js';
+```
+
+* Replace every `alphaVantage.` call with `twelveData.`
+
+* Add the new indicator fetches (no `any` casting):
+
+```ts
+data.ema8  = await twelveData.getEMA(symbol, entryInterval, 8);
+data.ema21 = await twelveData.getEMA(symbol, entryInterval, 21);
+data.ema55 = await twelveData.getEMA(symbol, entryInterval, 55);
+data.macd  = await twelveData.getMACD(symbol, entryInterval, 12, 26, 9);
+data.obv   = await twelveData.getOBV(symbol, entryInterval);
+```
+
+* Update `IndicatorData` interface to include:
+
+```ts
+ema8?: IndicatorValue[];
+ema21?: IndicatorValue[];
+ema55?: IndicatorValue[];
+macd?: MACDValue[];
+obv?: IndicatorValue[];
+```
+
+---
+
+## 3) Remove Alpha/KuCoin imports from the build (so “exclusive” is real)
+
+Even if files remain as backups, make sure they’re **not imported anywhere**:
+
+* Search repo for:
+
+  * `alphaVantageClient`
+  * `kucoinClient`
+  * `fetchCryptoIndicators`
+  * `cryptoIndicatorService`
+
+They should return **zero references** after the factory change + indicatorService import swap.
+
+If you want it *bulletproof*, add a “tripwire” inside those old modules so you’ll know if they ever get used:
+
+### In `cryptoIndicatorService.ts` (top of file)
+
+```ts
+throw new Error('cryptoIndicatorService.ts should not be used: Twelve-only mode is enabled.');
+```
+
+### In `alphaVantageClient.ts` (top of file)
+
+```ts
+throw new Error('alphaVantageClient.ts should not be used: Twelve-only mode is enabled.');
+```
+
+That makes it impossible for the app to “accidentally” hit Alpha later.
+
+---
+
+## 4) Set your Twelve exchange policy (still Twelve-only)
+
+This is still Twelve — just consistent within Twelve:
+
+* `TWELVE_DATA_CRYPTO_EXCHANGE=Binance` (or whatever your verification script tells you is best)
+
+If you don’t set it, default is Binance in our client.
+
+---
+
+## 5) One more thing: remove any Alpha-specific symbol rules
+
+If you have any code that forces `EURUSD` instead of `EUR/USD`, don’t worry — the Twelve client normalizes. But do a quick search for:
+
+* `EURUSD`
+* `BTCUSD`
+* `.replace('/', '')`
+
+and delete any formatting hacks that were only there because Alpha was picky.
+
+---
+
+### Bottom line
+
+After these changes:
+
+* **All bars + all indicators come from Twelve**
+* Crypto no longer uses KuCoin or local indicator math
+* Alpha is dead code, not a hidden dependency
+
+If you paste your `src/services/index.ts` (or wherever services are exported), I’ll tell you if there’s any last import path that could still pull Alpha into the runtime.
