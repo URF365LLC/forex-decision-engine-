@@ -7,17 +7,25 @@ A trading decision engine for Forex, Metals, and Cryptocurrency markets, designe
 Preferred communication style: Simple, everyday language.
 
 ## Recent Changes (2026-01-01)
-**E8 Instrument Specs Migration Complete + Verification**
+**H4 Trend Support + RsiOversold Strategy**
+- TRUE H4 timeframe support via native Twelve Data 4h interval with D1 fallback
+- New `RsiOversold` strategy: with-trend pullback using H4 EMA200+ADX>20, 3-bar RSI lookback, swing-based stops
+- Two-seatbelt safety: SEATBELT 1 (fail-fast H4 validation), SEATBELT 2 (separate trendIdx for H4 vs signalIdx for H1)
+- Added `fetchTrendDataH4()` with D1 fallback logging (`TREND_FALLBACK_D1_USED`)
+- Added `validateH4Alignment()` with NaN padding for H4 data integrity
+- Added H4 fields to types.ts: `trendBarsH4`, `ema200H4`, `adxH4`, `trendTimeframeUsed`, `trendFallbackUsed`
+- Added `CANDLE_CONFIRMATION` to ReasonCode for candle pattern confirmation
+- Removed metals daily-only restriction - all asset classes now use unified 1h entry interval
+- RsiBounce bug fixes: timeframes metadata (H1/H1), type cast safety, NaN-safe gating, RR threshold 1.5→1.25
+- Updated `strategyAnalyzer.ts` to pass H4 data through `convertToStrategyIndicatorData`
+- Now 9 intraday strategies registered (added rsi-oversold with 62% win rate, 2.0 R:R)
+- API budget: ~26 calls/symbol (added 3 H4 calls), full scan 46 symbols = ~1,196 calls
+
+**E8 Instrument Specs Migration (Earlier 2026-01-01)**
 - Created `e8InstrumentSpecs.ts` as single source of truth for all 46 instruments
 - Full E8 Markets spec compliance: contract sizes, commission models, pip values, leverage
 - Updated rate limiter for Twelve Data $99 plan: 610 calls/min (60 tokens, 10/sec refill, 100ms min delay)
-- Added queue overflow protection (200 max, throws FATAL error on overflow)
 - Fail-fast symbol conversion via `toDataSymbol()` - no heuristic fallbacks
-- Tripwired deprecated `universe.ts` (throws error at module load)
-- API v2 `/api/universe` with backward-compatible legacy format plus full instrument specs
-- Startup validation checks: duplicate symbols, pipValue > 0, commission model exists
-- **Position sizing guard**: Added `Number.isFinite()` check in `calculatePositionSize()` - returns null for invalid/negative lot sizes
-- **Smoke tests verified**: EURUSD (A+), BTCUSD (no-trade), FAKESYM (fail-fast rejection)
 
 **Previous Changes (2025-12-31)**
 - Migrated from Alpha Vantage + KuCoin to Twelve Data as unified data source
@@ -95,7 +103,7 @@ Orchestrates trade signal generation:
 -   `GET /api/upgrades/recent`: Recently detected grade upgrades.
 
 ### Feature Specifications
--   **Multi-Strategy System**: Implements 8 intraday strategies, each with defined win rates and specific indicators (e.g., RSI Oversold Bounce, Stochastic Oversold, Bollinger Mean Reversion, Triple EMA Crossover).
+-   **Multi-Strategy System**: Implements 9 intraday strategies, each with defined win rates and specific indicators (RSI Bounce H1-only, RSI Oversold H4-trend, Stochastic Oversold, Bollinger Mean Reversion, Williams %R + EMA, Triple EMA Crossover, Break & Retest, CCI Zero-Line, EMA Pullback).
 -   **Confidence Scoring**: Decisions are assigned a 0-100 confidence score, mapped to A+, A, B+, B, C grades.
 -   **Reason Codes**: Machine-readable codes explain the rationale behind trade decisions.
 -   **Journaling**: Comprehensive trade journaling with P&L calculation, stats tracking, and quick trade action buttons in the frontend.
