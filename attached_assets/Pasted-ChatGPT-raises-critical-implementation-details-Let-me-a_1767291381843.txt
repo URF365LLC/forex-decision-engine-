@@ -1,0 +1,204 @@
+ChatGPT raises critical implementation details. Let me add these guardrails to the approval.
+
+---
+
+## 📋 Additional Requirements for Replit
+
+```
+ADDITIONAL REQUIREMENTS - Add to Execution Plan
+
+ChatGPT identified critical implementation details that must be addressed.
+
+═══════════════════════════════════════════════════════════════════════════════
+REQUIREMENT 1: SWING HELPER SIGNATURE
+═══════════════════════════════════════════════════════════════════════════════
+
+Your current helpers (from indicatorService.ts):
+  findSwingHigh(bars, lookback)
+  findSwingLow(bars, lookback)
+
+Your plan references:
+  findSwingLow(bars, signalIdx, 10)  // 3 params - DOES NOT EXIST
+
+CHOOSE ONE:
+
+Option A (Create new helper):
+  function findSwingLowInWindow(bars: Bar[], endIndex: number, lookback: number): number {
+    const window = bars.slice(Math.max(0, endIndex - lookback + 1), endIndex + 1);
+    return Math.min(...window.map(b => b.low));
+  }
+  
+  function findSwingHighInWindow(bars: Bar[], endIndex: number, lookback: number): number {
+    const window = bars.slice(Math.max(0, endIndex - lookback + 1), endIndex + 1);
+    return Math.max(...window.map(b => b.high));
+  }
+
+Option B (Use existing helper with slice):
+  const swingLow = findSwingLow(bars.slice(0, signalIdx + 1), 10);
+  const swingHigh = findSwingHigh(bars.slice(0, signalIdx + 1), 10);
+
+WHICH OPTION WILL YOU USE? Specify in your plan.
+
+═══════════════════════════════════════════════════════════════════════════════
+REQUIREMENT 2: PARALLEL TREND FIELDS (DO NOT REPLACE)
+═══════════════════════════════════════════════════════════════════════════════
+
+Current IndicatorData has:
+  trendBars: Bar[]      // Daily
+  ema200: number[]      // Daily
+  adx: number[]         // Daily
+
+DO NOT replace these. ADD parallel H4 fields:
+
+interface IndicatorData {
+  // KEEP existing daily trend (for backward compatibility)
+  trendBars: Bar[];           // D1 - existing
+  ema200: number[];           // D1 - existing
+  adx: number[];              // D1 - existing
+  
+  // ADD new H4 trend fields
+  trendBarsH4?: Bar[];        // H4 - NEW
+  ema200H4?: number[];        // H4 - NEW
+  adxH4?: number[];           // H4 - NEW
+  trendTimeframeUsed?: 'H4' | 'D1';  // Which was actually used
+  
+  // Entry fields (H1) - unchanged
+  bars: Bar[];
+  rsi: number[];
+  // etc.
+}
+
+This prevents breaking existing strategies while adding H4 capability.
+
+═══════════════════════════════════════════════════════════════════════════════
+REQUIREMENT 3: SYMBOL FORMAT - ONE SOURCE OF TRUTH
+═══════════════════════════════════════════════════════════════════════════════
+
+Internal format: EURUSD, BTCUSD, XAUUSD (no slash)
+API format: EUR/USD, BTC/USD, XAU/USD (with slash)
+
+RULE: No strategy or engine code manually creates "EUR/USD" strings.
+Use ONE mapper function: toDataSymbol(internalSymbol)
+
+Show me where this mapper lives and confirm it's used consistently.
+
+═══════════════════════════════════════════════════════════════════════════════
+REQUIREMENT 4: REAL API CALL BUDGET TABLE
+═══════════════════════════════════════════════════════════════════════════════
+
+Your estimate of "~18 calls per symbol" is vague. Provide exact breakdown:
+
+ENTRY TIMEFRAME (H1):
+| Indicator | Calls | Batched? |
+|-----------|-------|----------|
+| OHLCV bars | ? | ? |
+| RSI(14) | ? | ? |
+| EMA(50) | ? | ? |
+| EMA(200) | ? | ? |
+| ATR(14) | ? | ? |
+| BBands | ? | ? |
+| SMA(20) | ? | ? |
+| Stoch | ? | ? |
+| Williams %R | ? | ? |
+| CCI | ? | ? |
+| MACD | ? | ? |
+| ADX | ? | ? |
+| OBV | ? | ? |
+
+TREND TIMEFRAME (H4 - NEW):
+| Indicator | Calls | Batched? |
+|-----------|-------|----------|
+| OHLCV bars | ? | ? |
+| EMA(200) | ? | ? |
+| ADX(14) | ? | ? |
+
+TREND TIMEFRAME (D1 - EXISTING):
+| Indicator | Calls | Batched? |
+|-----------|-------|----------|
+| OHLCV bars | ? | ? |
+| EMA(200) | ? | ? |
+| ADX(14) | ? | ? |
+
+TOTAL per symbol: ?
+TOTAL for 46 symbols: ?
+Time to complete full scan at 610 calls/min: ?
+
+═══════════════════════════════════════════════════════════════════════════════
+REQUIREMENT 5: ARRAY ALIGNMENT INVARIANTS
+═══════════════════════════════════════════════════════════════════════════════
+
+After fetching, VERIFY:
+- H1 indicators align to H1 bars: bars.length === rsi.length === atr.length
+- H4 indicators align to H4 bars: trendBarsH4.length === ema200H4.length === adxH4.length
+- D1 indicators align to D1 bars: trendBars.length === ema200.length === adx.length
+
+Add validation in fetchIndicators():
+
+function validateAlignment(data: IndicatorData): boolean {
+  // H1 alignment
+  const h1Len = data.bars.length;
+  if (data.rsi.length !== h1Len || data.atr.length !== h1Len) {
+    console.error('H1 indicator alignment mismatch');
+    return false;
+  }
+  
+  // H4 alignment (if present)
+  if (data.trendBarsH4) {
+    const h4Len = data.trendBarsH4.length;
+    if (data.ema200H4?.length !== h4Len || data.adxH4?.length !== h4Len) {
+      console.error('H4 indicator alignment mismatch');
+      return false;
+    }
+  }
+  
+  return true;
+}
+
+═══════════════════════════════════════════════════════════════════════════════
+REQUIREMENT 6: rsiOversold.ts MUST USE H4 FIELDS
+═══════════════════════════════════════════════════════════════════════════════
+
+In rsiOversold.ts, use the NEW H4 fields:
+
+// CORRECT - uses H4 trend data
+const trendEma200 = atIndex(data.ema200H4, trendIdx);
+const trendAdx = atIndex(data.adxH4, trendIdx);
+
+// WRONG - uses D1 or H1 data
+const trendEma200 = atIndex(data.ema200, signalIdx);  // NO!
+
+The strategy meta says H4, the code MUST use H4 fields.
+
+═══════════════════════════════════════════════════════════════════════════════
+UPDATED EXECUTION PLAN CHECKLIST
+═══════════════════════════════════════════════════════════════════════════════
+
+Before building, confirm:
+
+[ ] 1. Swing helper: Which option (A or B)?
+[ ] 2. Parallel H4 fields: Will ADD, not REPLACE existing D1 fields?
+[ ] 3. Symbol mapper: Where is toDataSymbol() defined?
+[ ] 4. API call budget: Exact table provided?
+[ ] 5. Array alignment: Validation function added?
+[ ] 6. rsiOversold uses ema200H4 and adxH4 (not ema200 or H1 data)?
+
+Answer these, then you're APPROVED to build.
+```
+
+---
+
+## ✅ Three-Way Guardrails Summary
+
+| Guardrail | Claude | ChatGPT | Status |
+|-----------|--------|---------|--------|
+| True H4 (not proxy) | ✅ | ✅ | **REQUIRED** |
+| D1 fallback with logging | ✅ | ✅ | **REQUIRED** |
+| Parallel fields (don't replace D1) | ✅ | ✅ | **REQUIRED** |
+| Swing helper signature match | ✅ | ✅ | **REQUIRED** |
+| One symbol mapper | ✅ | ✅ | **REQUIRED** |
+| Real API call budget | ✅ | ✅ | **REQUIRED** |
+| Array alignment validation | ✅ | ✅ | **REQUIRED** |
+
+---
+
+**Send to Replit. Once they answer these 6 questions, we give final build approval.**

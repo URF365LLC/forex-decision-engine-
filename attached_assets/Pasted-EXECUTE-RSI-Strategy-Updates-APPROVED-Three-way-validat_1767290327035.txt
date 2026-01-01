@@ -1,0 +1,96 @@
+EXECUTE: RSI Strategy Updates - APPROVED
+
+Three-way validated by Claude and ChatGPT. Execute these tasks in order.
+
+═══════════════════════════════════════════════════════════════════════════════
+TASK 1: Add CANDLE_CONFIRMATION to ReasonCode type
+═══════════════════════════════════════════════════════════════════════════════
+
+File: src/strategies/types.ts (or wherever ReasonCode is defined)
+
+Add to Candle patterns section:
+
+// Candle patterns
+| 'REJECTION_CONFIRMED'
+| 'ENGULFING_BULL'
+| 'ENGULFING_BEAR'
+| 'CANDLE_CONFIRMATION'  // ✅ ADD THIS
+
+═══════════════════════════════════════════════════════════════════════════════
+TASK 2: Update rsiBounce.ts (Bug Fixes Only)
+═══════════════════════════════════════════════════════════════════════════════
+
+Replace entire file with the validated code I provided.
+
+Key changes:
+- Add timeframes to meta
+- Fix type cast
+- Fix NaN-safe gating
+- Add missing reason codes
+- Fix RR threshold (1.5 → 1.25)
+
+DO NOT change core strategy logic.
+
+═══════════════════════════════════════════════════════════════════════════════
+TASK 3: Create NEW rsiOversold.ts
+═══════════════════════════════════════════════════════════════════════════════
+
+Create new file: src/strategies/rsiOversold.ts
+
+Use the LOCKED SPEC we validated earlier:
+- With-trend pullback (H4 EMA200 + ADX > 20)
+- RSI lookback (3 bars)
+- RSI recovery zone (30-50 / 50-70)
+- Volatility filter (1.8×ATR)
+- Swing-based stops
+- Stop rejection (>2.0×ATR)
+- Min 2.0 R:R
+
+═══════════════════════════════════════════════════════════════════════════════
+TASK 4: Register RsiOversold Strategy
+═══════════════════════════════════════════════════════════════════════════════
+
+File: src/strategies/registry.ts
+
+Add:
+import { RsiOversold } from './rsiOversold.js';
+
+Register in strategies array:
+new RsiOversold(),
+
+File: src/strategies/index.ts
+
+Add export:
+export { RsiOversold } from './rsiOversold.js';
+
+═══════════════════════════════════════════════════════════════════════════════
+TASK 5: Smoke Tests
+═══════════════════════════════════════════════════════════════════════════════
+
+After implementation, test:
+
+1. RsiBounce (mean reversion):
+   POST /api/analyze { symbol: 'EUR/USD', strategy: 'rsi-bounce' }
+   - Should work as before
+   - Verify CANDLE_CONFIRMATION appears in reasonCodes when applicable
+
+2. RsiOversold (with-trend):
+   POST /api/analyze { symbol: 'EUR/USD', strategy: 'rsi-oversold' }
+   - Should return signal or 'no-trade' with proper reason
+   - Verify trend filter (ADX) is checked
+
+3. Full scan:
+   POST /api/scan { symbols: ['EUR/USD', 'GBP/USD', 'BTC/USD'] }
+   - Both RSI strategies should appear in results
+
+═══════════════════════════════════════════════════════════════════════════════
+TASK 6: Report Back
+═══════════════════════════════════════════════════════════════════════════════
+
+After completion, show me:
+1. Updated rsiBounce.ts (confirm changes)
+2. New rsiOversold.ts (full file)
+3. Updated registry.ts (strategy list)
+4. Smoke test results
+
+═══════════════════════════════════════════════════════════════════════════════

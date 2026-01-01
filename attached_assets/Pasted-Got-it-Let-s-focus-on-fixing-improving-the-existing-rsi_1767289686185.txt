@@ -1,0 +1,89 @@
+Got it. Let's focus on fixing/improving the existing `rsiBounce.ts` file only.
+
+---
+
+## 📋 Request for Replit
+
+```
+TASK: Audit and Update rsiBounce.ts Strategy File
+
+We have a locked, three-way validated spec for the RSI Oversold strategy.
+I need you to:
+
+1. SHOW ME the current rsiBounce.ts file (full contents)
+
+2. COMPARE it against this locked spec and identify:
+   - Missing conditions
+   - Incorrect logic
+   - Misaligned parameters
+   - Missing reason codes
+   - Any bugs or issues
+
+3. PRODUCE a diff showing exactly what needs to change
+
+DO NOT implement yet. Just show me:
+- Current code
+- Issues found
+- Proposed changes
+
+═══════════════════════════════════════════════════════════════════════════════
+LOCKED SPEC TO COMPARE AGAINST:
+═══════════════════════════════════════════════════════════════════════════════
+
+STRATEGY: RsiOversold (with-trend pullback, NOT mean reversion)
+EXECUTION: NEXT_OPEN (signalIdx = bars.length - 2)
+
+LONG CONDITIONS (ALL required):
+1. Trend: h4Close > h4Ema200 AND h4Adx > 20
+2. RSI(14) crossed below 30 within last 3 bars
+3. RSI turning up: rsi[idx] > rsi[idx-1]
+4. RSI in recovery zone: 30 <= rsi <= 50
+5. Volatility filter: candle range <= 1.8 × ATR(14)
+
+SHORT CONDITIONS (ALL required):
+1. Trend: h4Close < h4Ema200 AND h4Adx > 20
+2. RSI(14) crossed above 70 within last 3 bars
+3. RSI turning down: rsi[idx] < rsi[idx-1]
+4. RSI in fade zone: 50 <= rsi <= 70
+5. Volatility filter: candle range <= 1.8 × ATR(14)
+
+STOP LOSS:
+- Primary: Swing low/high (10 bar lookback)
+- Fallback: 1.5 × ATR
+- REJECT if stop > 2.0 × ATR
+
+TAKE PROFIT:
+- 2.0 × risk distance (2R minimum)
+- REJECT if R:R < 2.0
+
+GRADING:
+- A+: RSI < 25 (or > 75) AND ADX > 25
+- B: RSI 25-30 (or 70-75) AND ADX 20-25
+
+PARAMETERS:
+- rsiPeriod: 14
+- rsiOversold: 30
+- rsiOverbought: 70
+- rsiDeepOversold: 25
+- rsiDeepOverbought: 75
+- rsiLookback: 3
+- emaTrendPeriod: 200
+- adxThreshold: 20
+- adxStrongThreshold: 25
+- atrPeriod: 14
+- maxCandleAtrRatio: 1.8
+- atrStopMultiplier: 1.5
+- atrMaxStopMultiplier: 2.0
+- swingLookback: 10
+- minRiskReward: 2.0
+
+═══════════════════════════════════════════════════════════════════════════════
+
+Show me the current file and the gap analysis.
+```
+
+---
+
+Once Replit shows you the current code and identifies gaps, paste it here. I'll validate the proposed changes before approving the update.
+
+Then we move to the next strategy file (e.g., `emaPullback.ts`, `bollingerMR.ts`, etc.) and repeat the same process.

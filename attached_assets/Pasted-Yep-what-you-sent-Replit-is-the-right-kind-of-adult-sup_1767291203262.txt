@@ -1,0 +1,132 @@
+Yep — what you sent Replit is the *right* kind of “adult supervision” for a live account. I’ll add a few **must-include corrections** so they don’t accidentally build the wrong thing while “agreeing” with your plan.
+
+## Two critical gotchas Replit must address in their indicatorService plan
+
+### 1) **Your current helper signatures don’t match their proposed calls**
+
+In the `indicatorService.ts` you pasted earlier, your helpers are:
+
+* `findSwingHigh(bars, lookback)`
+* `findSwingLow(bars, lookback)`
+
+But Replit’s plan references:
+
+* `findSwingLow(bars, signalIdx, 10)` (3 params)
+
+That function **does not exist** in what you showed. If they implement RsiOversold using a fake signature, you’ll get runtime failures or a “quick fix” that quietly changes behavior.
+
+**What to require:**
+Either:
+
+* **Option A (clean):** Create a new helper with the signature the strategy needs:
+
+  * `findSwingLowInWindow(bars, endIndex, lookbackBars)`
+  * `findSwingHighInWindow(bars, endIndex, lookbackBars)`
+    Or:
+* **Option B (minimal):** Use your existing helper by passing `lookback=10` and slicing:
+
+  * `const swingLow = findSwingLow(bars.slice(0, signalIdx + 1), 10)`
+
+Make them spell out which they’ll do.
+
+---
+
+### 2) **Don’t “replace” your existing trend timeframe silently**
+
+Right now, your engine clearly distinguishes:
+
+* `entryBars` = H1 (60min)
+* `trendBars` = D1 (daily)
+* `ema200` and `adx` are fetched on **daily**
+
+If Replit switches `trendBars` from daily → H4 without updating other strategies or assumptions, you can get subtle behavior drift.
+
+**Safer approach for live trading:**
+
+* Keep existing daily trend path intact (so nothing breaks unexpectedly)
+* Add a *parallel* H4 trend path for new strategies (RsiOversold), e.g.:
+
+**Add fields** (names matter, but this concept matters more):
+
+* `trendBarsD1` (keep current behavior)
+* `trendBarsH4` (new)
+* `ema200D1`, `adxD1` (existing)
+* `ema200H4`, `adxH4` (new)
+
+Then RsiOversold explicitly uses **H4** fields. Existing strategies keep using daily until you intentionally migrate them.
+
+This is how you avoid “we changed the timeframe for everything and didn’t notice for 2 weeks.”
+
+---
+
+## Twelve-only + symbol standard (so Replit doesn’t drift)
+
+**Internal format should remain:** `EURUSD`, `BTCUSD`, `XAUUSD` (your universe + strategy registry likely expects it).
+**API format:** `EUR/USD`, `BTC/USD`, `XAU/USD` produced by **one mapper** (`toDataSymbol()`).
+
+Tell Replit: *“No strategy code or engine code is allowed to manually create EUR/USD strings.”* One source of truth.
+
+---
+
+## What I’d want to see in Replit’s “indicatorService.ts plan” (non-negotiables)
+
+### A) Interval mapping must use your central mapper
+
+You already defined a standard vocabulary:
+
+* internal: `"1m", "5m", "15m", "30m", "1H", "4H", "D"`
+* mapped to Twelve: `"1min", ..., "4h", "1day"`
+
+So indicatorService should **never** hardcode `"60min"` or `"daily"` anymore.
+
+### B) Metals restriction removed — but with Twelve-only fallback
+
+Yes, the “metals daily-only” restriction is Alpha baggage. Remove it.
+
+But: if Twelve rejects a particular interval for a specific symbol, fallback must still be **Twelve-only**:
+
+* trend H4 fails → fallback to D1 (still Twelve)
+* entry H1 fails → that symbol is broken, skip and log hard
+
+### C) Alignment invariants still enforced
+
+After fetching H4 indicators, ensure:
+
+* arrays align to **trendBarsH4 length**
+* entry indicators align to **entryBarsH1 length**
+* strategies only read what they’re aligned to
+
+No mixing “H4 EMA array” with “H1 bars” indexes. That’s how engines hallucinate signals.
+
+---
+
+## One more thing: Replit’s API call math is… optimistic
+
+They’re counting “~18 calls per symbol” assuming each indicator is 1 call. But you’re also adding:
+
+* extra H4 OHLCV call
+* extra H4 EMA200
+* extra H4 ADX
+
+…and depending on your indicator list, you might already be doing a bunch of EMA periods, BBands, stoch, etc.
+
+So require that they provide a **real call budget table per symbol**, with:
+
+* entry timeframe calls (H1)
+* trend timeframe calls (H4)
+* trend daily calls (D1, if kept)
+* whether any are batched
+* whether OHLCV is fetched once and reused
+
+If they can’t count it, they can’t control it.
+
+---
+
+## Bottom line
+
+What you sent is solid. But **add these two bullets** to your “plan approval criteria”:
+
+1. **Swing helper signature must match real code** (no invented helper calls).
+2. **Do not replace daily trend fields blindly** — add H4 trend fields in parallel first.
+
+If you paste Replit’s next execution report (the indicatorService details), I’ll mark it **APPROVED / APPROVED WITH CHANGES / NEEDS REVISION** and I’ll be brutal about any “proxy” wording or hidden timeframe swaps.

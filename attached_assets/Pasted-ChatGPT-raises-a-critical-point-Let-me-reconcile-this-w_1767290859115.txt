@@ -1,0 +1,161 @@
+ChatGPT raises a critical point. Let me reconcile this with my review.
+
+---
+
+## 🔬 Claude's Reconciliation: The H4 vs H1 Issue
+
+### The Core Problem
+
+ChatGPT is correct. Replit's plan has a **truthfulness problem**:
+
+| What Replit Claims | What Replit Does | Problem |
+|-------------------|------------------|---------|
+| `timeframes: { trend: 'H4', entry: 'H1' }` | Uses H1 EMA200/ADX | **Lying to the system** |
+
+This isn't just semantics. In a prop trading system:
+- **H4 EMA200** = 200 hours of price data (~8 days)
+- **H1 EMA200** = 200 hours of price data (~8 days)
+
+Wait... actually for EMA200 specifically, H1 and H4 EMA200 cover the same lookback period (200 periods × timeframe). The **values will be different** because H4 smooths more aggressively.
+
+**The real issue:** ADX(14) on H1 vs H4 is very different:
+- H1 ADX(14) = 14 hours of trend strength
+- H4 ADX(14) = 56 hours of trend strength
+
+**This matters for signal quality.**
+
+---
+
+## ✅ Final Decision: Two Valid Paths
+
+### Path A: Implement True H4 (Spec-Correct)
+- Requires modifying `indicatorService.ts` to fetch H4 data
+- More work but matches locked spec exactly
+- **Recommended for production**
+
+### Path B: Formalize H1 Proxy (Acceptable Temporary)
+- Keep H1 data
+- **Change meta to be truthful:** `timeframes: { trend: 'H1', entry: 'H1' }`
+- Add prominent comment: "H1 trend proxy - true H4 implementation pending"
+- Document in strategy description
+- **Acceptable for initial deployment**
+
+---
+
+## 📋 Send to Replit
+
+```
+HOLD. Critical architecture decision required before Task 3.
+
+ChatGPT and Claude have identified a spec integrity issue:
+
+THE PROBLEM:
+Your plan claims: timeframes: { trend: 'H4', entry: 'H1' }
+Your plan implements: H1 EMA200 and H1 ADX as "proxy"
+
+This is a truthfulness breach. The meta object would lie about what the strategy actually uses.
+
+═══════════════════════════════════════════════════════════════════════════════
+CHOOSE ONE PATH (No Middle Ground)
+═══════════════════════════════════════════════════════════════════════════════
+
+PATH A: IMPLEMENT TRUE H4 DATA (Spec-Correct)
+────────────────────────────────────────────────────────────────────────────────
+- Modify indicatorService.ts to fetch H4 timeframe data
+- Fetch: H4 OHLCV bars, H4 EMA200, H4 ADX
+- Keep: H1 RSI, H1 ATR, H1 bars for entry
+- Meta stays: timeframes: { trend: 'H4', entry: 'H1' }
+
+This is MORE WORK but matches the locked spec exactly.
+
+PATH B: FORMALIZE H1 PROXY (Acceptable Temporary)
+────────────────────────────────────────────────────────────────────────────────
+- Keep H1 data only (no changes to indicatorService)
+- CHANGE meta to be truthful:
+  
+  timeframes: { trend: 'H1', entry: 'H1' },  // Changed from H4
+
+- CHANGE description:
+  
+  description: 'With-trend pullback using H1 trend proxy (H4 implementation pending)',
+
+- ADD prominent comment at top of analyze():
+  
+  /**
+   * NOTE: This strategy uses H1 EMA200/ADX as trend filter.
+   * The locked spec calls for H4 trend data, but current indicatorService
+   * only fetches H1. This is an acceptable approximation for initial deployment.
+   * TODO: Implement true H4 data fetch for production accuracy.
+   */
+
+This is LESS WORK but requires acknowledging the deviation.
+
+═══════════════════════════════════════════════════════════════════════════════
+WHAT YOU CANNOT DO
+═══════════════════════════════════════════════════════════════════════════════
+
+You CANNOT:
+- Claim H4 in meta while using H1 data
+- Leave this ambiguous
+- "Proxy" without explicit documentation
+
+That creates hidden risk in a live trading system.
+
+═══════════════════════════════════════════════════════════════════════════════
+QUESTIONS TO ANSWER
+═══════════════════════════════════════════════════════════════════════════════
+
+1. Which path do you choose: A (true H4) or B (H1 proxy, documented)?
+
+2. If Path A: How much additional time to implement H4 data fetch?
+
+3. What is the exact signature of your swing helper functions?
+   - findSwingLow(bars, ???, ???) - what are the parameters?
+   - Where is it defined?
+
+4. Does /api/analyze accept 'EURUSD' or 'EUR/USD' as input?
+
+═══════════════════════════════════════════════════════════════════════════════
+APPROVED TO PROCEED IMMEDIATELY
+═══════════════════════════════════════════════════════════════════════════════
+
+Task 1: Add CANDLE_CONFIRMATION to ReasonCode ✅ GO
+Task 2: Update rsiBounce.ts ✅ GO
+
+These are safe and don't depend on the H4 decision.
+
+═══════════════════════════════════════════════════════════════════════════════
+BLOCKED UNTIL DECISION
+═══════════════════════════════════════════════════════════════════════════════
+
+Task 3: Create rsiOversold.ts ❌ BLOCKED - waiting for Path A or B decision
+Task 4: Register RsiOversold ❌ BLOCKED - depends on Task 3
+
+Answer the questions above.
+```
+
+---
+
+## ✅ What We All Agree On
+
+| Item | Claude | ChatGPT | Consensus |
+|------|--------|---------|-----------|
+| Task 1 (ReasonCode) | ✅ GO | ✅ GO | **APPROVED** |
+| Task 2 (rsiBounce fix) | ✅ GO | ✅ GO | **APPROVED** |
+| Task 3 (rsiOversold) | ⚠️ Needs path decision | ⚠️ Needs path decision | **BLOCKED** |
+| H4 truthfulness | ✅ Must be honest | ✅ Must be honest | **REQUIRED** |
+
+---
+
+## 🎯 My Recommendation
+
+**Path B (H1 proxy, documented)** is acceptable for initial deployment because:
+
+1. Getting H4 data requires significant indicatorService changes
+2. H1 EMA200 still provides meaningful trend context
+3. Explicit documentation prevents hidden risk
+4. Can upgrade to true H4 later
+
+But **only if Replit explicitly acknowledges and documents the deviation**.
+
+What's your preference?
