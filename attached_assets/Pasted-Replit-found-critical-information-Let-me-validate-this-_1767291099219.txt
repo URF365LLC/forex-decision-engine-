@@ -1,0 +1,183 @@
+Replit found critical information. Let me validate this.
+
+---
+
+## 🔬 Claude's Analysis
+
+### ✅ Excellent Discovery: Twelve Data Supports 4h Natively
+
+This changes everything. **Path A (True H4) is now the correct path.**
+
+### ✅ Critical Bug Found: Outdated Metals Restriction
+
+```typescript
+const isMetals = assetType === 'metal';
+const entryInterval = isMetals ? 'daily' : '60min';  // ← ALPHA VANTAGE LEGACY
+```
+
+This is leftover from the Alpha Vantage migration. Twelve Data has no such limitation.
+
+### ✅ API Call Math Checks Out
+
+- Current: ~15 calls/symbol
+- New: ~18 calls/symbol
+- 46 symbols × 18 calls = 828 calls per full scan
+- At 610 calls/min = ~1.4 minutes per scan
+- **Acceptable** ✅
+
+---
+
+## ⚠️ Scope Expansion Requires Full Plan
+
+Before approving, I need Replit to detail the indicatorService.ts changes.
+
+---
+
+## 📋 Send to Replit
+
+```
+GOOD DISCOVERY. Path A (True H4) is now approved.
+
+Before implementing, provide detailed plan for indicatorService.ts changes.
+
+═══════════════════════════════════════════════════════════════════════════════
+APPROVED SCOPE EXPANSION
+═══════════════════════════════════════════════════════════════════════════════
+
+Task 1: Add CANDLE_CONFIRMATION to ReasonCode ✅ APPROVED
+Task 2: Update rsiBounce.ts ✅ APPROVED  
+Task 2.5 (NEW): Fix indicatorService.ts ⚠️ NEEDS DETAIL
+Task 3: Create rsiOversold.ts with TRUE H4 ⚠️ NEEDS DETAIL
+Task 4: Register RsiOversold ✅ APPROVED
+Task 5: Smoke tests ✅ APPROVED
+
+═══════════════════════════════════════════════════════════════════════════════
+PROVIDE DETAILED PLAN FOR indicatorService.ts CHANGES
+═══════════════════════════════════════════════════════════════════════════════
+
+SECTION A: Current State
+- Show current fetchIndicators() function signature
+- Show current interval logic (the isMetals code)
+- Show current IndicatorData interface
+
+SECTION B: Proposed Changes
+
+1. INTERVAL FIX:
+   Show exact change to remove metals daily-only restriction:
+   
+   // FROM:
+   const isMetals = assetType === 'metal';
+   const entryInterval = isMetals ? 'daily' : '60min';
+   
+   // TO:
+   ???
+
+2. NEW H4 TREND DATA:
+   Show what new fetches will be added:
+   
+   - trendBars (4h OHLCV)
+   - ema200_h4 or trendEma200
+   - adx_h4 or trendAdx
+   
+   What will the fetch calls look like?
+
+3. INDICATORDATA INTERFACE UPDATE:
+   Show the interface BEFORE and AFTER:
+   
+   // BEFORE:
+   interface IndicatorData {
+     // current fields
+   }
+   
+   // AFTER:
+   interface IndicatorData {
+     // current fields +
+     trendBars?: Bar[];      // H4 bars
+     trendEma200?: number[]; // H4 EMA200
+     trendAdx?: number[];    // H4 ADX
+     // etc.
+   }
+
+4. BACKWARD COMPATIBILITY:
+   - Will existing strategies still work?
+   - Are new H4 fields optional or required?
+   - What happens if H4 fetch fails?
+
+SECTION C: Impact Analysis
+
+Show table:
+| Strategy | Uses H4 Data? | Changes Needed? |
+|----------|---------------|-----------------|
+| rsiBounce | No | None |
+| rsiOversold | Yes (new) | Use trendEma200, trendAdx |
+| emaPullback | ? | ? |
+| bollingerMR | ? | ? |
+| stochasticOversold | ? | ? |
+| williamsEma | ? | ? |
+| tripleEma | ? | ? |
+| breakRetest | ? | ? |
+| cciZeroLine | ? | ? |
+
+SECTION D: API Call Breakdown
+
+| Data Point | Timeframe | Calls | New? |
+|------------|-----------|-------|------|
+| OHLCV bars | H1 | 1 | No |
+| OHLCV bars | H4 | 1 | YES |
+| RSI | H1 | 1 | No |
+| EMA200 | H1 | 1 | No |
+| EMA200 | H4 | 1 | YES |
+| ADX | H1 | 1 | No |
+| ADX | H4 | 1 | YES |
+| ... | ... | ... | ... |
+| TOTAL | | ? | +? |
+
+SECTION E: Error Handling
+
+What happens if:
+- H4 fetch fails but H1 succeeds?
+- H4 returns fewer bars than expected?
+- H4 data is stale?
+
+SECTION F: Testing Plan
+
+How will you verify:
+1. Metals now work with H1 interval (not daily)
+2. H4 data is correctly fetched
+3. H4 EMA200 values are different from H1 EMA200
+4. Existing strategies not broken
+
+═══════════════════════════════════════════════════════════════════════════════
+ALSO CONFIRM
+═══════════════════════════════════════════════════════════════════════════════
+
+1. rsiOversold.ts will use TRUE H4 data:
+   - trendEma200 (not H1 ema200)
+   - trendAdx (not H1 adx)
+   - Meta will truthfully say: timeframes: { trend: 'H4', entry: 'H1' }
+
+2. Swing helper signature - what is it exactly?
+   - Function name
+   - Parameters
+   - Return type
+   - File location
+
+3. What's the internal symbol format? EURUSD or EUR/USD?
+
+═══════════════════════════════════════════════════════════════════════════════
+
+Provide this detailed plan, then we approve the full scope expansion.
+```
+
+---
+
+## ✅ Claude's Verdict
+
+**Scope expansion approved in principle.** Replit found the right path:
+
+1. ✅ True H4 is feasible (Twelve Data supports 4h)
+2. ✅ Metals bug should be fixed
+3. ✅ API calls still within limits
+4. ⚠️ Need detailed implementation plan before build
+
+Once Replit provides the detailed indicatorService.ts plan, we do final validation and approve the full build.

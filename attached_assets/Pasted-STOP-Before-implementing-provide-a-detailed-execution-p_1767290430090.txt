@@ -1,0 +1,166 @@
+STOP. Before implementing, provide a detailed execution plan for review.
+
+I need to validate your understanding of the RSI strategy updates before approving the build. Three AI systems (Claude and ChatGPT) have validated this work - I need to confirm you understand it correctly.
+
+═══════════════════════════════════════════════════════════════════════════════
+PRODUCE A DETAILED EXECUTION REPORT COVERING:
+═══════════════════════════════════════════════════════════════════════════════
+
+SECTION 1: TASK SUMMARY
+- List all tasks in execution order
+- Dependencies between tasks
+- Estimated time per task
+- Risk level per task (LOW/MEDIUM/HIGH)
+
+SECTION 2: ReasonCode TYPE UPDATE (Task 1)
+
+Show:
+- File path where ReasonCode is defined
+- Current ReasonCode type (full list)
+- Exact change being made
+- Which strategies currently use ReasonCode
+- Any risk of breaking existing code?
+
+SECTION 3: rsiBounce.ts UPDATE (Task 2)
+
+Show a DIFF of changes:
+- Line-by-line what's changing
+- What's NOT changing (confirm core logic preserved)
+
+Confirm understanding of each fix:
+
+| Fix | Current Code | New Code | Why |
+|-----|--------------|----------|-----|
+| timeframes in meta | ? | ? | ? |
+| Type cast | ? | ? | ? |
+| NaN-safe gating | ? | ? | ? |
+| Missing reason codes | ? | ? | ? |
+| RR threshold | ? | ? | ? |
+
+Confirm these are NOT being changed:
+- [ ] RSI < 30 / > 70 thresholds
+- [ ] Bollinger Band touch requirement
+- [ ] SMA20 as trend reference
+- [ ] Stop loss: 1.5 × ATR
+- [ ] Take profit: 2.0 × ATR
+- [ ] Core mean-reversion philosophy
+
+SECTION 4: rsiOversold.ts CREATION (Task 3)
+
+Show the FULL implementation you plan to create.
+
+Verify against locked spec:
+
+| Requirement | Your Implementation | Line # |
+|-------------|---------------------|--------|
+| H4 EMA200 trend filter | ? | ? |
+| H4 ADX > 20 | ? | ? |
+| RSI lookback (3 bars) | ? | ? |
+| RSI turning (rsi > rsiPrev) | ? | ? |
+| RSI recovery zone (30-50 / 50-70) | ? | ? |
+| Volatility filter (1.8×ATR) | ? | ? |
+| Swing-based stop (10 bar lookback) | ? | ? |
+| Stop fallback (1.5×ATR) | ? | ? |
+| Stop rejection (>2.0×ATR) | ? | ? |
+| Min R:R 2.0 (reject if less) | ? | ? |
+| NEXT_OPEN execution | ? | ? |
+| signalIdx = bars.length - 2 | ? | ? |
+| A+ grade: RSI < 25 AND ADX > 25 | ? | ? |
+
+Show the meta object:
+```typescript
+meta: StrategyMeta = {
+  id: ?,
+  name: ?,
+  description: ?,
+  style: ?,
+  timeframes: ?,
+  winRate: ?,
+  avgRR: ?,
+  signalsPerWeek: ?,
+  requiredIndicators: ?,
+  version: ?,
+};
+```
+
+Show the reason codes you'll use:
+- Long signal reasons: ?
+- Short signal reasons: ?
+- Rejection reasons: ?
+
+SECTION 5: REGISTRY UPDATE (Task 4)
+
+Show:
+- Current registry.ts imports
+- New import to add
+- Current strategies array
+- New strategies array (with RsiOversold added)
+- index.ts export changes
+
+SECTION 6: INDICATOR REQUIREMENTS
+
+For rsiOversold.ts, confirm data availability:
+
+| Indicator | Timeframe | Currently Fetched? | Source |
+|-----------|-----------|-------------------|--------|
+| EMA200 | H4 | ? | ? |
+| ADX | H4 | ? | ? |
+| RSI | H1 | ? | ? |
+| ATR | H1 | ? | ? |
+| OHLCV bars | H1 | ? | ? |
+
+If H4 data not currently available:
+- What's the fallback plan?
+- How will trend filter work without H4?
+
+SECTION 7: DIFFERENCE BETWEEN THE TWO STRATEGIES
+
+Explain in your own words:
+
+| Aspect | RsiBounce | RsiOversold |
+|--------|-----------|-------------|
+| Strategy type | ? | ? |
+| Market condition | ? | ? |
+| Trend filter | ? | ? |
+| RSI usage | ? | ? |
+| Bollinger Bands | ? | ? |
+| ADX usage | ? | ? |
+| Expected win rate | ? | ? |
+| Trade frequency | ? | ? |
+| When it fires | ? | ? |
+
+Why do we need BOTH strategies?
+
+SECTION 8: SMOKE TEST PLAN
+
+For each test, specify:
+- Endpoint
+- Request body
+- Expected response structure
+- Pass criteria
+- Fail criteria
+
+Test 1: RsiBounce unchanged behavior
+Test 2: RsiOversold new strategy works
+Test 3: Both appear in scan results
+Test 4: CANDLE_CONFIRMATION reason code works
+
+SECTION 9: ROLLBACK PLAN
+
+If something breaks:
+- How to revert rsiBounce.ts?
+- How to remove rsiOversold.ts?
+- How to revert registry.ts?
+- How to revert ReasonCode type?
+
+SECTION 10: POTENTIAL RISKS
+
+| Risk | Likelihood | Impact | Mitigation |
+|------|------------|--------|------------|
+| ? | ? | ? | ? |
+
+═══════════════════════════════════════════════════════════════════════════════
+
+DO NOT IMPLEMENT until I review and approve this execution plan.
+
+Produce the complete report now.

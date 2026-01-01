@@ -1,0 +1,242 @@
+ChatGPT's guardrail is excellent. Let me consolidate the final approved spec.
+
+---
+
+## ✅ FINAL APPROVED SCOPE - Three-Way Consensus
+
+### Approved Tasks:
+
+| Task | Description | Status |
+|------|-------------|--------|
+| 1 | Add CANDLE_CONFIRMATION to ReasonCode | ✅ APPROVED |
+| 2 | Update rsiBounce.ts (bug fixes only) | ✅ APPROVED |
+| 2.5 | Fix indicatorService.ts (H4 + metals fix) | ✅ APPROVED |
+| 3 | Create rsiOversold.ts with TRUE H4 | ✅ APPROVED |
+| 4 | Register RsiOversold | ✅ APPROVED |
+| 5 | Smoke tests | ✅ APPROVED |
+
+---
+
+## 📋 Final Implementation Spec for Replit
+
+```
+APPROVED: Full Scope Expansion with Guardrails
+
+Three-way validated by Claude and ChatGPT. Execute with these exact specifications.
+
+═══════════════════════════════════════════════════════════════════════════════
+TASK 1: Add CANDLE_CONFIRMATION to ReasonCode
+═══════════════════════════════════════════════════════════════════════════════
+File: src/strategies/types.ts
+
+Add to Candle patterns section:
+  | 'CANDLE_CONFIRMATION'
+
+═══════════════════════════════════════════════════════════════════════════════
+TASK 2: Update rsiBounce.ts (Bug Fixes Only)
+═══════════════════════════════════════════════════════════════════════════════
+Use the validated code provided earlier. Key changes:
+- Add timeframes to meta
+- Fix type cast
+- Fix NaN-safe gating  
+- Add missing reason codes
+- Fix RR threshold (1.5 → 1.25)
+
+DO NOT change core mean-reversion logic.
+
+═══════════════════════════════════════════════════════════════════════════════
+TASK 2.5: Fix indicatorService.ts (TRUE H4 + Metals Fix)
+═══════════════════════════════════════════════════════════════════════════════
+
+CHANGE 1: Remove metals daily-only restriction
+
+// DELETE THIS:
+const isMetals = assetType === 'metal';
+const entryInterval = isMetals ? 'daily' : '60min';
+
+// REPLACE WITH:
+const entryInterval = '1h';      // All assets use H1 for entry
+const trendInterval = '4h';      // All assets use H4 for trend (with fallback)
+
+CHANGE 2: Add H4 trend data fetch with D1 fallback
+
+async function fetchTrendData(symbol: string, trendInterval: string): Promise<TrendData> {
+  try {
+    // Try H4 first
+    const trendBars = await twelveData.timeSeries(symbol, { interval: '4h', outputsize: 100 });
+    const trendEma200 = await twelveData.ema(symbol, { interval: '4h', time_period: 200 });
+    const trendAdx = await twelveData.adx(symbol, { interval: '4h', time_period: 14 });
+    
+    return {
+      trendBars,
+      trendEma200,
+      trendAdx,
+      trendTimeframe: 'H4',
+      fallbackUsed: false
+    };
+  } catch (error) {
+    // Fallback to D1 if Twelve rejects H4 for this symbol
+    console.warn(`TREND_FALLBACK_D1_USED: ${symbol} - ${error.message}`);
+    
+    const trendBars = await twelveData.timeSeries(symbol, { interval: '1day', outputsize: 100 });
+    const trendEma200 = await twelveData.ema(symbol, { interval: '1day', time_period: 200 });
+    const trendAdx = await twelveData.adx(symbol, { interval: '1day', time_period: 14 });
+    
+    return {
+      trendBars,
+      trendEma200,
+      trendAdx,
+      trendTimeframe: 'D1',
+      fallbackUsed: true
+    };
+  }
+}
+
+CHANGE 3: Update IndicatorData interface
+
+// ADD these fields:
+interface IndicatorData {
+  // ... existing fields ...
+  
+  // H4 Trend Data (new)
+  trendBars?: Bar[];
+  trendEma200?: number[];
+  trendAdx?: number[];
+  trendTimeframe?: 'H4' | 'D1';  // Actual timeframe used
+  trendFallbackUsed?: boolean;   // True if D1 fallback was used
+}
+
+CHANGE 4: Update fetchIndicators() to include trend data
+
+// In the main fetch function, add:
+const trendData = await fetchTrendData(symbol, '4h');
+
+return {
+  ...existingData,
+  trendBars: trendData.trendBars,
+  trendEma200: trendData.trendEma200,
+  trendAdx: trendData.trendAdx,
+  trendTimeframe: trendData.trendTimeframe,
+  trendFallbackUsed: trendData.fallbackUsed,
+};
+
+═══════════════════════════════════════════════════════════════════════════════
+TASK 3: Create rsiOversold.ts with TRUE H4 Data
+═══════════════════════════════════════════════════════════════════════════════
+
+KEY REQUIREMENTS:
+
+1. Use TRUE H4 trend data (not H1 proxy):
+   
+   const trendEma200 = atIndex(data.trendEma200, trendIdx);
+   const trendAdx = atIndex(data.trendAdx, trendIdx);
+   // NOT: const ema200 = atIndex(data.ema200, signalIdx);  ← WRONG
+
+2. Meta must be truthful:
+   
+   meta: StrategyMeta = {
+     id: 'rsi-oversold',
+     name: 'RSI Oversold With-Trend',
+     description: 'With-trend pullback from RSI extremes with H4 EMA200+ADX filter',
+     style: 'intraday',
+     timeframes: { trend: 'H4', entry: 'H1' },  // TRUE - we fetch H4
+     winRate: 65,
+     avgRR: 2.0,
+     signalsPerWeek: '10-20',
+     requiredIndicators: ['bars', 'rsi', 'atr', 'ema50', 'trendEma200', 'trendAdx'],
+     version: '2026-01-01',
+   };
+
+3. RSI lookback must check 3 bars:
+   
+   const wasOversold = 
+     rsi[signalIdx - 1] < 30 || 
+     rsi[signalIdx - 2] < 30 || 
+     rsi[signalIdx - 3] < 30;
+
+4. Include fallback note in decision:
+   
+   if (data.trendFallbackUsed) {
+     triggers.push('Note: Trend used D1 fallback (H4 unavailable)');
+   }
+
+5. All other requirements from locked spec:
+   - RSI turning (rsi > rsiPrev)
+   - RSI recovery zone (30-50 / 50-70)
+   - Volatility filter (1.8×ATR)
+   - Swing-based stops (10 bar lookback)
+   - Stop rejection (>2.0×ATR)
+   - Min R:R 2.0
+
+═══════════════════════════════════════════════════════════════════════════════
+TASK 4: Register RsiOversold
+═══════════════════════════════════════════════════════════════════════════════
+
+File: src/strategies/registry.ts
+- Add import
+- Add to strategies array
+
+File: src/strategies/index.ts  
+- Add export
+
+═══════════════════════════════════════════════════════════════════════════════
+TASK 5: Smoke Tests
+═══════════════════════════════════════════════════════════════════════════════
+
+Test 1: RsiBounce unchanged
+Test 2: RsiOversold works with H4 data
+Test 3: Metals work with H1 (not daily)
+Test 4: H4 fallback to D1 logs warning correctly
+Test 5: Both strategies appear in scan
+
+═══════════════════════════════════════════════════════════════════════════════
+NON-NEGOTIABLE GUARDRAILS
+═══════════════════════════════════════════════════════════════════════════════
+
+1. TWELVE-ONLY: No Alpha Vantage, no KuCoin fallbacks
+2. H4 TRUTHFULNESS: Meta says H4, code uses H4 (or D1 fallback with flag)
+3. D1 FALLBACK LOGGING: Always log TREND_FALLBACK_D1_USED with symbol
+4. NO PROXY LANGUAGE: Never call H1 data an "H4 proxy"
+5. BACKWARD COMPATIBILITY: Existing strategies must still work
+
+═══════════════════════════════════════════════════════════════════════════════
+EXECUTION ORDER
+═══════════════════════════════════════════════════════════════════════════════
+
+1. Add CANDLE_CONFIRMATION to types.ts
+2. Update rsiBounce.ts
+3. Update indicatorService.ts (H4 + metals fix)
+4. Create rsiOversold.ts
+5. Register in registry.ts and index.ts
+6. Run smoke tests
+7. Report results
+
+═══════════════════════════════════════════════════════════════════════════════
+
+APPROVED. Execute now.
+
+After completion, show:
+1. Updated types.ts (ReasonCode section)
+2. Updated rsiBounce.ts (full file)
+3. Updated indicatorService.ts (changed sections)
+4. New rsiOversold.ts (full file)
+5. Updated registry.ts
+6. Smoke test results
+```
+
+---
+
+## ✅ Three-Way Final Approval
+
+| Item | Claude | ChatGPT | Status |
+|------|--------|---------|--------|
+| True H4 (not proxy) | ✅ | ✅ | **REQUIRED** |
+| D1 fallback with logging | ✅ | ✅ | **REQUIRED** |
+| Metals H1 fix | ✅ | ✅ | **REQUIRED** |
+| Twelve-only | ✅ | ✅ | **REQUIRED** |
+| rsiBounce bug fixes | ✅ | ✅ | **APPROVED** |
+| rsiOversold new strategy | ✅ | ✅ | **APPROVED** |
+
+---
+
+**Send to Replit. Full build approved.**

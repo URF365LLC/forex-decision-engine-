@@ -1,0 +1,60 @@
+That message you sent Replit is **exactly** what a live-account owner should send. It forces them to prove comprehension before they touch a single line. ✅
+
+A couple “sharp edges” you might want to add (or keep in your pocket if they respond vaguely):
+
+### 1) Add a hard constraint: Twelve-only enforcement
+
+You already care about this—make them explicitly confirm:
+
+* **No imports** from `alphaVantageClient`, `kucoinClient`, or any legacy data source
+* Any legacy files remain **tripwired** or unused
+* The RSI work **must not** reintroduce a second data path
+
+Add one sentence if you want:
+
+> “Confirm RSI Oversold uses the same Twelve-only pipeline and does not introduce any new data source or interval string.”
+
+### 2) Force them to prove the H4/H1 availability (this is the one real trap)
+
+Your locked RSI Oversold spec depends on **H4 EMA200 + H4 ADX**, but your current indicator service historically used **daily** for trend and **60min** for entry (especially for metals). Make Replit show:
+
+* **Where H4 bars are fetched**
+* Where **EMA200(H4)** and **ADX(H4)** are fetched
+* If they’re not currently fetched, they must propose an explicit plan:
+
+  * either add H4 trend fetching, OR
+  * revise the spec to “trend = H1 EMA200” (I don’t recommend changing spec, but it’s the honest fallback)
+
+Your Section 6 already asks this — good. Don’t let them hand-wave it.
+
+### 3) Make them include a “no-lookahead” proof
+
+Because NEXT_OPEN is sacred:
+
+* Confirm `signalIdx = bars.length - 2`
+* Confirm all indicators used are aligned and only read at `signalIdx` (not `entryIdx`)
+
+You asked for it. If they slip, call it out.
+
+### 4) Require a fail-fast “No NaN in last N bars” check
+
+For RSI Oversold (and honestly all strategies):
+
+* **Reject if RSI/ATR/ADX are NaN in last 10 bars**
+* This prevents “warmup NaN” from generating garbage signals
+
+You already used this earlier in the Twelve migration—keep it consistent.
+
+---
+
+## What I need from you *next*
+
+Paste Replit’s execution report when they respond.
+I’ll do the skeptical, live-account review in the exact format you asked earlier:
+
+* Overall verdict
+* Task-by-task
+* Crypto/commission/timing risks (if touched)
+* “Must fix before implementation” list
+
+Until then, your instruction to Replit is solid—no edits required.

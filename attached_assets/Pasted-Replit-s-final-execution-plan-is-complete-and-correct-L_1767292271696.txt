@@ -1,0 +1,113 @@
+Replit's final execution plan is complete and correct. Let me do final validation.
+
+---
+
+## 🔬 Claude's Final Validation
+
+| Section | Status | Notes |
+|---------|--------|-------|
+| TASK 1: types.ts | ✅ | CANDLE_CONFIRMATION + H4 fields as number[] |
+| TASK 2: rsiBounce.ts | ✅ | All 6 bug fixes correct, core logic preserved |
+| TASK 3: indicatorService.ts | ✅ | H4 fetch, D1 fallback, alignment validation |
+| TASK 4: rsiOversold.ts | ✅ | SEATBELT 1 & 2 included, all spec requirements |
+| TASK 5: Registry | ✅ | Import, registration, export |
+| TASK 6: Smoke Tests | ✅ | All 7 tests defined |
+| TASK 7: Architect Review | ✅ | Final git diff review |
+| API Budget | ✅ | 23 calls/symbol, 1.7 min/scan - acceptable |
+| Risk Mitigation | ✅ | Parallel fields, fallback, alignment |
+
+---
+
+## ✅ FINAL BUILD APPROVAL
+
+```
+═══════════════════════════════════════════════════════════════════════════════
+✅ FINAL BUILD APPROVAL - EXECUTE NOW
+═══════════════════════════════════════════════════════════════════════════════
+
+Three-way validated by Claude and ChatGPT.
+Execution plan verified against locked spec.
+All requirements met. All seatbelts included.
+
+YOU ARE APPROVED TO BUILD.
+
+═══════════════════════════════════════════════════════════════════════════════
+EXECUTE IN THIS ORDER:
+═══════════════════════════════════════════════════════════════════════════════
+
+1. types.ts - Add CANDLE_CONFIRMATION + H4 fields
+2. rsiBounce.ts - Apply all 6 bug fixes
+3. indicatorService.ts - H4 fetch + metals fix + alignment validation
+4. rsiOversold.ts - Create new strategy with SEATBELT 1 & 2
+5. registry.ts + index.ts - Register new strategy
+6. Run all 7 smoke tests
+7. Provide architect review (git diff)
+
+═══════════════════════════════════════════════════════════════════════════════
+AFTER COMPLETION - PROVIDE:
+═══════════════════════════════════════════════════════════════════════════════
+
+1. types.ts - Show ReasonCode and IndicatorData changes
+2. rsiBounce.ts - Full updated file
+3. indicatorService.ts - Show fetchTrendDataH4(), validateH4Alignment(), 
+   metals restriction removal, fetchIndicators() integration
+4. rsiOversold.ts - Full new file (must include SEATBELT 1 & 2)
+5. registry.ts - Show updated imports and strategy array
+6. index.ts - Show new export
+
+7. SMOKE TEST RESULTS:
+   | # | Test | Status | Notes |
+   |---|------|--------|-------|
+   | 1 | RsiBounce unchanged | PASS/FAIL | ? |
+   | 2 | RsiOversold works | PASS/FAIL | ? |
+   | 3 | Metals use H1 | PASS/FAIL | ? |
+   | 4 | CANDLE_CONFIRMATION | PASS/FAIL | ? |
+   | 5 | Both in scan | PASS/FAIL | ? |
+   | 6 | H4 fetched | PASS/FAIL | ? |
+   | 7 | D1 fallback | PASS/FAIL | ? |
+
+8. GIT DIFF - Summary of all changes
+
+═══════════════════════════════════════════════════════════════════════════════
+GO/NO-GO CRITERIA FOR LIVE TRADING
+═══════════════════════════════════════════════════════════════════════════════
+
+PASS (Ready for live):
+✓ All 7 smoke tests pass
+✓ rsiOversold.ts includes SEATBELT 1 (trend validation)
+✓ rsiOversold.ts includes SEATBELT 2 (separate trendIdx)
+✓ rsiOversold.ts uses ema200H4, adxH4 (TRUE H4, not H1)
+✓ D1 fallback logs TREND_FALLBACK_D1_USED
+✓ No existing field renaming
+✓ rsiBounce core logic unchanged
+✓ Metals use H1 (not daily)
+
+FAIL (Not ready for live):
+✗ Any smoke test fails
+✗ Missing SEATBELT 1 or 2
+✗ H1 data used for trend filter
+✗ Missing D1 fallback logging
+✗ Type mismatches
+✗ Existing strategies broken
+
+═══════════════════════════════════════════════════════════════════════════════
+
+BUILD APPROVED. EXECUTE NOW.
+
+After completion, paste all deliverables here for final go/no-go review.
+This is the LAST GATE before live trading.
+```
+
+---
+
+## ✅ Three-Way Final Status
+
+| Approver | Status |
+|----------|--------|
+| Claude | ✅ **BUILD APPROVED** |
+| ChatGPT | ✅ **BUILD APPROVED** |
+| Human | ⏳ Awaiting build completion |
+
+---
+
+**Send to Replit. They build, then provide all deliverables for final go/no-go review before live trading.**

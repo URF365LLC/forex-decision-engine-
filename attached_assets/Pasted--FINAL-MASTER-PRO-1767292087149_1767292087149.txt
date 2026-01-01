@@ -1,0 +1,585 @@
+```
+═══════════════════════════════════════════════════════════════════════════════
+FINAL MASTER PROMPT: RSI STRATEGY BUILD
+═══════════════════════════════════════════════════════════════════════════════
+
+Three-way validated by Claude and ChatGPT. This is the authoritative build spec.
+
+BEFORE BUILDING: Confirm your execution plan by answering the checklist at the end.
+AFTER CONFIRMING: Execute the build exactly as specified.
+
+═══════════════════════════════════════════════════════════════════════════════
+TASK 1: types.ts - Update ReasonCode + IndicatorData
+═══════════════════════════════════════════════════════════════════════════════
+File: src/strategies/types.ts
+
+CHANGE 1A: Add to ReasonCode (Candle patterns section):
+  | 'CANDLE_CONFIRMATION'
+
+CHANGE 1B: Add H4 fields to IndicatorData interface:
+  // KEEP all existing fields unchanged, then ADD:
+  
+  // H4 Trend Data (NEW - parallel to existing D1)
+  trendBarsH4?: OHLCVBar[];
+  ema200H4?: IndicatorValue[];
+  adxH4?: IndicatorValue[];
+  trendTimeframeUsed?: 'H4' | 'D1';
+  trendFallbackUsed?: boolean;
+
+RULES:
+- DO NOT rename existing fields (trendBars, ema200, adx remain as D1)
+- H4 fields are OPTIONAL (use ?)
+- Data type MUST be IndicatorValue[] (not number[])
+
+═══════════════════════════════════════════════════════════════════════════════
+TASK 2: rsiBounce.ts - Bug Fixes Only (No Logic Changes)
+═══════════════════════════════════════════════════════════════════════════════
+File: src/strategies/intraday/rsiBounce.ts
+
+CHANGE 2A: Add timeframes to meta (after style):
+  timeframes: { trend: 'H4', entry: 'H1' },
+
+CHANGE 2B: Fix type cast (line ~28):
+  // FROM:
+  if (!validateIndicators(data as Record<string, unknown>, ...))
+  // TO:
+  if (!validateIndicators(data as unknown as Record<string, unknown>, ...))
+
+CHANGE 2C: Fix NaN-safe gating (line ~40):
+  // FROM:
+  if (!rsiSignal || !bbSignal || !atrSignal || !smaSignal) return null;
+  // TO:
+  if (
+    !Number.isFinite(rsiSignal) ||
+    !bbSignal ||
+    !Number.isFinite(atrSignal) ||
+    !Number.isFinite(smaSignal)
+  ) {
+    return null;
+  }
+
+CHANGE 2D: Add missing reason codes (lines ~69 and ~94):
+  // After "Bullish candle confirmation" trigger:
+  reasonCodes.push('CANDLE_CONFIRMATION');
+  
+  // After "Bearish candle confirmation" trigger:
+  reasonCodes.push('CANDLE_CONFIRMATION');
+
+CHANGE 2E: Fix RR threshold (line ~116):
+  // FROM:
+  if (rr >= 1.5) {
+  // TO:
+  if (rr >= 1.25) {
+
+CHANGE 2F: Update version:
+  version: '2026-01-01',
+
+DO NOT CHANGE:
+- RSI < 30 / > 70 thresholds
+- Bollinger Band touch requirement
+- SMA20 as trend reference
+- Stop loss: 1.5 × ATR
+- Take profit: 2.0 × ATR
+- Core mean-reversion philosophy
+
+═══════════════════════════════════════════════════════════════════════════════
+TASK 3: indicatorService.ts - Add H4 + Fix Metals
+═══════════════════════════════════════════════════════════════════════════════
+File: src/services/indicatorService.ts
+
+CHANGE 3A: Remove metals daily-only restriction
+  // DELETE these lines:
+  const isMetals = assetType === 'metal';
+  const entryInterval = isMetals ? 'daily' : '60min';
+  
+  // REPLACE WITH:
+  const entryInterval = '1h';  // All asset types use H1 for entry
+
+CHANGE 3B: Add fetchTrendDataH4() function
+
+interface TrendDataH4 {
+  trendBarsH4: OHLCVBar[];
+  ema200H4: IndicatorValue[];
+  adxH4: IndicatorValue[];
+  trendTimeframeUsed: 'H4' | 'D1';
+  trendFallbackUsed: boolean;
+}
+
+async function fetchTrendDataH4(symbol: string): Promise<TrendDataH4> {
+  const dataSymbol = toDataSymbol(symbol);
+  if (!dataSymbol) {
+    throw new Error(`Unknown symbol: ${symbol}`);
+  }
+  
+  try {
+    // Try H4 first (Twelve Data supports 4h natively)
+    const [trendBarsH4, ema200H4, adxH4] = await Promise.all([
+      fetchTimeSeries(dataSymbol, '4h', 100),
+      fetchEMA(dataSymbol, '4h', 200),
+      fetchADX(dataSymbol, '4h', 14),
+    ]);
+    
+    logger.debug(`H4 trend data fetched successfully for ${symbol}`);
+    
+    return {
+      trendBarsH4,
+      ema200H4,
+      adxH4,
+      trendTimeframeUsed: 'H4',
+      trendFallbackUsed: false,
+    };
+  } catch (error) {
+    // Fallback to D1 if Twelve rejects H4 for this symbol
+    logger.warn(`TREND_FALLBACK_D1_USED: ${symbol} - H4 failed, using D1`, {
+      error: error instanceof Error ? error.message : 'Unknown error',
+      symbol,
+    });
+    
+    const [trendBarsD1, ema200D1, adxD1] = await Promise.all([
+      fetchTimeSeries(dataSymbol, '1day', 100),
+      fetchEMA(dataSymbol, '1day', 200),
+      fetchADX(dataSymbol, '1day', 14),
+    ]);
+    
+    return {
+      trendBarsH4: trendBarsD1,
+      ema200H4: ema200D1,
+      adxH4: adxD1,
+      trendTimeframeUsed: 'D1',
+      trendFallbackUsed: true,
+    };
+  }
+}
+
+CHANGE 3C: Add validateH4Alignment() function
+
+function validateH4Alignment(data: Partial<TrendDataH4>): boolean {
+  if (!data.trendBarsH4 || data.trendBarsH4.length === 0) {
+    return true; // No H4 data to validate
+  }
+  
+  const h4Len = data.trendBarsH4.length;
+  
+  if (data.ema200H4 && data.ema200H4.length !== h4Len) {
+    logger.error(`H4 EMA200 alignment mismatch: ${data.ema200H4.length} vs bars ${h4Len}`);
+    // Pad with NaN at front if needed
+    while (data.ema200H4.length < h4Len) {
+      data.ema200H4.unshift({ timestamp: '', value: NaN });
+    }
+  }
+  
+  if (data.adxH4 && data.adxH4.length !== h4Len) {
+    logger.error(`H4 ADX alignment mismatch: ${data.adxH4.length} vs bars ${h4Len}`);
+    // Pad with NaN at front if needed
+    while (data.adxH4.length < h4Len) {
+      data.adxH4.unshift({ timestamp: '', value: NaN });
+    }
+  }
+  
+  return true;
+}
+
+CHANGE 3D: Update fetchIndicators() to include H4 data
+
+// Add near the end of fetchIndicators(), before return:
+
+// Fetch H4 trend data (with D1 fallback)
+const trendH4 = await fetchTrendDataH4(symbol);
+validateH4Alignment(trendH4);
+
+return {
+  // ... all existing fields unchanged ...
+  
+  // NEW H4 fields
+  trendBarsH4: trendH4.trendBarsH4,
+  ema200H4: trendH4.ema200H4,
+  adxH4: trendH4.adxH4,
+  trendTimeframeUsed: trendH4.trendTimeframeUsed,
+  trendFallbackUsed: trendH4.trendFallbackUsed,
+};
+
+═══════════════════════════════════════════════════════════════════════════════
+TASK 4: rsiOversold.ts - Create New Strategy
+═══════════════════════════════════════════════════════════════════════════════
+File: src/strategies/intraday/rsiOversold.ts (NEW FILE)
+
+/**
+ * RSI Oversold With-Trend Strategy
+ * Win Rate: 65% | Avg RR: 2.0
+ * 
+ * Logic: With-trend pullback from RSI extremes with H4 EMA200+ADX filter
+ * NOT mean reversion - this is trend continuation
+ */
+
+import { IStrategy, StrategyMeta, Decision, IndicatorData, UserSettings, ReasonCode } from '../types.js';
+import { atIndex, validateOrder, validateIndicators, buildDecision, clamp, findSwingLow, findSwingHigh } from '../utils.js';
+
+export class RsiOversold implements IStrategy {
+  meta: StrategyMeta = {
+    id: 'rsi-oversold',
+    name: 'RSI Oversold With-Trend',
+    description: 'With-trend pullback from RSI extremes with H4 EMA200+ADX filter',
+    style: 'intraday',
+    timeframes: { trend: 'H4', entry: 'H1' },
+    winRate: 65,
+    avgRR: 2.0,
+    signalsPerWeek: '10-20',
+    requiredIndicators: ['bars', 'rsi', 'atr', 'ema50', 'ema200H4', 'adxH4'],
+    version: '2026-01-01',
+  };
+
+  async analyze(data: IndicatorData, settings: UserSettings): Promise<Decision | null> {
+    const { symbol, bars, rsi, atr, ema50 } = data;
+    
+    // ═══════════════════════════════════════════════════════════════
+    // BASIC VALIDATION
+    // ═══════════════════════════════════════════════════════════════
+    if (!bars || bars.length < 50) return null;
+    if (!validateIndicators(data as unknown as Record<string, unknown>, ['bars', 'rsi', 'atr', 'ema50'], 50)) {
+      return null;
+    }
+    
+    // ═══════════════════════════════════════════════════════════════
+    // SEATBELT 1: Fail-fast trend data validation
+    // ═══════════════════════════════════════════════════════════════
+    if (!data.ema200H4 || !data.adxH4 || !data.trendTimeframeUsed) {
+      // logger.debug(`RsiOversold: Missing H4 trend data for ${symbol}`);
+      return null;
+    }
+    
+    if (data.trendTimeframeUsed !== 'H4' && data.trendTimeframeUsed !== 'D1') {
+      // logger.error(`RsiOversold: Invalid trend timeframe ${data.trendTimeframeUsed}`);
+      return null;
+    }
+    
+    // ═══════════════════════════════════════════════════════════════
+    // SEATBELT 2: Separate indexes for H1 and H4
+    // ═══════════════════════════════════════════════════════════════
+    const signalIdx = bars.length - 2;        // H1 signal bar (last closed)
+    const entryIdx = bars.length - 1;         // H1 entry bar (current/next open)
+    const trendIdx = (data.trendBarsH4?.length || 1) - 1;  // H4 trend bar
+    
+    const signalBar = bars[signalIdx];
+    const entryBar = bars[entryIdx];
+    
+    // ═══════════════════════════════════════════════════════════════
+    // EXTRACT INDICATORS (correct timeframe for each)
+    // ═══════════════════════════════════════════════════════════════
+    // H1 Entry indicators
+    const rsiSignal = atIndex(rsi, signalIdx);
+    const rsiPrev = atIndex(rsi, signalIdx - 1);
+    const atrSignal = atIndex(atr, signalIdx);
+    const ema50Signal = atIndex(ema50, signalIdx);
+    
+    // H4 Trend indicators (use trendIdx, NOT signalIdx)
+    const h4Close = data.trendBarsH4?.[trendIdx]?.close;
+    const trendEma200 = atIndex(data.ema200H4, trendIdx);
+    const trendAdx = atIndex(data.adxH4, trendIdx);
+    
+    // NaN-safe validation
+    if (
+      !Number.isFinite(rsiSignal) ||
+      !Number.isFinite(rsiPrev) ||
+      !Number.isFinite(atrSignal) ||
+      !Number.isFinite(ema50Signal) ||
+      !Number.isFinite(h4Close) ||
+      !Number.isFinite(trendEma200) ||
+      !Number.isFinite(trendAdx)
+    ) {
+      return null;
+    }
+    
+    // ═══════════════════════════════════════════════════════════════
+    // VOLATILITY FILTER (reject spike candles)
+    // ═══════════════════════════════════════════════════════════════
+    const candleRange = signalBar.high - signalBar.low;
+    if (candleRange > 1.8 * atrSignal) {
+      return null; // Volatility spike - skip
+    }
+    
+    // ═══════════════════════════════════════════════════════════════
+    // TREND FILTER (H4 EMA200 + ADX)
+    // ═══════════════════════════════════════════════════════════════
+    const trendBullish = h4Close > trendEma200 && trendAdx > 20;
+    const trendBearish = h4Close < trendEma200 && trendAdx > 20;
+    
+    if (!trendBullish && !trendBearish) {
+      return null; // No trend or ADX too low
+    }
+    
+    // ═══════════════════════════════════════════════════════════════
+    // RSI LOOKBACK (check last 3 bars for extreme)
+    // ═══════════════════════════════════════════════════════════════
+    const rsi1 = atIndex(rsi, signalIdx - 1);
+    const rsi2 = atIndex(rsi, signalIdx - 2);
+    const rsi3 = atIndex(rsi, signalIdx - 3);
+    
+    const wasOversold = (rsi1 !== null && rsi1 < 30) || 
+                        (rsi2 !== null && rsi2 < 30) || 
+                        (rsi3 !== null && rsi3 < 30);
+    const wasOverbought = (rsi1 !== null && rsi1 > 70) || 
+                          (rsi2 !== null && rsi2 > 70) || 
+                          (rsi3 !== null && rsi3 > 70);
+    
+    // ═══════════════════════════════════════════════════════════════
+    // SIGNAL DETECTION
+    // ═══════════════════════════════════════════════════════════════
+    const triggers: string[] = [];
+    const reasonCodes: ReasonCode[] = [];
+    let confidence = 0;
+    let direction: 'long' | 'short' | null = null;
+    
+    // LONG: Bullish trend + was oversold + RSI turning up + in recovery zone
+    if (
+      trendBullish &&
+      wasOversold &&
+      rsiSignal > rsiPrev &&                    // RSI turning up
+      rsiSignal >= 30 && rsiSignal <= 50        // Recovery zone
+    ) {
+      direction = 'long';
+      confidence += 40;
+      triggers.push(`RSI recovered from oversold in uptrend`);
+      reasonCodes.push('RSI_OVERSOLD');
+      triggers.push(`H4 trend bullish: price ${h4Close.toFixed(5)} > EMA200 ${trendEma200.toFixed(5)}`);
+      reasonCodes.push('TREND_ALIGNED');
+      
+      // A+ grade: deep oversold + strong trend
+      const lowestRsi = Math.min(rsi1 || 100, rsi2 || 100, rsi3 || 100);
+      if (lowestRsi < 25) {
+        confidence += 15;
+        triggers.push(`RSI reached extreme oversold (${lowestRsi.toFixed(1)})`);
+        reasonCodes.push('RSI_EXTREME_LOW');
+      }
+      if (trendAdx > 25) {
+        confidence += 10;
+        triggers.push(`Strong trend (ADX ${trendAdx.toFixed(1)})`);
+      }
+    }
+    // SHORT: Bearish trend + was overbought + RSI turning down + in fade zone
+    else if (
+      trendBearish &&
+      wasOverbought &&
+      rsiSignal < rsiPrev &&                    // RSI turning down
+      rsiSignal >= 50 && rsiSignal <= 70        // Fade zone
+    ) {
+      direction = 'short';
+      confidence += 40;
+      triggers.push(`RSI fading from overbought in downtrend`);
+      reasonCodes.push('RSI_OVERBOUGHT');
+      triggers.push(`H4 trend bearish: price ${h4Close.toFixed(5)} < EMA200 ${trendEma200.toFixed(5)}`);
+      reasonCodes.push('TREND_ALIGNED');
+      
+      // A+ grade: deep overbought + strong trend
+      const highestRsi = Math.max(rsi1 || 0, rsi2 || 0, rsi3 || 0);
+      if (highestRsi > 75) {
+        confidence += 15;
+        triggers.push(`RSI reached extreme overbought (${highestRsi.toFixed(1)})`);
+        reasonCodes.push('RSI_EXTREME_HIGH');
+      }
+      if (trendAdx > 25) {
+        confidence += 10;
+        triggers.push(`Strong trend (ADX ${trendAdx.toFixed(1)})`);
+      }
+    }
+    
+    if (!direction) return null;
+    
+    // ═══════════════════════════════════════════════════════════════
+    // STOP LOSS (Swing-based with ATR fallback)
+    // ═══════════════════════════════════════════════════════════════
+    const swingBars = bars.slice(0, signalIdx + 1);
+    const swingLow = findSwingLow(swingBars, 10);
+    const swingHigh = findSwingHigh(swingBars, 10);
+    
+    const entryPrice = entryBar.open;
+    let stopLossPrice: number;
+    
+    if (direction === 'long') {
+      // Use swing low or ATR fallback
+      const atrStop = entryPrice - (atrSignal * 1.5);
+      stopLossPrice = swingLow !== null ? Math.min(swingLow, atrStop) : atrStop;
+    } else {
+      // Use swing high or ATR fallback
+      const atrStop = entryPrice + (atrSignal * 1.5);
+      stopLossPrice = swingHigh !== null ? Math.max(swingHigh, atrStop) : atrStop;
+    }
+    
+    // ═══════════════════════════════════════════════════════════════
+    // STOP REJECTION (max 2.0 × ATR)
+    // ═══════════════════════════════════════════════════════════════
+    const stopDistance = Math.abs(entryPrice - stopLossPrice);
+    if (stopDistance > 2.0 * atrSignal) {
+      return null; // Stop too wide
+    }
+    
+    // ═══════════════════════════════════════════════════════════════
+    // TAKE PROFIT (2R minimum)
+    // ═══════════════════════════════════════════════════════════════
+    const riskDistance = stopDistance;
+    const takeProfitPrice = direction === 'long'
+      ? entryPrice + (riskDistance * 2.0)
+      : entryPrice - (riskDistance * 2.0);
+    
+    // ═══════════════════════════════════════════════════════════════
+    // R:R VALIDATION
+    // ═══════════════════════════════════════════════════════════════
+    if (!validateOrder(direction, entryPrice, stopLossPrice, takeProfitPrice)) {
+      return null;
+    }
+    
+    const rr = Math.abs(takeProfitPrice - entryPrice) / riskDistance;
+    if (rr < 2.0) {
+      return null; // R:R too low
+    }
+    
+    // R:R boost
+    if (rr >= 2.0) {
+      confidence += 10;
+      reasonCodes.push('RR_FAVORABLE');
+    }
+    
+    // ═══════════════════════════════════════════════════════════════
+    // D1 FALLBACK NOTE
+    // ═══════════════════════════════════════════════════════════════
+    if (data.trendFallbackUsed) {
+      triggers.push('Note: Trend used D1 fallback (H4 unavailable)');
+    }
+    
+    confidence = clamp(confidence, 0, 100);
+    
+    return buildDecision({
+      symbol,
+      strategyId: this.meta.id,
+      strategyName: this.meta.name,
+      direction,
+      confidence,
+      entryPrice,
+      stopLoss: stopLossPrice,
+      takeProfit: takeProfitPrice,
+      triggers,
+      reasonCodes,
+      settings,
+    });
+  }
+}
+
+═══════════════════════════════════════════════════════════════════════════════
+TASK 5: registry.ts - Register New Strategy
+═══════════════════════════════════════════════════════════════════════════════
+File: src/strategies/registry.ts
+
+ADD import:
+  import { RsiOversold } from './intraday/rsiOversold.js';
+
+ADD to INTRADAY_STRATEGIES array:
+  new RsiOversold(),
+
+═══════════════════════════════════════════════════════════════════════════════
+TASK 6: index.ts - Export New Strategy
+═══════════════════════════════════════════════════════════════════════════════
+File: src/strategies/index.ts
+
+ADD export:
+  export { RsiOversold } from './intraday/rsiOversold.js';
+
+═══════════════════════════════════════════════════════════════════════════════
+TASK 7: SMOKE TESTS
+═══════════════════════════════════════════════════════════════════════════════
+
+Run these 7 tests and report results:
+
+| # | Test | Pass Criteria |
+|---|------|---------------|
+| 1 | RsiBounce unchanged | Returns decision without errors |
+| 2 | RsiOversold works | Returns decision or null with no errors |
+| 3 | Metals use H1 | XAU/USD fetch uses 1h interval, not daily |
+| 4 | CANDLE_CONFIRMATION | Appears in reasonCodes when applicable |
+| 5 | Both in scan | Both rsi-bounce and rsi-oversold in /api/strategies |
+| 6 | H4 fetched | EUR/USD: trendTimeframeUsed === 'H4', trendBarsH4.length > 0 |
+| 7 | D1 fallback | Simulated failure logs TREND_FALLBACK_D1_USED |
+
+═══════════════════════════════════════════════════════════════════════════════
+EXECUTION PLAN CONFIRMATION
+═══════════════════════════════════════════════════════════════════════════════
+
+BEFORE BUILDING, confirm you understand by checking each box:
+
+[ ] 1. types.ts: Add CANDLE_CONFIRMATION to ReasonCode
+[ ] 2. types.ts: Add H4 fields to IndicatorData (NEW fields, not replacing)
+[ ] 3. rsiBounce.ts: Bug fixes only, no logic changes
+[ ] 4. indicatorService.ts: Remove metals daily-only restriction
+[ ] 5. indicatorService.ts: Add fetchTrendDataH4() with D1 fallback
+[ ] 6. indicatorService.ts: Add validateH4Alignment()
+[ ] 7. indicatorService.ts: Integrate H4 into fetchIndicators() return
+[ ] 8. rsiOversold.ts: Create new file with SEATBELT 1 (trend validation)
+[ ] 9. rsiOversold.ts: Use separate trendIdx (SEATBELT 2)
+[ ] 10. rsiOversold.ts: Use TRUE H4 fields (ema200H4, adxH4)
+[ ] 11. registry.ts: Add RsiOversold import and registration
+[ ] 12. index.ts: Add RsiOversold export
+[ ] 13. All 7 smoke tests will be run
+
+CONFIRM each item, then BUILD.
+
+═══════════════════════════════════════════════════════════════════════════════
+AFTER BUILD - PROVIDE DELIVERABLES
+═══════════════════════════════════════════════════════════════════════════════
+
+1. types.ts - Show ReasonCode and IndicatorData changes
+2. rsiBounce.ts - Full updated file
+3. indicatorService.ts - Show changed sections with context
+4. rsiOversold.ts - Full new file
+5. registry.ts - Show updated imports and array
+6. index.ts - Show new export
+7. SMOKE TEST RESULTS:
+   | Test | Status | Notes |
+   |------|--------|-------|
+   | 1 | PASS/FAIL | ? |
+   | 2 | PASS/FAIL | ? |
+   | 3 | PASS/FAIL | ? |
+   | 4 | PASS/FAIL | ? |
+   | 5 | PASS/FAIL | ? |
+   | 6 | PASS/FAIL | ? |
+   | 7 | PASS/FAIL | ? |
+
+═══════════════════════════════════════════════════════════════════════════════
+FINAL GO/NO-GO REVIEW
+═══════════════════════════════════════════════════════════════════════════════
+
+After deliverables, I will verify:
+
+PASS CRITERIA:
+✓ All code matches this spec exactly
+✓ All 7 smoke tests pass
+✓ rsiOversold uses ema200H4/adxH4 (TRUE H4, not H1)
+✓ No existing field renaming
+✓ D1 fallback logs TREND_FALLBACK_D1_USED
+✓ Both seatbelts present in rsiOversold.ts
+✓ Existing strategies not broken
+
+FAIL CRITERIA:
+✗ Any H1 data used for trend filter
+✗ Missing alignment validation
+✗ Missing D1 fallback logging
+✗ Smoke test failures
+✗ Type mismatches or missing fields
+
+This is the LAST GATE before live trading.
+
+═══════════════════════════════════════════════════════════════════════════════
+
+CONFIRM EXECUTION PLAN, then BUILD.
+```
+
+---
+
+## ✅ Master Prompt Complete
+
+This prompt includes:
+1. **Complete code for all tasks** - No ambiguity
+2. **Both seatbelts** - Trend validation + separate trendIdx
+3. **Execution plan checklist** - 13 items to confirm
+4. **Smoke test requirements** - 7 specific tests
+5. **Deliverables list** - What to show after build
+6. **Go/no-go criteria** - Clear pass/fail rules
+
+**Send to Replit. They confirm the checklist, then build, then provide deliverables for final review.**

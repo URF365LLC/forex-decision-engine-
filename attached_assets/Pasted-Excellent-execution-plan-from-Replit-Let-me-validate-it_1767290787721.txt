@@ -1,0 +1,173 @@
+Excellent execution plan from Replit. Let me validate it against our locked specs.
+
+---
+
+## 🔬 Claude's Validation of Replit's Execution Plan
+
+### SECTION 1: Task Summary ✅
+- Dependencies correct
+- Time estimates reasonable
+- Risk levels appropriate
+
+### SECTION 2: ReasonCode Update ✅
+- Correct file path
+- Correct placement in Candle patterns section
+- Low risk assessment correct
+
+### SECTION 3: rsiBounce.ts Diff ✅
+All changes validated:
+| Fix | Correct? |
+|-----|----------|
+| timeframes in meta | ✅ |
+| Type cast fix | ✅ |
+| NaN-safe gating | ✅ |
+| Missing reason codes | ✅ |
+| RR threshold 1.5→1.25 | ✅ |
+| Core logic NOT changed | ✅ |
+
+### SECTION 4: rsiOversold.ts Creation ⚠️
+
+**Issues Found:**
+
+| Requirement | Replit's Plan | Issue |
+|-------------|---------------|-------|
+| requiredIndicators | `['bars', 'rsi', 'ema200', 'adx', 'atr']` | ⚠️ Missing 'ema50' for EMA50 confirmation |
+| Rejection reasons | "Returned as null, no code needed" | ⚠️ Should log reason for debugging |
+| RSI lookback logic | "Check rsi[idx-2] or rsi[idx-1]" | ⚠️ Should check ALL 3 bars (idx-1, idx-2, idx-3) |
+
+**Minor but important:**
+- Meta `winRate: 65` - Acceptable estimate
+- Meta `avgRR: 2.0` - Correct per spec
+
+### SECTION 5: Registry Update ✅
+- Correct approach
+
+### SECTION 6: Indicator Requirements ⚠️
+
+**Critical Note:**
+> "Current system fetches H1 data only. Will use H1 indicators as trend proxy."
+
+This is a **known limitation**. The locked spec requires H4 data, but using H1 as proxy is acceptable as temporary solution.
+
+**Recommendation:** Add a comment in the code documenting this limitation:
+```typescript
+// TODO: Currently using H1 EMA200/ADX as H4 proxy. 
+// For true H4 trend filter, need to modify indicatorService.ts
+```
+
+### SECTION 7: Strategy Comparison ✅
+- Correctly understands the difference
+- Correctly explains why both are needed
+
+### SECTION 8: Smoke Test Plan ✅
+- All tests appropriate
+
+### SECTION 9: Rollback Plan ✅
+- Clear and viable
+
+### SECTION 10: Risks ✅
+- Correctly identified H4 data limitation
+
+---
+
+## 📋 Required Corrections Before Approval
+
+```
+CORRECTIONS REQUIRED - Then Approved
+
+Your execution plan is 95% correct. Fix these 3 items:
+
+═══════════════════════════════════════════════════════════════════════════════
+CORRECTION 1: Add ema50 to requiredIndicators (rsiOversold.ts)
+═══════════════════════════════════════════════════════════════════════════════
+
+The locked spec includes EMA50 confirmation for entry.
+
+Change:
+  requiredIndicators: ['bars', 'rsi', 'ema200', 'adx', 'atr']
+
+To:
+  requiredIndicators: ['bars', 'rsi', 'ema200', 'ema50', 'adx', 'atr']
+
+And add the EMA50 check in the entry logic:
+  // Price at or above EMA50 (LONG) or at or below EMA50 (SHORT)
+  const ema50Signal = atIndex(ema50, signalIdx);
+  if (direction === 'long' && signalBar.close < ema50Signal * 0.998) {
+    return null;  // Price too far below EMA50
+  }
+
+═══════════════════════════════════════════════════════════════════════════════
+CORRECTION 2: RSI Lookback Must Check 3 Bars
+═══════════════════════════════════════════════════════════════════════════════
+
+Your plan says: "Check rsi[idx-2] or rsi[idx-1] crossed below 30"
+
+Locked spec requires checking LAST 3 BARS:
+
+// CORRECT - check all 3 bars
+const wasOversold = 
+  rsi[signalIdx - 1] < 30 || 
+  rsi[signalIdx - 2] < 30 || 
+  rsi[signalIdx - 3] < 30;
+
+// NOT just 2 bars
+const wasOversold = rsi[signalIdx - 1] < 30 || rsi[signalIdx - 2] < 30;  // WRONG
+
+Same for overbought (> 70).
+
+═══════════════════════════════════════════════════════════════════════════════
+CORRECTION 3: Add H4 Proxy Comment
+═══════════════════════════════════════════════════════════════════════════════
+
+Document the H1-as-H4-proxy limitation in the code:
+
+// At top of rsiOversold.ts analyze() function:
+// NOTE: Currently using H1 EMA200/ADX as proxy for H4 trend filter.
+// True H4 data requires indicatorService.ts modification (future enhancement).
+// This approximation is acceptable for initial deployment.
+
+═══════════════════════════════════════════════════════════════════════════════
+OPTIONAL IMPROVEMENT: Log Rejection Reasons
+═══════════════════════════════════════════════════════════════════════════════
+
+Instead of just returning null, consider logging why:
+
+if (adxSignal < 20) {
+  // Optional: logger.debug(`${symbol}: Rejected - ADX ${adxSignal} < 20`);
+  return null;
+}
+
+This helps with debugging but is not required for approval.
+
+═══════════════════════════════════════════════════════════════════════════════
+CONFIRMATION REQUIRED
+═══════════════════════════════════════════════════════════════════════════════
+
+Confirm you will implement these 3 corrections:
+1. [ ] Add ema50 to requiredIndicators and entry logic
+2. [ ] RSI lookback checks 3 bars (idx-1, idx-2, idx-3)
+3. [ ] Add H4 proxy comment
+
+Once confirmed, you are APPROVED to build.
+```
+
+---
+
+## ✅ Validation Summary
+
+| Section | Status | Notes |
+|---------|--------|-------|
+| Task Summary | ✅ Approved | |
+| ReasonCode Update | ✅ Approved | |
+| rsiBounce.ts Diff | ✅ Approved | |
+| rsiOversold.ts Creation | ⚠️ 3 corrections | ema50, 3-bar lookback, comment |
+| Registry Update | ✅ Approved | |
+| Indicator Requirements | ⚠️ Documented | H1 proxy noted |
+| Strategy Comparison | ✅ Approved | |
+| Smoke Tests | ✅ Approved | |
+| Rollback Plan | ✅ Approved | |
+| Risks | ✅ Approved | |
+
+---
+
+**Once Replit confirms the 3 corrections, they are approved to build.**

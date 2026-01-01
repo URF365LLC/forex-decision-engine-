@@ -1,0 +1,256 @@
+```
+STOP. Before executing, provide a detailed execution plan for final validation.
+
+You answered all 6 requirements correctly. Build is approved in principle.
+However, before you write any code, I need to confirm you understand the FULL scope.
+
+═══════════════════════════════════════════════════════════════════════════════
+PRODUCE A DETAILED EXECUTION PLAN COVERING:
+═══════════════════════════════════════════════════════════════════════════════
+
+SECTION 1: TASK SEQUENCE & DEPENDENCIES
+─────────────────────────────────────────────────────────────────────────────────
+List each task with:
+- Execution order
+- File(s) affected
+- Dependencies (what must be done first)
+- Estimated time
+- Risk level (LOW/MEDIUM/HIGH)
+- Rollback method if it fails
+
+SECTION 2: types.ts CHANGES
+─────────────────────────────────────────────────────────────────────────────────
+Show BEFORE and AFTER for:
+
+A) ReasonCode type:
+   // BEFORE (current):
+   ???
+   
+   // AFTER (with CANDLE_CONFIRMATION):
+   ???
+
+B) IndicatorData interface:
+   // BEFORE (current):
+   ???
+   
+   // AFTER (with H4 fields):
+   ???
+
+Confirm:
+- [ ] CANDLE_CONFIRMATION added to Candle patterns section
+- [ ] H4 fields are OPTIONAL (with ?)
+- [ ] Data types match existing pattern (IndicatorValue[] not number[])
+- [ ] No existing fields renamed or removed
+
+SECTION 3: rsiBounce.ts CHANGES
+─────────────────────────────────────────────────────────────────────────────────
+Show line-by-line DIFF:
+
+| Line | Current Code | New Code | Reason |
+|------|--------------|----------|--------|
+| ? | ??? | ??? | Add timeframes |
+| ? | ??? | ??? | Fix type cast |
+| ? | ??? | ??? | NaN-safe gating |
+| ? | ??? | ??? | Add CANDLE_CONFIRMATION |
+| ? | ??? | ??? | Fix RR threshold |
+
+Confirm these are NOT changing:
+- [ ] RSI < 30 / > 70 thresholds
+- [ ] Bollinger Band touch requirement
+- [ ] SMA20 as trend reference
+- [ ] Stop loss: 1.5 × ATR
+- [ ] Take profit: 2.0 × ATR
+- [ ] Mean-reversion philosophy (no EMA200/ADX trend filter)
+
+SECTION 4: indicatorService.ts CHANGES
+─────────────────────────────────────────────────────────────────────────────────
+A) METALS RESTRICTION REMOVAL:
+   // CURRENT CODE (line numbers):
+   ???
+   
+   // NEW CODE:
+   ???
+
+B) NEW fetchTrendDataH4() FUNCTION:
+   Show complete function with:
+   - H4 fetch attempt
+   - D1 fallback on error
+   - TREND_FALLBACK_D1_USED logging
+   - Return type definition
+
+C) NEW validateH4Alignment() FUNCTION:
+   Show complete function
+
+D) UPDATED fetchIndicators():
+   Show how H4 data is integrated into return object
+
+E) BACKWARD COMPATIBILITY:
+   Confirm:
+   - [ ] Existing trendBars (D1) field unchanged
+   - [ ] Existing ema200 (D1) field unchanged
+   - [ ] Existing adx (D1) field unchanged
+   - [ ] All existing strategies will continue to work
+
+SECTION 5: rsiOversold.ts CREATION
+─────────────────────────────────────────────────────────────────────────────────
+Show the COMPLETE file structure:
+
+A) Imports:
+   ???
+
+B) Meta object (full):
+   meta: StrategyMeta = {
+     ???
+   };
+
+C) analyze() function outline:
+   - Signal bar index calculation
+   - Trend index calculation (H4)
+   - Required indicator extraction
+   - NaN/null guards
+   - Trend filter logic (H4 EMA200 + ADX)
+   - RSI lookback logic (3 bars)
+   - RSI turning logic
+   - RSI recovery zone logic
+   - Volatility filter logic
+   - Stop loss calculation (swing + fallback)
+   - Stop rejection logic
+   - Take profit calculation
+   - R:R validation
+   - Confidence grading
+   - Fallback note if D1 used
+
+D) Verify against locked spec:
+   | Requirement | Your Implementation | Line # |
+   |-------------|---------------------|--------|
+   | H4 EMA200: h4Close > ema200H4 | ??? | ??? |
+   | H4 ADX > 20 | ??? | ??? |
+   | RSI lookback 3 bars | ??? | ??? |
+   | RSI turning (rsi > rsiPrev) | ??? | ??? |
+   | RSI zone 30-50 (long) / 50-70 (short) | ??? | ??? |
+   | Volatility filter 1.8×ATR | ??? | ??? |
+   | Swing stop (10 bar lookback) | ??? | ??? |
+   | Stop fallback 1.5×ATR | ??? | ??? |
+   | Stop rejection >2.0×ATR | ??? | ??? |
+   | Min R:R 2.0 | ??? | ??? |
+   | NEXT_OPEN execution | ??? | ??? |
+   | signalIdx = bars.length - 2 | ??? | ??? |
+   | A+ grade: RSI < 25 AND ADX > 25 | ??? | ??? |
+   | D1 fallback note in triggers | ??? | ??? |
+
+E) Reason codes used:
+   Long signals: ???
+   Short signals: ???
+
+SECTION 6: registry.ts + index.ts CHANGES
+─────────────────────────────────────────────────────────────────────────────────
+Show exact changes:
+
+registry.ts:
+   // NEW import:
+   ???
+   
+   // Updated INTRADAY_STRATEGIES array:
+   ???
+
+index.ts:
+   // NEW export:
+   ???
+
+SECTION 7: SMOKE TEST PLAN
+─────────────────────────────────────────────────────────────────────────────────
+For each test, specify:
+
+TEST 1: RsiBounce Unchanged
+- Endpoint: ???
+- Request body: ???
+- Expected response: ???
+- Pass criteria: ???
+- Fail criteria: ???
+
+TEST 2: RsiOversold Works
+- Endpoint: ???
+- Request body: ???
+- Expected response: ???
+- Pass criteria: ???
+- Fail criteria: ???
+
+TEST 3: Metals Use H1
+- Endpoint: ???
+- Request body: ???
+- Expected response: ???
+- Pass criteria: ???
+- Fail criteria: ???
+
+TEST 4: CANDLE_CONFIRMATION Works
+- How will you verify: ???
+- Pass criteria: ???
+
+TEST 5: Both Strategies in Scan
+- Endpoint: ???
+- Pass criteria: ???
+
+TEST 6: H4 Actually Fetched
+- Symbol: EUR/USD
+- Assert: trendTimeframeUsed === 'H4'
+- Assert: trendBarsH4.length > 0
+- Assert: ema200H4.length === trendBarsH4.length
+- How will you verify: ???
+
+TEST 7: D1 Fallback Works
+- How will you simulate H4 failure: ???
+- Assert: trendFallbackUsed === true
+- Assert: trendTimeframeUsed === 'D1'
+- Assert: Log contains TREND_FALLBACK_D1_USED
+- Assert: Decision triggers include fallback note
+
+SECTION 8: RISK ANALYSIS
+─────────────────────────────────────────────────────────────────────────────────
+| Risk | Likelihood | Impact | Mitigation |
+|------|------------|--------|------------|
+| ??? | ??? | ??? | ??? |
+
+SECTION 9: ROLLBACK PLAN
+─────────────────────────────────────────────────────────────────────────────────
+If something breaks after deployment:
+
+| File | Rollback Method |
+|------|-----------------|
+| types.ts | ??? |
+| rsiBounce.ts | ??? |
+| indicatorService.ts | ??? |
+| rsiOversold.ts | ??? |
+| registry.ts | ??? |
+| index.ts | ??? |
+
+SECTION 10: QUESTIONS / CLARIFICATIONS
+─────────────────────────────────────────────────────────────────────────────────
+List any remaining questions or areas where you need clarification before building.
+
+═══════════════════════════════════════════════════════════════════════════════
+ACCEPTANCE CRITERIA CONFIRMATION
+═══════════════════════════════════════════════════════════════════════════════
+
+Confirm you understand these non-negotiables:
+
+[ ] 1. No renaming of existing fields (trendBars, ema200, adx stay as D1)
+[ ] 2. H4 fields are NEW and PARALLEL (trendBarsH4, ema200H4, adxH4)
+[ ] 3. Data types consistent (IndicatorValue[] for all indicator arrays)
+[ ] 4. rsiOversold uses TRUE H4 data (ema200H4, adxH4), not H1
+[ ] 5. D1 fallback logs TREND_FALLBACK_D1_USED with symbol
+[ ] 6. Alignment validation for H4 arrays
+[ ] 7. Swing helper uses Option B (slice existing)
+[ ] 8. Meta timeframes must match actual data used
+[ ] 9. Existing strategies continue to work unchanged
+[ ] 10. All 7 smoke tests must pass
+
+═══════════════════════════════════════════════════════════════════════════════
+
+DO NOT BUILD until I review and approve this execution plan.
+
+Produce the complete plan now.
+```
+
+---
+
+**Send this to Replit. Once they provide the detailed execution plan, paste it here for final validation before we give the green light to build.**
