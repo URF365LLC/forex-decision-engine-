@@ -1,58 +1,51 @@
 /**
  * Indicator Service
  * Fetches all required indicators for a symbol
+ * TWELVE DATA ONLY - Unified data source for all asset classes
  */
 
-import { alphaVantage, OHLCVBar, IndicatorValue } from '../services/alphaVantageClient.js';
+import { twelveData } from '../services/twelveDataClient.js';
+import type { OHLCVBar, IndicatorValue, MACDValue } from '../services/twelveDataClient.js';
 import { STRATEGY, TradingStyle, getStyleConfig } from '../config/strategy.js';
 import { getAssetClass } from '../config/universe.js';
 import { createLogger } from '../services/logger.js';
 
 const logger = createLogger('IndicatorService');
 
-// ═══════════════════════════════════════════════════════════════
-// TYPES
-// ═══════════════════════════════════════════════════════════════
-
 export interface IndicatorData {
   symbol: string;
   style: TradingStyle;
   
-  // Price data
-  trendBars: OHLCVBar[];        // Higher timeframe bars
-  entryBars: OHLCVBar[];        // Lower timeframe bars
+  trendBars: OHLCVBar[];
+  entryBars: OHLCVBar[];
   currentPrice: number;
   
-  // Trend indicators (HTF)
   ema200: IndicatorValue[];
   adx: IndicatorValue[];
   
-  // Entry indicators (LTF)
   ema20: IndicatorValue[];
   ema50: IndicatorValue[];
   rsi: IndicatorValue[];
   atr: IndicatorValue[];
   
-  // Additional indicators for multi-strategy system
   stoch: { timestamp: string; k: number; d: number }[];
   willr: IndicatorValue[];
   cci: IndicatorValue[];
   bbands: { timestamp: string; upper: number; middle: number; lower: number }[];
   sma20: IndicatorValue[];
   
-  // Metadata
+  ema8?: IndicatorValue[];
+  ema21?: IndicatorValue[];
+  ema55?: IndicatorValue[];
+  macd?: MACDValue[];
+  obv?: IndicatorValue[];
+  
   fetchedAt: string;
   errors: string[];
 }
 
-// ═══════════════════════════════════════════════════════════════
-// INDICATOR SERVICE
-// ═══════════════════════════════════════════════════════════════
+export { OHLCVBar, IndicatorValue };
 
-/**
- * Fetch all indicators needed for analysis
- * Makes ~8 API calls per symbol (with caching)
- */
 export async function fetchIndicators(
   symbol: string,
   style: TradingStyle
@@ -63,12 +56,10 @@ export async function fetchIndicators(
   const assetClass = getAssetClass(symbol);
   const isMetals = assetClass === 'metals';
   
-  // Metals: Alpha Vantage only provides daily data (no intraday available)
   const entryInterval = isMetals ? 'daily' : '60min';
   
-  logger.info(`Fetching indicators for ${symbol} (${style})${isMetals ? ' [metals: daily only]' : ''}`);
+  logger.info(`Fetching indicators for ${symbol} (${style})${isMetals ? ' [metals: daily only]' : ''} via Twelve Data`);
 
-  // Initialize with empty arrays
   const data: IndicatorData = {
     symbol,
     style,
@@ -86,134 +77,144 @@ export async function fetchIndicators(
     cci: [],
     bbands: [],
     sma20: [],
+    ema8: [],
+    ema21: [],
+    ema55: [],
+    macd: [],
+    obv: [],
     fetchedAt: new Date().toISOString(),
     errors: [],
   };
 
   try {
-    // ═══════════════════════════════════════════════════════════
-    // 1. OHLCV DATA
-    // ═══════════════════════════════════════════════════════════
-    
-    // Entry timeframe bars (H1 for forex/crypto, daily for metals)
     try {
-      data.entryBars = await alphaVantage.getOHLCV(symbol, entryInterval, 'full');
+      data.entryBars = await twelveData.getOHLCV(symbol, entryInterval, 'full');
       logger.debug(`Got ${data.entryBars.length} entry bars for ${symbol}`);
     } catch (e) {
       errors.push(`Entry bars: ${e instanceof Error ? e.message : 'Unknown error'}`);
     }
 
-    // Trend timeframe bars (Daily for both styles works)
     try {
-      data.trendBars = await alphaVantage.getOHLCV(symbol, 'daily', 'compact');
+      data.trendBars = await twelveData.getOHLCV(symbol, 'daily', 'compact');
       logger.debug(`Got ${data.trendBars.length} trend bars for ${symbol}`);
     } catch (e) {
       errors.push(`Trend bars: ${e instanceof Error ? e.message : 'Unknown error'}`);
     }
 
-    // Current price from most recent bar
     if (data.entryBars.length > 0) {
       data.currentPrice = data.entryBars[data.entryBars.length - 1].close;
     }
 
-    // ═══════════════════════════════════════════════════════════
-    // 2. TREND INDICATORS (Higher Timeframe)
-    // ═══════════════════════════════════════════════════════════
-
-    // EMA 200 on daily
     try {
-      data.ema200 = await alphaVantage.getEMA(symbol, 'daily', STRATEGY.trend.ema.period);
+      data.ema200 = await twelveData.getEMA(symbol, 'daily', STRATEGY.trend.ema.period);
       logger.debug(`Got ${data.ema200.length} EMA200 values for ${symbol}`);
     } catch (e) {
       errors.push(`EMA200: ${e instanceof Error ? e.message : 'Unknown error'}`);
     }
 
-    // ADX on daily
     try {
-      data.adx = await alphaVantage.getADX(symbol, 'daily', STRATEGY.trend.adx.period);
+      data.adx = await twelveData.getADX(symbol, 'daily', STRATEGY.trend.adx.period);
       logger.debug(`Got ${data.adx.length} ADX values for ${symbol}`);
     } catch (e) {
       errors.push(`ADX: ${e instanceof Error ? e.message : 'Unknown error'}`);
     }
 
-    // ═══════════════════════════════════════════════════════════
-    // 3. ENTRY INDICATORS (Lower Timeframe)
-    // ═══════════════════════════════════════════════════════════
-
-    // EMA 20 on entry timeframe
     try {
-      data.ema20 = await alphaVantage.getEMA(symbol, entryInterval, STRATEGY.entry.emaFast.period);
+      data.ema20 = await twelveData.getEMA(symbol, entryInterval, STRATEGY.entry.emaFast.period);
       logger.debug(`Got ${data.ema20.length} EMA20 values for ${symbol}`);
     } catch (e) {
       errors.push(`EMA20: ${e instanceof Error ? e.message : 'Unknown error'}`);
     }
 
-    // EMA 50 on entry timeframe
     try {
-      data.ema50 = await alphaVantage.getEMA(symbol, entryInterval, STRATEGY.entry.emaSlow.period);
+      data.ema50 = await twelveData.getEMA(symbol, entryInterval, STRATEGY.entry.emaSlow.period);
       logger.debug(`Got ${data.ema50.length} EMA50 values for ${symbol}`);
     } catch (e) {
       errors.push(`EMA50: ${e instanceof Error ? e.message : 'Unknown error'}`);
     }
 
-    // RSI on entry timeframe
     try {
-      data.rsi = await alphaVantage.getRSI(symbol, entryInterval, STRATEGY.entry.rsi.period);
+      data.rsi = await twelveData.getRSI(symbol, entryInterval, STRATEGY.entry.rsi.period);
       logger.debug(`Got ${data.rsi.length} RSI values for ${symbol}`);
     } catch (e) {
       errors.push(`RSI: ${e instanceof Error ? e.message : 'Unknown error'}`);
     }
 
-    // ATR on entry timeframe (for stop loss calculation)
     try {
-      data.atr = await alphaVantage.getATR(symbol, entryInterval, STRATEGY.stopLoss.atr.period);
+      data.atr = await twelveData.getATR(symbol, entryInterval, STRATEGY.stopLoss.atr.period);
       logger.debug(`Got ${data.atr.length} ATR values for ${symbol}`);
     } catch (e) {
       errors.push(`ATR: ${e instanceof Error ? e.message : 'Unknown error'}`);
     }
 
-    // ═══════════════════════════════════════════════════════════
-    // 4. ADDITIONAL INDICATORS FOR MULTI-STRATEGY SYSTEM
-    // ═══════════════════════════════════════════════════════════
-
-    // Stochastic Oscillator (for Stochastic Momentum strategy)
     try {
-      data.stoch = await alphaVantage.getStochastic(symbol, entryInterval, 14, 3, 3);
+      data.stoch = await twelveData.getStochastic(symbol, entryInterval, 14, 3, 3);
       logger.debug(`Got ${data.stoch.length} STOCH values for ${symbol}`);
     } catch (e) {
       errors.push(`STOCH: ${e instanceof Error ? e.message : 'Unknown error'}`);
     }
 
-    // Williams %R (for Williams %R Reversal strategy)
     try {
-      data.willr = await alphaVantage.getWilliamsR(symbol, entryInterval, 14);
+      data.willr = await twelveData.getWilliamsR(symbol, entryInterval, 14);
       logger.debug(`Got ${data.willr.length} WILLR values for ${symbol}`);
     } catch (e) {
       errors.push(`WILLR: ${e instanceof Error ? e.message : 'Unknown error'}`);
     }
 
-    // CCI (for CCI Trend strategy)
     try {
-      data.cci = await alphaVantage.getCCI(symbol, entryInterval, 20);
+      data.cci = await twelveData.getCCI(symbol, entryInterval, 20);
       logger.debug(`Got ${data.cci.length} CCI values for ${symbol}`);
     } catch (e) {
       errors.push(`CCI: ${e instanceof Error ? e.message : 'Unknown error'}`);
     }
 
-    // Bollinger Bands (for Bollinger Breakout strategy)
     try {
-      data.bbands = await alphaVantage.getBBands(symbol, entryInterval, 20, 2, 2);
+      data.bbands = await twelveData.getBBands(symbol, entryInterval, 20, 2, 2);
       logger.debug(`Got ${data.bbands.length} BBANDS values for ${symbol}`);
     } catch (e) {
       errors.push(`BBANDS: ${e instanceof Error ? e.message : 'Unknown error'}`);
     }
 
-    // SMA 20 (for Multi-Timeframe Alignment strategy)
     try {
-      data.sma20 = await alphaVantage.getSMA(symbol, entryInterval, 20);
+      data.sma20 = await twelveData.getSMA(symbol, entryInterval, 20);
       logger.debug(`Got ${data.sma20.length} SMA20 values for ${symbol}`);
     } catch (e) {
       errors.push(`SMA20: ${e instanceof Error ? e.message : 'Unknown error'}`);
+    }
+
+    try {
+      data.ema8 = await twelveData.getEMA(symbol, entryInterval, 8);
+      logger.debug(`Got ${data.ema8.length} EMA8 values for ${symbol}`);
+    } catch (e) {
+      errors.push(`EMA8: ${e instanceof Error ? e.message : 'Unknown error'}`);
+    }
+
+    try {
+      data.ema21 = await twelveData.getEMA(symbol, entryInterval, 21);
+      logger.debug(`Got ${data.ema21.length} EMA21 values for ${symbol}`);
+    } catch (e) {
+      errors.push(`EMA21: ${e instanceof Error ? e.message : 'Unknown error'}`);
+    }
+
+    try {
+      data.ema55 = await twelveData.getEMA(symbol, entryInterval, 55);
+      logger.debug(`Got ${data.ema55.length} EMA55 values for ${symbol}`);
+    } catch (e) {
+      errors.push(`EMA55: ${e instanceof Error ? e.message : 'Unknown error'}`);
+    }
+
+    try {
+      data.macd = await twelveData.getMACD(symbol, entryInterval, 12, 26, 9);
+      logger.debug(`Got ${data.macd.length} MACD values for ${symbol}`);
+    } catch (e) {
+      errors.push(`MACD: ${e instanceof Error ? e.message : 'Unknown error'}`);
+    }
+
+    try {
+      data.obv = await twelveData.getOBV(symbol, entryInterval);
+      logger.debug(`Got ${data.obv.length} OBV values for ${symbol}`);
+    } catch (e) {
+      errors.push(`OBV: ${e instanceof Error ? e.message : 'Unknown error'}`);
     }
 
   } catch (e) {
@@ -231,29 +232,16 @@ export async function fetchIndicators(
   return data;
 }
 
-// ═══════════════════════════════════════════════════════════════
-// HELPER FUNCTIONS
-// ═══════════════════════════════════════════════════════════════
-
-/**
- * Get the latest value from an indicator array
- */
 export function getLatestValue(indicators: IndicatorValue[]): number | null {
   if (indicators.length === 0) return null;
   return indicators[indicators.length - 1].value;
 }
 
-/**
- * Get the previous value from an indicator array
- */
 export function getPreviousValue(indicators: IndicatorValue[], offset: number = 1): number | null {
   if (indicators.length <= offset) return null;
   return indicators[indicators.length - 1 - offset].value;
 }
 
-/**
- * Calculate slope of indicator over N periods
- */
 export function calculateSlope(indicators: IndicatorValue[], periods: number): number {
   if (indicators.length < periods + 1) return 0;
   
@@ -263,9 +251,6 @@ export function calculateSlope(indicators: IndicatorValue[], periods: number): n
   return current - previous;
 }
 
-/**
- * Find swing high in bars
- */
 export function findSwingHigh(bars: OHLCVBar[], lookback: number): number | null {
   if (bars.length < lookback) return null;
   
@@ -281,9 +266,6 @@ export function findSwingHigh(bars: OHLCVBar[], lookback: number): number | null
   return highestHigh;
 }
 
-/**
- * Find swing low in bars
- */
 export function findSwingLow(bars: OHLCVBar[], lookback: number): number | null {
   if (bars.length < lookback) return null;
   

@@ -1,8 +1,10 @@
 /**
  * KuCoin API Client
- * Fetches OHLCV data for crypto pairs not supported by Alpha Vantage
- * No API key required (public endpoints)
+ * DEPRECATED: Twelve-only mode is enabled
+ * This file is kept as backup only
  */
+
+throw new Error('FATAL: KuCoin disabled - Twelve-only mode');
 
 import { OHLCVBar } from './alphaVantageClient.js';
 import { createLogger } from './logger.js';

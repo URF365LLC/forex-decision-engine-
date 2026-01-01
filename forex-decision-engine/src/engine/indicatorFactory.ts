@@ -1,34 +1,25 @@
 /**
  * Indicator Factory
- * Routes to correct indicator service based on asset class
+ * Unified routing to Twelve Data - ALL symbols use the same path
+ * TWELVE DATA ONLY - No Alpha Vantage, No KuCoin
  */
 
-import { getAssetClass } from '../config/universe.js';
 import { fetchIndicators, IndicatorData } from './indicatorService.js';
-import { fetchCryptoIndicators, CryptoIndicatorData } from './cryptoIndicatorService.js';
 import { TradingStyle } from '../config/strategy.js';
 import { createLogger } from '../services/logger.js';
 
 const logger = createLogger('IndicatorFactory');
 
-export type AnyIndicatorData = IndicatorData | CryptoIndicatorData;
+export type AnyIndicatorData = IndicatorData;
 
 export async function getIndicators(
   symbol: string,
   style: TradingStyle
 ): Promise<AnyIndicatorData> {
-  const assetClass = getAssetClass(symbol);
-  
-  logger.debug(`Routing ${symbol} to ${assetClass} indicator service`);
-  
-  if (assetClass === 'crypto') {
-    return fetchCryptoIndicators(symbol, style);
-  }
-  
-  // Forex and metals use Alpha Vantage indicator endpoints
+  logger.debug(`Routing ${symbol} to Twelve-only indicator service`);
   return fetchIndicators(symbol, style);
 }
 
-export function isCryptoData(data: AnyIndicatorData): data is CryptoIndicatorData {
-  return getAssetClass(data.symbol) === 'crypto';
+export function isCryptoData(_data: AnyIndicatorData): _data is AnyIndicatorData {
+  return false;
 }

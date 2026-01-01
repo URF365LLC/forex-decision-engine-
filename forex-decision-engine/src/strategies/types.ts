@@ -87,6 +87,11 @@ export interface IndicatorData {
   bbands?: { upper: number; middle: number; lower: number }[];
   atr?: number[];
   adx?: number[];
+  ema8?: number[];
+  ema21?: number[];
+  ema55?: number[];
+  macd?: { macd: number; signal: number; histogram: number }[];
+  obv?: number[];
 }
 
 export interface UserSettings {
