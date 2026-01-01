@@ -37,6 +37,7 @@ export type ReasonCode =
   | 'REJECTION_CONFIRMED'
   | 'ENGULFING_BULL'
   | 'ENGULFING_BEAR'
+  | 'CANDLE_CONFIRMATION'
   // Trend conditions
   | 'TREND_ALIGNED'
   | 'TREND_COUNTER'
@@ -92,6 +93,13 @@ export interface IndicatorData {
   ema55?: number[];
   macd?: { macd: number; signal: number; histogram: number }[];
   obv?: number[];
+  
+  // H4 Trend Data (NEW - parallel to existing D1)
+  trendBarsH4?: Bar[];
+  ema200H4?: number[];
+  adxH4?: number[];
+  trendTimeframeUsed?: 'H4' | 'D1';
+  trendFallbackUsed?: boolean;
 }
 
 export interface UserSettings {
