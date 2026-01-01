@@ -1,0 +1,71 @@
+{
+  "colorScheme": "light",
+  "fonts": [
+    {
+      "family": "sans-serif",
+      "count": 141
+    },
+    {
+      "family": "Montserrat",
+      "count": 140
+    },
+    {
+      "family": "GT Walsheim Pro",
+      "count": 1
+    }
+  ],
+  "colors": {
+    "primary": "#2469F0",
+    "accent": "#2CC97E",
+    "background": "#FFFFFF",
+    "textPrimary": "#1D1D1F",
+    "link": "#2CC97E"
+  },
+  "typography": {
+    "fontFamilies": {
+      "primary": "Montserrat",
+      "heading": "Montserrat"
+    },
+    "fontStacks": {
+      "body": [
+        "Montserrat",
+        "sans-serif"
+      ],
+      "heading": [
+        "Montserrat",
+        "sans-serif"
+      ],
+      "paragraph": [
+        "Montserrat",
+        "sans-serif"
+      ]
+    },
+    "fontSizes": {
+      "h1": "16px",
+      "h2": "24px",
+      "body": "14px"
+    }
+  },
+  "spacing": {
+    "baseUnit": 4,
+    "borderRadius": "12px"
+  },
+  "components": {},
+  "images": {
+    "logo": "File saved at: attached_assets/logo.svg",
+    "favicon": "https://twelvedata.com/build/favicons/favicon.ico",
+    "ogImage": "https://twelvedata.com/assets/img/open_graph_logo.png"
+  },
+  "__framework_hints": [],
+  "__llm_logo_reasoning": {
+    "selectedIndex": 20,
+    "reasoning": "Logo rejected: Red flags detected (small square icon). Heuristic fallback: Moderate indicators: in header, header location, visible, highest logo on page, too small (likely icon, penalty), small square icon (likely UI icon, heavy penalty), SVG format. Score: 55. May benefit from LLM validation.",
+    "confidence": 0.5,
+    "rejected": true
+  },
+  "confidence": {
+    "buttons": 0,
+    "colors": 0,
+    "overall": 0
+  }
+}

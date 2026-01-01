@@ -1,15 +1,13 @@
 /**
- * Alpha Vantage API Client
- * DEPRECATED: Twelve-only mode is enabled
- * This file is kept as backup only
+ * @deprecated FATAL: alphaVantageClient.ts is deprecated - use twelveDataClient.ts
+ * This file is kept for tripwire detection only.
  */
-
-throw new Error('FATAL: Alpha disabled - Twelve-only mode');
+throw new Error('FATAL: alphaVantageClient.ts is deprecated - use twelveDataClient.ts instead');
 
 import { rateLimiter } from './rateLimiter.js';
 import { cache, CacheService, CACHE_TTL } from './cache.js';
 import { createLogger } from './logger.js';
-import { getAssetClass } from '../config/universe.js';
+import { getInstrumentSpec } from '../config/e8InstrumentSpecs.js';
 
 const logger = createLogger('AlphaVantage');
 

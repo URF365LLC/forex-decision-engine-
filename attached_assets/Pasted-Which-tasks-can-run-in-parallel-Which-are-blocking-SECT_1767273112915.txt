@@ -1,0 +1,101 @@
+Which tasks can run in parallel?
+Which are blocking?
+
+SECTION 4: DATABASE/CONFIG CHANGES
+
+- Any new environment variables?
+- Any new config files?
+- Any schema changes?
+
+SECTION 5: API CHANGES
+
+- Any new endpoints?
+- Any endpoint modifications?
+- Breaking changes to existing APIs?
+
+SECTION 6: UI/FRONTEND CHANGES
+
+- Dashboard changes (Task 8)
+- New components?
+- Modified views?
+
+SECTION 7: RATE LIMITING STRATEGY (Task 4)
+
+- Current rate limits
+- Proposed rate limits
+- How will limits be enforced?
+- What happens when limit is hit?
+
+SECTION 8: SYMBOL CONVERSION AUDIT (Task 5)
+
+- List ALL places in codebase that convert symbols
+- Current conversion methods
+- New unified conversion method
+- Migration path
+
+SECTION 9: POSITION SIZING INTEGRATION (Task 6)
+
+- Current position sizing logic (show code)
+- New position sizing logic (show code)
+- How crypto percentage commission is handled
+- How forex fixed commission is handled
+- Test calculations for BTC/USD and EUR/USD
+
+SECTION 10: DATA SOURCE REPLACEMENT (Task 7)
+
+- What is "old instrument data source"?
+- What file(s) are being replaced?
+- What imports need to change?
+- Diff of import changes across all files
+
+SECTION 11: BATCHING STRATEGY (Task 10)
+
+- Current: How many API calls per scan?
+- Proposed: How many API calls per scan?
+- Batch size limits
+- Error handling for partial batch failures
+
+SECTION 12: FULL FILE MANIFEST
+
+List EVERY file that will be touched:
+
+| File Path | Action | Risk | Changes Summary |
+|-----------|--------|------|-----------------|
+| src/config/... | MODIFY | MED | Add crypto specs |
+| src/engine/... | MODIFY | HIGH | Update sizing |
+| ... | ... | ... | ... |
+
+SECTION 13: REGRESSION TEST PLAN
+
+After ALL changes, verify:
+- [ ] Forex symbols still work (EUR/USD, GBP/USD)
+- [ ] Metals still work (XAU/USD)
+- [ ] Crypto now works (BTC/USD, ETH/USD)
+- [ ] Position sizing correct for all asset types
+- [ ] Rate limiting doesn't break scans
+- [ ] Dashboard displays all instruments
+- [ ] Startup validation passes
+
+SECTION 14: ROLLBACK PLAN
+
+If something breaks:
+- Git revert commands
+- Files to restore
+- Config to reset
+- Verification after rollback
+
+SECTION 15: TIMELINE
+
+| Task | Dependencies | Est. Time | Cumulative |
+|------|--------------|-----------|------------|
+| 1 | None | X min | X min |
+| 2 | 1 | Y min | X+Y min |
+| ... | ... | ... | ... |
+
+Total estimated time: ___
+
+═══════════════════════════════════════════════════════════════════════════════
+
+DO NOT IMPLEMENT ANYTHING.
+Produce this complete report first.
+I will review with two other AI systems (Claude and ChatGPT) before approving.

@@ -1,0 +1,142 @@
+UPDATE e8InstrumentSpecs.ts with ACCURATE E8 crypto specs from official platform:
+
+const CRYPTO_INSTRUMENTS: InstrumentSpec[] = [
+  {
+    symbol: 'BTCUSD',
+    dataSymbol: 'BTC/USD',
+    displayName: 'Bitcoin',
+    type: 'crypto',
+    contractSize: 1,
+    commissionPercent: 0.035,  // 0.035% in + 0.035% out = 0.07% round trip
+    avgSpread: 12,
+    pipSize: 1,               // $1 movements
+    pipValue: 1,
+    quoteCurrency: 'USD',
+    leverage: 1,
+    maxLotSize: 10,           // Verify with E8
+    tradingHours: '00:05-23:55 UTC+2, Sat: 00:05-13:00, 15:00-23:55',
+    digits: 2
+  },
+  {
+    symbol: 'ETHUSD',
+    dataSymbol: 'ETH/USD',
+    displayName: 'Ethereum',
+    type: 'crypto',
+    contractSize: 1,
+    commissionPercent: 0.035,
+    avgSpread: 0.59,
+    pipSize: 0.01,
+    pipValue: 0.01,
+    quoteCurrency: 'USD',
+    leverage: 1,
+    maxLotSize: 100,
+    tradingHours: '00:05-23:55 UTC+2, Sat: 00:05-13:00, 15:00-23:55',
+    digits: 2
+  },
+  {
+    symbol: 'SOLUSD',
+    dataSymbol: 'SOL/USD',
+    displayName: 'Solana',
+    type: 'crypto',
+    contractSize: 1,
+    commissionPercent: 0.035,
+    avgSpread: 0.01,
+    pipSize: 0.01,
+    pipValue: 0.01,
+    quoteCurrency: 'USD',
+    leverage: 1,
+    maxLotSize: 1000,
+    tradingHours: '00:05-23:55 UTC+2, Sat: 00:05-13:00, 15:00-23:55',
+    digits: 2
+  },
+  {
+    symbol: 'XRPUSD',
+    dataSymbol: 'XRP/USD',
+    displayName: 'Ripple',
+    type: 'crypto',
+    contractSize: 1,
+    commissionPercent: 0.035,
+    avgSpread: 0.0003,
+    pipSize: 0.0001,
+    pipValue: 0.0001,
+    quoteCurrency: 'USD',
+    leverage: 1,
+    maxLotSize: 50000,
+    tradingHours: '00:05-23:55 UTC+2, Sat: 00:05-13:00, 15:00-23:55',
+    digits: 4
+  },
+  {
+    symbol: 'ADAUSD',
+    dataSymbol: 'ADA/USD',
+    displayName: 'Cardano',
+    type: 'crypto',
+    contractSize: 1,
+    commissionPercent: 0.035,
+    avgSpread: 0.00021,
+    pipSize: 0.0001,
+    pipValue: 0.0001,
+    quoteCurrency: 'USD',
+    leverage: 1,
+    maxLotSize: 100000,
+    tradingHours: '00:05-23:55 UTC+2, Sat: 00:05-13:00, 15:00-23:55',
+    digits: 5
+  },
+  {
+    symbol: 'BNBUSD',
+    dataSymbol: 'BNB/USD',
+    displayName: 'Binance Coin',
+    type: 'crypto',
+    contractSize: 1,
+    commissionPercent: 0.035,
+    avgSpread: 0.92,
+    pipSize: 0.01,
+    pipValue: 0.01,
+    quoteCurrency: 'USD',
+    leverage: 1,
+    maxLotSize: 100,
+    tradingHours: '00:05-23:55 UTC+2, Sat: 00:05-13:00, 15:00-23:55',
+    digits: 2
+  },
+  {
+    symbol: 'BCHUSD',
+    dataSymbol: 'BCH/USD',
+    displayName: 'Bitcoin Cash',
+    type: 'crypto',
+    contractSize: 1,
+    commissionPercent: 0.035,
+    avgSpread: 0.67,
+    pipSize: 0.01,
+    pipValue: 0.01,
+    quoteCurrency: 'USD',
+    leverage: 1,
+    maxLotSize: 200,
+    tradingHours: '00:05-23:55 UTC+2, Sat: 00:05-13:00, 15:00-23:55',
+    digits: 2
+  },
+  {
+    symbol: 'LTCUSD',
+    dataSymbol: 'LTC/USD',
+    displayName: 'Litecoin',
+    type: 'crypto',
+    contractSize: 1,
+    commissionPercent: 0.035,
+    avgSpread: 0.15,
+    pipSize: 0.01,
+    pipValue: 0.01,
+    quoteCurrency: 'USD',
+    leverage: 1,
+    maxLotSize: 500,
+    tradingHours: '00:05-23:55 UTC+2, Sat: 00:05-13:00, 15:00-23:55',
+    digits: 2
+  }
+];
+
+IMPORTANT CHANGES TO InstrumentSpec INTERFACE:
+- Add: commissionPercent?: number  // For percentage-based commission (crypto)
+- Keep: commission: number         // For fixed USD commission (forex/indices)
+
+UPDATE calculatePositionSize() to handle percentage commission:
+- If commissionPercent exists: commission = positionValue * (commissionPercent / 100) * 2
+- Else use fixed commission
+
+Add crypto to ALL_INSTRUMENTS, INSTRUMENT_MAP, DATA_SYMBOL_MAP.

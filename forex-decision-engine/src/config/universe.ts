@@ -1,7 +1,9 @@
 /**
- * Trading Universe - All supported symbols
- * Forex: 28 pairs | Metals: 2 pairs | Crypto: 8 pairs
+ * @deprecated FATAL: universe.ts is deprecated - use e8InstrumentSpecs.ts
+ * This file is kept for tripwire detection only.
+ * All imports should come from e8InstrumentSpecs.ts
  */
+throw new Error('FATAL: universe.ts is deprecated - import from e8InstrumentSpecs.ts instead');
 
 export const FOREX_SYMBOLS = [
   'AUDCAD', 'AUDCHF', 'AUDJPY', 'AUDNZD', 'AUDUSD',

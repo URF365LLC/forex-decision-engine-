@@ -6,7 +6,7 @@
  */
 
 import { DEFAULTS, LOT_SIZES, PIP_VALUES, getCryptoContractSize } from '../config/defaults.js';
-import { getPipDecimals, getAssetClass } from '../config/universe.js';
+import { getInstrumentSpec } from '../config/e8InstrumentSpecs.js';
 import { createLogger } from '../services/logger.js';
 
 const logger = createLogger('PositionSizer');
@@ -52,7 +52,8 @@ export function calculatePositionSize(input: SizingInput): PositionSize {
   
   const riskAmount = accountSize * (riskPercent / 100);
   const stopLossDistance = Math.abs(entryPrice - stopLossPrice);
-  const assetClass = getAssetClass(symbol);
+  const spec = getInstrumentSpec(symbol);
+  const assetClass = spec?.type || 'forex';
   const leverage = getLeverage(symbol, assetClass);
   
   let lots = 0;
@@ -94,7 +95,7 @@ export function calculatePositionSize(input: SizingInput): PositionSize {
       marginLimited,
     });
   } else {
-    const pipDecimals = getPipDecimals(symbol);
+    const pipDecimals = spec?.digits || 4;
     const pipSize = pipDecimals === 2 ? 0.01 : 0.0001;
     stopLossPips = stopLossDistance / pipSize;
     
@@ -170,7 +171,8 @@ export function calculateStopLoss(
   atr: number,
   symbol: string
 ): StopLossResult {
-  const pipDecimals = getPipDecimals(symbol);
+  const spec = getInstrumentSpec(symbol);
+  const pipDecimals = spec?.digits || 4;
   const pipSize = pipDecimals === 2 ? 0.01 : 0.0001;
   const atrMultiplier = 1.5;
   
@@ -223,7 +225,8 @@ export function calculateTakeProfit(
   minRR: number,
   symbol: string
 ): TakeProfitResult {
-  const pipDecimals = getPipDecimals(symbol);
+  const spec = getInstrumentSpec(symbol);
+  const pipDecimals = spec?.digits || 4;
   const pipSize = pipDecimals === 2 ? 0.01 : 0.0001;
   
   const riskDistance = Math.abs(entryPrice - stopLossPrice);
@@ -266,7 +269,8 @@ export function formatPositionSize(size: PositionSize): string {
  * Format price with appropriate precision
  */
 export function formatPrice(price: number, symbol: string): string {
-  const decimals = getPipDecimals(symbol);
+  const spec = getInstrumentSpec(symbol);
+  const decimals = spec?.digits || 4;
   const precision = decimals === 2 ? 3 : 5;
   return price.toFixed(precision);
 }

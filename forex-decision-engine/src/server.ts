@@ -17,7 +17,10 @@ import cors from 'cors';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
-import { FOREX_SYMBOLS, METALS_SYMBOLS, CRYPTO_SYMBOLS, DEFAULT_WATCHLIST, SYMBOL_META } from './config/universe.js';
+import { 
+  FOREX_SPECS, METAL_SPECS, CRYPTO_SPECS, INDEX_SPECS, COMMODITY_SPECS,
+  ALL_INSTRUMENTS, getInstrumentSpec, validateInstrumentSpecs 
+} from './config/e8InstrumentSpecs.js';
 import { DEFAULTS, RISK_OPTIONS } from './config/defaults.js';
 import { STYLE_PRESETS } from './config/strategy.js';
 import { analyzeSymbol, scanSymbols, UserSettings, Decision } from './engine/decisionEngine.js';
@@ -102,22 +105,53 @@ app.use((req, res, next) => {
 app.get('/api/health', (req, res) => {
   res.json({
     status: 'ok',
-    version: '1.0.0',
+    version: '2.0.0',
     timestamp: new Date().toISOString(),
-    apiKeyConfigured: !!process.env.ALPHAVANTAGE_API_KEY,
+    apiKeyConfigured: !!process.env.TWELVE_DATA_API_KEY,
+    instrumentCount: ALL_INSTRUMENTS.length,
   });
 });
 
 /**
- * Get trading universe
+ * Get trading universe (v2 with full instrument specs)
  */
 app.get('/api/universe', (req, res) => {
+  const forexSymbols = FOREX_SPECS.map(s => s.symbol);
+  const metalSymbols = METAL_SPECS.map(s => s.symbol);
+  const cryptoSymbols = CRYPTO_SPECS.map(s => s.symbol);
+  const indexSymbols = INDEX_SPECS.map(s => s.symbol);
+  const commoditySymbols = COMMODITY_SPECS.map(s => s.symbol);
+
+  const metadata: Record<string, { pipDecimals: number; displayName: string; category: string }> = {};
+  for (const spec of ALL_INSTRUMENTS) {
+    metadata[spec.symbol] = {
+      pipDecimals: spec.digits,
+      displayName: spec.displayName,
+      category: spec.type.charAt(0).toUpperCase() + spec.type.slice(1),
+    };
+  }
+
   res.json({
-    forex: FOREX_SYMBOLS,
-    metals: METALS_SYMBOLS,
-    crypto: CRYPTO_SYMBOLS,
-    defaultWatchlist: DEFAULT_WATCHLIST,
-    metadata: SYMBOL_META,
+    version: 2,
+    legacy: {
+      forex: forexSymbols,
+      metals: metalSymbols,
+      crypto: cryptoSymbols,
+    },
+    forex: forexSymbols,
+    metals: metalSymbols,
+    crypto: cryptoSymbols,
+    indices: indexSymbols,
+    commodities: commoditySymbols,
+    defaultWatchlist: ['EURUSD', 'GBPUSD', 'USDJPY', 'BTCUSD', 'XAUUSD'],
+    metadata,
+    instruments: {
+      forex: FOREX_SPECS,
+      metals: METAL_SPECS,
+      crypto: CRYPTO_SPECS,
+      indices: INDEX_SPECS,
+      commodities: COMMODITY_SPECS,
+    },
   });
 });
 
@@ -628,10 +662,17 @@ app.use((err: Error, req: express.Request, res: express.Response, next: express.
 // ═══════════════════════════════════════════════════════════════
 
 app.listen(PORT, () => {
-  logger.info(`🎯 Forex Decision Engine v1.0.0`);
+  try {
+    validateInstrumentSpecs();
+  } catch (e) {
+    logger.error(`Instrument spec validation failed: ${e}`);
+    process.exit(1);
+  }
+  
+  logger.info(`🎯 Forex Decision Engine v2.0.0`);
   logger.info(`📡 Server running on port ${PORT}`);
-  logger.info(`🔑 API Key: ${process.env.ALPHAVANTAGE_API_KEY ? 'Configured' : 'NOT CONFIGURED'}`);
-  logger.info(`📊 Symbols: ${FOREX_SYMBOLS.length} forex, ${METALS_SYMBOLS.length} metals, ${CRYPTO_SYMBOLS.length} crypto`);
+  logger.info(`🔑 API Key: ${process.env.TWELVE_DATA_API_KEY ? 'Configured' : 'NOT CONFIGURED'}`);
+  logger.info(`📊 Instruments: ${FOREX_SPECS.length} forex, ${METAL_SPECS.length} metals, ${CRYPTO_SPECS.length} crypto, ${INDEX_SPECS.length} indices, ${COMMODITY_SPECS.length} commodities (${ALL_INSTRUMENTS.length} total)`);
 });
 
 // Graceful shutdown

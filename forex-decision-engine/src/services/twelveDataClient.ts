@@ -1,12 +1,13 @@
 /**
  * Twelve Data API Client
- * Unified data source for Forex, Metals, and Crypto
- * Replaces Alpha Vantage and KuCoin clients
+ * Unified data source for Forex, Metals, Indices, Commodities, and Crypto
+ * SINGLE SOURCE OF TRUTH for market data
  */
 
 import { rateLimiter } from './rateLimiter.js';
 import { cache, CacheService, CACHE_TTL } from './cache.js';
 import { createLogger } from './logger.js';
+import { toDataSymbol, getInstrumentSpec } from '../config/e8InstrumentSpecs.js';
 
 const logger = createLogger('TwelveData');
 
@@ -85,18 +86,10 @@ class TwelveDataClient {
     const s = raw.trim().toUpperCase();
     if (s.includes('/')) return s;
 
-    if (s.length === 6) {
-      return `${s.slice(0, 3)}/${s.slice(3, 6)}`;
-    }
+    const specSymbol = toDataSymbol(s);
+    if (specSymbol) return specSymbol;
 
-    const cryptoBases = ['BTC', 'ETH', 'SOL', 'XRP', 'ADA', 'BNB', 'BCH', 'LTC'];
-    for (const base of cryptoBases) {
-      if (s.startsWith(base)) {
-        return `${base}/${s.slice(base.length) || 'USD'}`;
-      }
-    }
-
-    return s;
+    throw new Error(`Unknown symbol: ${s} - not in e8InstrumentSpecs. Add it to the specs before trading.`);
   }
 
   private mapInterval(interval: string): string {
@@ -115,9 +108,9 @@ class TwelveDataClient {
   }
 
   private isCryptoPair(symbol: string): boolean {
-    const cryptoBases = ['BTC', 'ETH', 'SOL', 'XRP', 'ADA', 'BNB', 'BCH', 'LTC'];
     const s = symbol.toUpperCase().replace('/', '');
-    return cryptoBases.some(base => s.startsWith(base));
+    const spec = getInstrumentSpec(s);
+    return spec?.type === 'crypto';
   }
 
   private async request<T>(path: string, params: Record<string, string>): Promise<T> {

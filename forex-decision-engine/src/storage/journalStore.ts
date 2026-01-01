@@ -5,7 +5,7 @@
  */
 
 import { createLogger } from '../services/logger.js';
-import { getPipDecimals, getAssetClass } from '../config/universe.js';
+import { getInstrumentSpec } from '../config/e8InstrumentSpecs.js';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -260,9 +260,10 @@ class JournalStore {
   calculatePnL(entry: TradeJournalEntry): { pnlPips: number; rMultiple: number; pnlDollars: number } | null {
     if (!entry.exitPrice || entry.status !== 'closed') return null;
 
-    const pipDecimals = getPipDecimals(entry.symbol);
+    const spec = getInstrumentSpec(entry.symbol);
+    const pipDecimals = spec?.digits || 4;
     const pipValue = Math.pow(10, -pipDecimals);
-    const assetClass = getAssetClass(entry.symbol);
+    const assetClass = spec?.type || 'forex';
     
     const directionMultiplier = entry.direction === 'long' ? 1 : -1;
     const priceMove = (entry.exitPrice - entry.entryPrice) * directionMultiplier;
