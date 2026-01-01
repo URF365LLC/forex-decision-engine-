@@ -18,6 +18,13 @@ Preferred communication style: Simple, everyday language.
 - Decision interface extended with `entry: { price, formatted }` and `timing: { firstDetected, signalAge, validUntil, isStale }`
 - Email alerts via Resend (optional - requires RESEND_API_KEY secret)
 
+**Grok AI Sentiment Analysis**
+- Added grokSentimentService.ts: xAI Grok API integration for X/Twitter market sentiment
+- Sentiment caching with 5-minute TTL to reduce API costs
+- New API endpoints: GET /api/sentiment/:symbol, POST /api/sentiment/batch, GET /api/sentiment/status
+- Frontend sentiment badges on trade cards (bullish/bearish/neutral/mixed with score)
+- Requires XAI_API_KEY secret for X/Twitter sentiment analysis
+
 **Frontend UI Update - Multi-Asset Class Support**
 - Added Metals (2), Indices (6), and Commodities (2) sections to watchlist panel
 - Strategy dropdown now dynamically loads all 9 strategies from API
@@ -145,6 +152,7 @@ Orchestrates trade signal generation:
 -   `PORT`: Server port (default: 5000).
 -   `LOG_LEVEL`: Logging verbosity (debug/info/warn/error, default: info).
 -   `RESEND_API_KEY`: (Optional) API key for Resend email service. If configured, enables email alerts for new trade signals via Auto-Scan feature. Get your key at https://resend.com.
+-   `XAI_API_KEY`: (Optional) API key for xAI Grok. If configured, enables real-time X/Twitter sentiment analysis for trading pairs. Get your key at https://x.ai.
 
 ### NPM Dependencies
 -   **Runtime**: `express`, `cors`, `dotenv`.

@@ -1019,6 +1019,78 @@ input:checked + .toggle-slider:before {
   color: var(--accent-amber);
 }
 
+/* Sentiment Badge */
+.sentiment-badge {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border-radius: var(--border-radius);
+  font-size: 0.8rem;
+  margin-bottom: var(--spacing-sm);
+  background: var(--bg-tertiary);
+}
+
+.sentiment-icon {
+  font-size: 1rem;
+}
+
+.sentiment-rating {
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.sentiment-score {
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.sentiment-summary {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  margin-left: auto;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sentiment-bullish {
+  border-left: 3px solid var(--accent-success);
+}
+
+.sentiment-bullish .sentiment-rating {
+  color: var(--accent-success);
+}
+
+.sentiment-bearish {
+  border-left: 3px solid var(--accent-danger);
+}
+
+.sentiment-bearish .sentiment-rating {
+  color: var(--accent-danger);
+}
+
+.sentiment-neutral {
+  border-left: 3px solid var(--text-secondary);
+}
+
+.sentiment-neutral .sentiment-rating {
+  color: var(--text-secondary);
+}
+
+.sentiment-mixed {
+  border-left: 3px solid var(--accent-amber);
+}
+
+.sentiment-mixed .sentiment-rating {
+  color: var(--accent-amber);
+}
+
 .grade-b-plus {
   background: var(--accent-amber-bg);
   color: var(--accent-amber);

@@ -191,6 +191,9 @@ const UI = {
     const freshnessHTML = signalAgeDisplay ? 
       `<span class="signal-age ${isStale ? 'stale' : ''}">🕐 Detected ${signalAgeDisplay}</span>` : '';
 
+    // Sentiment display
+    const sentimentHTML = decision.sentiment ? this.createSentimentBadge(decision.sentiment) : '';
+
     return `
       <div class="decision-card ${gradeClass} ${staleClass}" data-symbol="${decision.symbol}" data-grade="${decision.grade}">
         <div class="card-header">
@@ -204,6 +207,7 @@ const UI = {
         <div class="card-body">
           ${tradeInfoHTML}
           ${freshnessHTML}
+          ${sentimentHTML}
           ${reasonCodesHTML}
           <div class="card-reason">"${decision.reason}"</div>
         </div>
@@ -305,6 +309,35 @@ const UI = {
     } else {
       this.$('scan-estimate').textContent = '';
     }
+  },
+  
+  createSentimentBadge(sentiment) {
+    if (!sentiment) return '';
+    
+    const ratingEmoji = {
+      'bullish': '🟢',
+      'bearish': '🔴',
+      'neutral': '⚪',
+      'mixed': '🟡'
+    }[sentiment.rating] || '⚪';
+    
+    const ratingClass = {
+      'bullish': 'sentiment-bullish',
+      'bearish': 'sentiment-bearish',
+      'neutral': 'sentiment-neutral',
+      'mixed': 'sentiment-mixed'
+    }[sentiment.rating] || 'sentiment-neutral';
+    
+    const scoreDisplay = sentiment.score > 0 ? `+${sentiment.score}` : sentiment.score;
+    
+    return `
+      <div class="sentiment-badge ${ratingClass}">
+        <span class="sentiment-icon">${ratingEmoji}</span>
+        <span class="sentiment-rating">${sentiment.rating.toUpperCase()}</span>
+        <span class="sentiment-score">${scoreDisplay}</span>
+        ${sentiment.summary ? `<span class="sentiment-summary">${sentiment.summary}</span>` : ''}
+      </div>
+    `;
   },
 };
 
