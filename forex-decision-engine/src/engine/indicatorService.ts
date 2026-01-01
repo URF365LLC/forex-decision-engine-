@@ -40,11 +40,91 @@ export interface IndicatorData {
   macd?: MACDValue[];
   obv?: IndicatorValue[];
   
+  // H4 Trend Data (NEW - parallel to existing D1)
+  trendBarsH4?: OHLCVBar[];
+  ema200H4?: IndicatorValue[];
+  adxH4?: IndicatorValue[];
+  trendTimeframeUsed?: 'H4' | 'D1';
+  trendFallbackUsed?: boolean;
+  
   fetchedAt: string;
   errors: string[];
 }
 
 export { OHLCVBar, IndicatorValue };
+
+interface TrendDataH4 {
+  trendBarsH4: OHLCVBar[];
+  ema200H4: IndicatorValue[];
+  adxH4: IndicatorValue[];
+  trendTimeframeUsed: 'H4' | 'D1';
+  trendFallbackUsed: boolean;
+}
+
+async function fetchTrendDataH4(symbol: string): Promise<TrendDataH4> {
+  try {
+    // Try H4 first (Twelve Data supports 4h natively)
+    const [trendBarsH4, ema200H4, adxH4] = await Promise.all([
+      twelveData.getOHLCV(symbol, '4h', 'compact'),
+      twelveData.getEMA(symbol, '4h', 200),
+      twelveData.getADX(symbol, '4h', 14),
+    ]);
+    
+    logger.debug(`H4 trend data fetched successfully for ${symbol}`);
+    
+    return {
+      trendBarsH4,
+      ema200H4,
+      adxH4,
+      trendTimeframeUsed: 'H4',
+      trendFallbackUsed: false,
+    };
+  } catch (error) {
+    // Fallback to D1 if Twelve rejects H4 for this symbol
+    logger.warn(`TREND_FALLBACK_D1_USED: ${symbol} - H4 failed, using D1`, {
+      error: error instanceof Error ? error.message : 'Unknown error',
+      symbol,
+    });
+    
+    const [trendBarsD1, ema200D1, adxD1] = await Promise.all([
+      twelveData.getOHLCV(symbol, 'daily', 'compact'),
+      twelveData.getEMA(symbol, 'daily', 200),
+      twelveData.getADX(symbol, 'daily', 14),
+    ]);
+    
+    return {
+      trendBarsH4: trendBarsD1,
+      ema200H4: ema200D1,
+      adxH4: adxD1,
+      trendTimeframeUsed: 'D1',
+      trendFallbackUsed: true,
+    };
+  }
+}
+
+function validateH4Alignment(data: Partial<IndicatorData>): boolean {
+  if (!data.trendBarsH4 || data.trendBarsH4.length === 0) {
+    return true;
+  }
+  
+  const h4Len = data.trendBarsH4.length;
+  
+  if (data.ema200H4 && data.ema200H4.length !== h4Len) {
+    logger.error(`H4 EMA200 alignment mismatch: ${data.ema200H4.length} vs bars ${h4Len}`);
+    while (data.ema200H4.length < h4Len) {
+      data.ema200H4.unshift({ timestamp: '', value: NaN });
+    }
+  }
+  
+  if (data.adxH4 && data.adxH4.length !== h4Len) {
+    logger.error(`H4 ADX alignment mismatch: ${data.adxH4.length} vs bars ${h4Len}`);
+    while (data.adxH4.length < h4Len) {
+      data.adxH4.unshift({ timestamp: '', value: NaN });
+    }
+  }
+  
+  return true;
+}
 
 export async function fetchIndicators(
   symbol: string,
@@ -53,12 +133,9 @@ export async function fetchIndicators(
   const config = getStyleConfig(style);
   const errors: string[] = [];
   
-  const assetType = getAssetType(symbol);
-  const isMetals = assetType === 'metal';
+  const entryInterval = '1h';
   
-  const entryInterval = isMetals ? 'daily' : '60min';
-  
-  logger.info(`Fetching indicators for ${symbol} (${style})${isMetals ? ' [metals: daily only]' : ''} via Twelve Data`);
+  logger.info(`Fetching indicators for ${symbol} (${style}) via Twelve Data`);
 
   const data: IndicatorData = {
     symbol,
@@ -215,6 +292,19 @@ export async function fetchIndicators(
       logger.debug(`Got ${data.obv.length} OBV values for ${symbol}`);
     } catch (e) {
       errors.push(`OBV: ${e instanceof Error ? e.message : 'Unknown error'}`);
+    }
+
+    // Fetch H4 trend data (with D1 fallback)
+    try {
+      const h4Trend = await fetchTrendDataH4(symbol);
+      data.trendBarsH4 = h4Trend.trendBarsH4;
+      data.ema200H4 = h4Trend.ema200H4;
+      data.adxH4 = h4Trend.adxH4;
+      data.trendTimeframeUsed = h4Trend.trendTimeframeUsed;
+      data.trendFallbackUsed = h4Trend.trendFallbackUsed;
+      validateH4Alignment(data);
+    } catch (e) {
+      errors.push(`H4 trend data: ${e instanceof Error ? e.message : 'Unknown error'}`);
     }
 
   } catch (e) {

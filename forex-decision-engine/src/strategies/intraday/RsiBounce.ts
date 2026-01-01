@@ -14,18 +14,19 @@ export class RsiBounce implements IStrategy {
     name: 'RSI Oversold Bounce',
     description: 'Mean reversion from RSI extremes with Bollinger Band confirmation',
     style: 'intraday',
+    timeframes: { trend: 'H1', entry: 'H1' },
     winRate: 72,
     avgRR: 1.2,
     signalsPerWeek: '15-25',
     requiredIndicators: ['bars', 'rsi', 'bbands', 'atr', 'sma20'],
-    version: '2025-12-29',
+    version: '2026-01-01',
   };
 
   async analyze(data: IndicatorData, settings: UserSettings): Promise<Decision | null> {
     const { symbol, bars, rsi, bbands, atr, sma20 } = data;
     
     if (!bars || bars.length < 50) return null;
-    if (!validateIndicators(data as Record<string, unknown>, this.meta.requiredIndicators, 50)) return null;
+    if (!validateIndicators(data as unknown as Record<string, unknown>, this.meta.requiredIndicators, 50)) return null;
     
     const entryIdx = bars.length - 1;
     const signalIdx = bars.length - 2;
@@ -37,7 +38,17 @@ export class RsiBounce implements IStrategy {
     const atrSignal = atIndex(atr, signalIdx);
     const smaSignal = atIndex(sma20, signalIdx);
     
-    if (!rsiSignal || !bbSignal || !atrSignal || !smaSignal) return null;
+    if (
+      rsiSignal === null ||
+      !Number.isFinite(rsiSignal) ||
+      !bbSignal ||
+      atrSignal === null ||
+      !Number.isFinite(atrSignal) ||
+      smaSignal === null ||
+      !Number.isFinite(smaSignal)
+    ) {
+      return null;
+    }
     
     const triggers: string[] = [];
     const reasonCodes: ReasonCode[] = [];
@@ -67,6 +78,7 @@ export class RsiBounce implements IStrategy {
       if (signalBar.close > signalBar.open) {
         confidence += 10;
         triggers.push('Bullish candle confirmation');
+        reasonCodes.push('CANDLE_CONFIRMATION');
       }
       
     } else if (rsiSignal > 70 && signalBar.high >= bbSignal.upper) {
@@ -92,6 +104,7 @@ export class RsiBounce implements IStrategy {
       if (signalBar.close < signalBar.open) {
         confidence += 10;
         triggers.push('Bearish candle confirmation');
+        reasonCodes.push('CANDLE_CONFIRMATION');
       }
     }
     
@@ -113,7 +126,7 @@ export class RsiBounce implements IStrategy {
     }
     
     const rr = Math.abs(takeProfitPrice - entryPrice) / Math.abs(entryPrice - stopLossPrice);
-    if (rr >= 1.5) {
+    if (rr >= 1.25) {
       confidence += 10;
       reasonCodes.push('RR_FAVORABLE');
     }
