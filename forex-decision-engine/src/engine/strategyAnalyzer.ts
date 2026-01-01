@@ -109,6 +109,24 @@ function convertToStrategyIndicatorData(
   })) || [];
   const macdData = padIndicatorToBarsLength(macdRaw, barsLength, 'macd', symbol);
 
+  // Convert H4 trend data if available
+  const trendBarsH4: Bar[] | undefined = oldData.trendBarsH4?.map(b => ({
+    timestamp: b.timestamp,
+    open: b.open,
+    high: b.high,
+    low: b.low,
+    close: b.close,
+    volume: b.volume,
+  }));
+  
+  const ema200H4: number[] | undefined = oldData.ema200H4
+    ? oldData.ema200H4.map(v => (v.value !== null && v.value !== undefined ? v.value : NaN))
+    : undefined;
+    
+  const adxH4: number[] | undefined = oldData.adxH4
+    ? oldData.adxH4.map(v => (v.value !== null && v.value !== undefined ? v.value : NaN))
+    : undefined;
+
   return {
     symbol,
     bars,
@@ -128,6 +146,12 @@ function convertToStrategyIndicatorData(
     ema55: extractAndPad(oldData.ema55, 'ema55'),
     macd: macdData,
     obv: extractAndPad(oldData.obv, 'obv'),
+    // H4 Trend Data
+    trendBarsH4,
+    ema200H4,
+    adxH4,
+    trendTimeframeUsed: oldData.trendTimeframeUsed,
+    trendFallbackUsed: oldData.trendFallbackUsed,
   };
 }
 

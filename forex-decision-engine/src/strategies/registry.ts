@@ -6,6 +6,7 @@
 import type { IStrategy, TradingStyle, StrategyMeta, RequiredIndicator } from './types.js';
 
 import { RsiBounce } from './intraday/RsiBounce.js';
+import { RsiOversold } from './intraday/RsiOversold.js';
 import { StochasticOversold } from './intraday/StochasticOversold.js';
 import { BollingerMR } from './intraday/BollingerMR.js';
 import { WilliamsEma } from './intraday/WilliamsEma.js';
@@ -16,6 +17,7 @@ import { EmaPullback } from './intraday/EmaPullback.js';
 
 const STRATEGIES: Record<string, IStrategy> = {
   'rsi-bounce': new RsiBounce(),
+  'rsi-oversold': new RsiOversold(),
   'stoch-oversold': new StochasticOversold(),
   'bollinger-mr': new BollingerMR(),
   'williams-ema': new WilliamsEma(),
@@ -35,8 +37,20 @@ const INTRADAY_STRATEGIES: StrategyMeta[] = [
     avgRR: 1.2, 
     signalsPerWeek: '15-25', 
     requiredIndicators: ['bars', 'rsi', 'bbands', 'atr', 'sma20'],
+    timeframes: { trend: 'H1', entry: 'H1' },
+    version: '2026-01-01'
+  },
+  { 
+    id: 'rsi-oversold', 
+    name: 'RSI Oversold Pullback', 
+    description: 'With-trend pullback using H4 EMA200+ADX trend filter and RSI resets', 
+    style: 'intraday', 
+    winRate: 62, 
+    avgRR: 2.0, 
+    signalsPerWeek: '10-20', 
+    requiredIndicators: ['bars', 'rsi', 'atr', 'ema200', 'adx'],
     timeframes: { trend: 'H4', entry: 'H1' },
-    version: '2025-12-29'
+    version: '2026-01-01'
   },
   { 
     id: 'stoch-oversold', 

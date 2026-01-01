@@ -5345,7 +5345,25 @@
       "valid_until": "2026-01-01T21:00:20.237Z",
       "result": null,
       "result_notes": null
+    },
+    {
+      "id": 298,
+      "symbol": "EURUSD",
+      "style": "intraday",
+      "direction": "long",
+      "grade": "A+",
+      "entry_low": 1.17459,
+      "entry_high": 1.17534,
+      "stop_loss": 1.17185,
+      "take_profit": 1.1812,
+      "position_lots": 1.61,
+      "risk_amount": 500,
+      "reason": "Uptrend, pullback to EMA50, RSI 49→49, ADX 35",
+      "created_at": "2026-01-01T18:37:47.292Z",
+      "valid_until": "2026-01-01T22:37:47.292Z",
+      "result": null,
+      "result_notes": null
     }
   ],
-  "nextId": 298
+  "nextId": 299
 }
