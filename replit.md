@@ -6,13 +6,21 @@ A trading decision engine for Forex, Metals, and Cryptocurrency markets, designe
 ## User Preferences
 Preferred communication style: Simple, everyday language.
 
-## Recent Changes (2025-12-31)
-**Twelve Data Migration Complete**
-- Migrated from Alpha Vantage + KuCoin to Twelve Data as the unified data source
-- All asset classes (forex, metals, crypto) now use the same indicator service
+## Recent Changes (2026-01-01)
+**E8 Instrument Specs Migration Complete**
+- Created `e8InstrumentSpecs.ts` as single source of truth for all 46 instruments
+- Full E8 Markets spec compliance: contract sizes, commission models, pip values, leverage
+- Updated rate limiter for Twelve Data $99 plan: 610 calls/min (60 tokens, 10/sec refill, 100ms min delay)
+- Added queue overflow protection (200 max, throws FATAL error on overflow)
+- Fail-fast symbol conversion via `toDataSymbol()` - no heuristic fallbacks
+- Tripwired deprecated `universe.ts` (throws error at module load)
+- API v2 `/api/universe` with backward-compatible legacy format plus full instrument specs
+- Startup validation checks: duplicate symbols, pipValue > 0, commission model exists
+
+**Previous Changes (2025-12-31)**
+- Migrated from Alpha Vantage + KuCoin to Twelve Data as unified data source
 - Added new indicators: EMA8, EMA21, EMA55, MACD, OBV
-- Implemented NaN padding for indicator array alignment (prevents silent index drift bugs)
-- Added startup validation for data pipeline integrity
+- Implemented NaN padding for indicator array alignment
 - Tripwires added to deprecated Alpha Vantage, KuCoin, and Crypto Indicator Service files
 
 ## System Architecture
@@ -43,14 +51,15 @@ Orchestrates trade signal generation:
 -   **Startup Validation**: `startupValidation.ts` tests EUR/USD, BTC/USD, XAU/USD on startup.
 
 #### Configuration (`src/config/`)
+-   **E8 Instrument Specs** (`e8InstrumentSpecs.ts`): SINGLE SOURCE OF TRUTH for all 46 instruments with E8 Markets contract sizes, commission models (fixed USD per lot for forex/metals/indices, 0.035% each way for crypto), pip values, leverage settings.
 -   **Strategy Parameters**: Fixed, not user-configurable.
--   **Universe**: Predefined list of 28 Forex pairs, 2 Metals (XAUUSD, XAGUSD), and 8 Crypto pairs with metadata.
--   **Defaults**: E8 Markets prop firm rules (0.5% risk, 4% daily loss limit, 6% max drawdown), including specific leverage settings for different asset classes and crypto contract sizes.
+-   **Defaults**: E8 Markets prop firm rules (0.5% risk, 4% daily loss limit, 6% max drawdown).
+-   **Universe** (`universe.ts`): DEPRECATED - tripwired to throw error on import.
 
 #### Services (`src/services/`)
--   **Twelve Data Client**: Unified API wrapper for all asset classes with retry logic, symbol normalization, and crypto exchange handling.
+-   **Twelve Data Client**: Unified API wrapper for all asset classes with retry logic, fail-fast symbol normalization via `toDataSymbol()`, and crypto exchange handling.
 -   **Cache**: In-memory TTL cache for market data and decisions, with separate TTLs for different timeframes and "no-trade" decisions.
--   **Rate Limiter**: Token bucket algorithm for API calls.
+-   **Rate Limiter**: Token bucket algorithm for Twelve Data $99 plan (610 calls/min). Config: 60 tokens max, 10 refill/sec, 100ms min delay, 200 max queue (throws FATAL on overflow).
 -   **Signal Cooldown**: Prevents duplicate signals based on grade or direction.
 -   **Volatility Gate**: Filters signals during extreme ATR conditions.
 -   **Logger**: Structured logging with various levels.
@@ -59,6 +68,7 @@ Orchestrates trade signal generation:
 -   **Alpha Vantage Client** (`alphaVantageClient.ts`): DISABLED - throws error if imported.
 -   **KuCoin Client** (`kucoinClient.ts`): DISABLED - throws error if imported.
 -   **Crypto Indicator Service** (`cryptoIndicatorService.ts`): DISABLED - throws error if imported.
+-   **Universe** (`universe.ts`): DISABLED - throws error if imported (use `e8InstrumentSpecs.ts`).
 
 #### Storage (`src/storage/`)
 -   **Signal Store**: In-memory storage with JSON file persistence (`data/signals.json`), using atomic writes.
@@ -94,12 +104,12 @@ Orchestrates trade signal generation:
 ## External Dependencies
 
 ### Twelve Data API (Primary)
--   **Purpose**: Unified market data and technical indicators for all asset classes (Forex, Metals, Crypto).
+-   **Purpose**: Unified market data and technical indicators for all asset classes (Forex, Metals, Indices, Commodities, Crypto).
 -   **Configuration**: `TWELVE_DATA_API_KEY` environment variable (required).
 -   **Crypto Exchange**: `TWELVE_DATA_CRYPTO_EXCHANGE` (default: Binance).
--   **Rate Limit**: Varies by plan, implements retry with exponential backoff.
+-   **Rate Limit**: $99 plan = 610 calls/min. Implements retry with exponential backoff.
 -   **Endpoints Used**: /time_series, /ema, /sma, /rsi, /atr, /adx, /stoch, /willr, /cci, /bbands, /macd, /obv.
--   **Symbol Normalization**: EURUSD → EUR/USD, BTCUSD → BTC/USD internally.
+-   **Symbol Normalization**: Fail-fast via `toDataSymbol()` from e8InstrumentSpecs - throws error for unknown symbols.
 
 ### Environment Variables
 -   `TWELVE_DATA_API_KEY`: API key for Twelve Data (required).

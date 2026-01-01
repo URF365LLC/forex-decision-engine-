@@ -4,7 +4,7 @@
  */
 
 import { VALIDATION, RISK_OPTIONS } from '../config/defaults.js';
-import { isValidSymbol, ALL_SYMBOLS } from '../config/universe.js';
+import { isValidInstrument, ALL_INSTRUMENTS } from '../config/e8InstrumentSpecs.js';
 import { TradingStyle } from '../config/strategy.js';
 
 // ═══════════════════════════════════════════════════════════════
@@ -115,7 +115,7 @@ export function validateSymbol(value: unknown): ValidationResult {
   
   const symbol = value.toUpperCase().replace('/', '');
   
-  if (!isValidSymbol(symbol)) {
+  if (!isValidInstrument(symbol)) {
     errors.push(`Invalid symbol: ${value}`);
   }
   

@@ -19,7 +19,7 @@ import {
   GatingInfo,
   VolatilityLevel
 } from '../strategies/types.js';
-import { getDisplayName } from '../config/universe.js';
+import { getInstrumentSpec } from '../config/e8InstrumentSpecs.js';
 import { cache, CACHE_TTL } from '../services/cache.js';
 import { createLogger } from '../services/logger.js';
 import { signalCooldown, CooldownCheck } from '../services/signalCooldown.js';
@@ -230,7 +230,7 @@ export async function analyzeWithStrategy(
   }
   
   if (decision) {
-    decision.displayName = getDisplayName(symbol);
+    decision.displayName = getInstrumentSpec(symbol)?.displayName || symbol;
     
     const meta = strategyRegistry.getMeta(strategyId);
     if (meta?.timeframes) {
@@ -391,7 +391,7 @@ function createNoTradeDecision(symbol: string, strategyId: string, errors: strin
   
   return {
     symbol,
-    displayName: getDisplayName(symbol),
+    displayName: getInstrumentSpec(symbol)?.displayName || symbol,
     strategyId,
     strategyName: meta?.name || strategyId,
     direction: 'long',

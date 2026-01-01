@@ -10,7 +10,7 @@
 import { TradingStyle, getStyleConfig } from '../config/strategy.js';
 import { STRATEGY } from '../config/strategy.js';
 import { DEFAULTS } from '../config/defaults.js';
-import { getDisplayName, getPipDecimals, getAssetClass } from '../config/universe.js';
+import { getInstrumentSpec } from '../config/e8InstrumentSpecs.js';
 import { IndicatorData, getLatestValue, findSwingHigh, findSwingLow } from './indicatorService.js';
 import { getIndicators, AnyIndicatorData } from './indicatorFactory.js';
 import { analyzeTrend, TrendAnalysis, TrendDirection } from './trendFilter.js';
@@ -210,9 +210,10 @@ export async function analyzeSymbol(
   }
   
   // Build base decision
+  const spec = getInstrumentSpec(symbol);
   const decision: Decision = {
     symbol,
-    displayName: getDisplayName(symbol),
+    displayName: spec?.displayName || symbol,
     style: settings.style,
     direction: finalDirection,
     grade: finalGrade,
@@ -232,7 +233,7 @@ export async function analyzeSymbol(
     timestamp: now.toISOString(),
     validUntil: validUntil.toISOString(),
     validCandles: styleConfig.validCandles,
-    timeframes: getAssetClass(symbol) === 'metals'
+    timeframes: spec?.type === 'metal'
       ? { trend: 'D1', entry: 'D1' }  // Metals use daily-only (no intraday available)
       : { trend: styleConfig.trendTimeframe, entry: styleConfig.entryTimeframe },
     gating: {
@@ -248,7 +249,7 @@ export async function analyzeSymbol(
   // ═══════════════════════════════════════════════════════════════
   
   if (direction !== 'none' && entry.status === 'ready') {
-    const pipDecimals = getPipDecimals(symbol);
+    const pipDecimals = spec?.digits || 4;
     
     // Entry zone
     decision.entryZone = {
@@ -401,9 +402,10 @@ function createErrorDecision(
   const styleConfig = getStyleConfig(settings.style);
   const now = new Date();
   
+  const spec = getInstrumentSpec(symbol);
   return {
     symbol,
-    displayName: getDisplayName(symbol),
+    displayName: spec?.displayName || symbol,
     style: settings.style,
     direction: 'none',
     grade: 'no-trade',
@@ -462,7 +464,7 @@ function createErrorDecision(
     timestamp: now.toISOString(),
     validUntil: now.toISOString(),
     validCandles: styleConfig.validCandles,
-    timeframes: getAssetClass(symbol) === 'metals'
+    timeframes: spec?.type === 'metal'
       ? { trend: 'D1', entry: 'D1' }  // Metals use daily-only (no intraday available)
       : { trend: styleConfig.trendTimeframe, entry: styleConfig.entryTimeframe },
     gating: {

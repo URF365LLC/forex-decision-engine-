@@ -1,16 +1,18 @@
 /**
  * Rate Limiter Service
- * Token bucket algorithm for Alpha Vantage API (150 calls/min)
+ * Token bucket algorithm for Twelve Data API (610 calls/min on $99 plan)
  */
 
 import { createLogger } from './logger.js';
 
 const logger = createLogger('RateLimiter');
 
+const MAX_QUEUE_SIZE = 200;
+
 interface RateLimiterConfig {
-  maxTokens: number;           // Max tokens in bucket
-  refillRate: number;          // Tokens added per second
-  minDelayMs: number;          // Minimum delay between requests
+  maxTokens: number;
+  refillRate: number;
+  minDelayMs: number;
 }
 
 interface QueuedRequest {
@@ -90,15 +92,17 @@ class TokenBucketRateLimiter {
    * Acquire a token (wait if necessary)
    */
   async acquire(timeoutMs: number = 60000): Promise<void> {
+    if (this.queue.length >= MAX_QUEUE_SIZE) {
+      throw new Error(`FATAL: Rate limit queue overflow (${this.queue.length} requests) - aborting`);
+    }
+
     this.refill();
     
-    // If tokens available, consume immediately
     if (this.tokens >= 1) {
       this.tokens -= 1;
       return;
     }
     
-    // Otherwise, queue the request
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
         const index = this.queue.findIndex(r => r.resolve === resolve);
@@ -115,7 +119,6 @@ class TokenBucketRateLimiter {
         addedAt: Date.now(),
       });
 
-      // Start processing queue
       this.processQueue();
     });
   }
@@ -161,12 +164,11 @@ class TokenBucketRateLimiter {
 // SINGLETON INSTANCE
 // ═══════════════════════════════════════════════════════════════
 
-// Alpha Vantage Premium: 150 calls/minute = 2.5 calls/second
-// We'll be conservative: 2 calls/second with 500ms minimum delay
+// Twelve Data $99 Plan: 610 calls/minute = ~10 calls/second
 export const rateLimiter = new TokenBucketRateLimiter({
-  maxTokens: 15,              // Burst capacity
-  refillRate: 2,              // 2 tokens per second
-  minDelayMs: 500,            // 500ms between requests
+  maxTokens: 60,
+  refillRate: 10,
+  minDelayMs: 100,
 });
 
 export { TokenBucketRateLimiter };

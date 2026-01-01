@@ -7,7 +7,7 @@
 import { twelveData } from '../services/twelveDataClient.js';
 import type { OHLCVBar, IndicatorValue, MACDValue } from '../services/twelveDataClient.js';
 import { STRATEGY, TradingStyle, getStyleConfig } from '../config/strategy.js';
-import { getAssetClass } from '../config/universe.js';
+import { getAssetType } from '../config/e8InstrumentSpecs.js';
 import { createLogger } from '../services/logger.js';
 
 const logger = createLogger('IndicatorService');
@@ -53,8 +53,8 @@ export async function fetchIndicators(
   const config = getStyleConfig(style);
   const errors: string[] = [];
   
-  const assetClass = getAssetClass(symbol);
-  const isMetals = assetClass === 'metals';
+  const assetType = getAssetType(symbol);
+  const isMetals = assetType === 'metal';
   
   const entryInterval = isMetals ? 'daily' : '60min';
   
