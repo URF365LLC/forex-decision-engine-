@@ -7,7 +7,7 @@ A trading decision engine for Forex, Metals, and Cryptocurrency markets, designe
 Preferred communication style: Simple, everyday language.
 
 ## Recent Changes (2026-01-01)
-**E8 Instrument Specs Migration Complete**
+**E8 Instrument Specs Migration Complete + Verification**
 - Created `e8InstrumentSpecs.ts` as single source of truth for all 46 instruments
 - Full E8 Markets spec compliance: contract sizes, commission models, pip values, leverage
 - Updated rate limiter for Twelve Data $99 plan: 610 calls/min (60 tokens, 10/sec refill, 100ms min delay)
@@ -16,6 +16,8 @@ Preferred communication style: Simple, everyday language.
 - Tripwired deprecated `universe.ts` (throws error at module load)
 - API v2 `/api/universe` with backward-compatible legacy format plus full instrument specs
 - Startup validation checks: duplicate symbols, pipValue > 0, commission model exists
+- **Position sizing guard**: Added `Number.isFinite()` check in `calculatePositionSize()` - returns null for invalid/negative lot sizes
+- **Smoke tests verified**: EURUSD (A+), BTCUSD (no-trade), FAKESYM (fail-fast rejection)
 
 **Previous Changes (2025-12-31)**
 - Migrated from Alpha Vantage + KuCoin to Twelve Data as unified data source
