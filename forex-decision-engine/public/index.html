@@ -194,6 +194,52 @@
           </div>
         </div>
         
+        <div class="autoscan-panel" id="autoscan-panel">
+          <div class="autoscan-header">
+            <div class="autoscan-title">
+              <span class="autoscan-icon">🔄</span>
+              <span>Auto-Scan</span>
+            </div>
+            <label class="toggle-switch">
+              <input type="checkbox" id="autoscan-toggle">
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+          <div class="autoscan-config hidden" id="autoscan-config">
+            <div class="config-row">
+              <label>Alert Email</label>
+              <input type="email" id="autoscan-email" placeholder="your@email.com" class="config-input">
+            </div>
+            <div class="config-row">
+              <label>Min Grade</label>
+              <select id="autoscan-grade" class="config-select">
+                <option value="A+">A+ Only</option>
+                <option value="A">A or better</option>
+                <option value="B+" selected>B+ or better</option>
+                <option value="B">B or better</option>
+              </select>
+            </div>
+            <div class="autoscan-status" id="autoscan-status">
+              <div class="status-item">
+                <span class="status-label">Status:</span>
+                <span class="status-value" id="autoscan-running">Stopped</span>
+              </div>
+              <div class="status-item">
+                <span class="status-label">Last Scan:</span>
+                <span class="status-value" id="autoscan-last">Never</span>
+              </div>
+              <div class="status-item">
+                <span class="status-label">Next Scan:</span>
+                <span class="status-value" id="autoscan-next">-</span>
+              </div>
+              <div class="status-item">
+                <span class="status-label">New Signals:</span>
+                <span class="status-value" id="autoscan-signals">0</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        
         <div class="watchlist-footer">
           <div class="selection-info">
             <span id="selected-count">0</span> symbols selected

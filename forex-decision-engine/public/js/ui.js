@@ -184,8 +184,15 @@ const UI = {
     const isExpired = validUntil < new Date();
     const validText = isExpired ? 'Expired' : `Valid until ${validUntil.toLocaleTimeString()}`;
 
+    // Signal freshness display
+    const signalAgeDisplay = decision.timing?.signalAge?.display || '';
+    const isStale = decision.timing?.isStale || false;
+    const staleClass = isStale ? 'stale-signal' : '';
+    const freshnessHTML = signalAgeDisplay ? 
+      `<span class="signal-age ${isStale ? 'stale' : ''}">🕐 Detected ${signalAgeDisplay}</span>` : '';
+
     return `
-      <div class="decision-card ${gradeClass}" data-symbol="${decision.symbol}" data-grade="${decision.grade}">
+      <div class="decision-card ${gradeClass} ${staleClass}" data-symbol="${decision.symbol}" data-grade="${decision.grade}">
         <div class="card-header">
           <div>
             <span class="card-symbol">${decision.displayName}</span>
@@ -196,6 +203,7 @@ const UI = {
         ${strategyInfo}
         <div class="card-body">
           ${tradeInfoHTML}
+          ${freshnessHTML}
           ${reasonCodesHTML}
           <div class="card-reason">"${decision.reason}"</div>
         </div>

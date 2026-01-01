@@ -34,6 +34,8 @@ import { cache } from './services/cache.js';
 import { rateLimiter } from './services/rateLimiter.js';
 import { createLogger } from './services/logger.js';
 import { gradeTracker } from './services/gradeTracker.js';
+import { autoScanService } from './services/autoScanService.js';
+import { alertService } from './services/alertService.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -639,6 +641,86 @@ app.get('/api/upgrades/recent', (req, res) => {
   const upgrades = gradeTracker.getRecentUpgrades(minutes);
   res.json({ upgrades, count: upgrades.length });
 });
+
+// ═══════════════════════════════════════════════════════════════
+// AUTO-SCAN ENDPOINTS
+// ═══════════════════════════════════════════════════════════════
+
+app.post('/api/autoscan/start', (req, res) => {
+  try {
+    const { minGrade = 'B', email, intervalMs = 5 * 60 * 1000 } = req.body;
+    
+    autoScanService.start({
+      minGrade,
+      email,
+      intervalMs,
+      onNewSignal: (decision, isNew) => {
+        if (isNew && email) {
+          alertService.sendTradeAlert(decision, email).catch(err => {
+            logger.error(`Alert email failed: ${err}`);
+          });
+        }
+        broadcastUpgrade({ type: 'new_signal', decision, isNew });
+      }
+    });
+    
+    res.json({
+      success: true,
+      message: 'Auto-scan started',
+      status: autoScanService.getStatus()
+    });
+  } catch (error) {
+    logger.error(`Auto-scan start failed: ${error}`);
+    res.status(500).json({ error: 'Failed to start auto-scan' });
+  }
+});
+
+app.post('/api/autoscan/stop', (req, res) => {
+  autoScanService.stop();
+  res.json({
+    success: true,
+    message: 'Auto-scan stopped',
+    status: autoScanService.getStatus()
+  });
+});
+
+app.get('/api/autoscan/status', (req, res) => {
+  res.json(autoScanService.getStatus());
+});
+
+app.put('/api/autoscan/config', (req, res) => {
+  try {
+    const { minGrade, email, intervalMs, symbols, strategies } = req.body;
+    
+    autoScanService.updateConfig({
+      minGrade,
+      email,
+      intervalMs,
+      symbols,
+      strategies
+    });
+    
+    res.json({
+      success: true,
+      message: 'Config updated',
+      status: autoScanService.getStatus()
+    });
+  } catch (error) {
+    logger.error(`Auto-scan config update failed: ${error}`);
+    res.status(500).json({ error: 'Failed to update config' });
+  }
+});
+
+function broadcastUpgrade(data: any): void {
+  const message = JSON.stringify(data);
+  for (const client of sseClients) {
+    try {
+      client.write(`data: ${message}\n\n`);
+    } catch (e) {
+      sseClients.delete(client);
+    }
+  }
+}
 
 // ═══════════════════════════════════════════════════════════════
 // SERVE FRONTEND
