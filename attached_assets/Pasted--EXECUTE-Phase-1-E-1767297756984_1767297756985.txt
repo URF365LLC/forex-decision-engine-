@@ -1,0 +1,322 @@
+═══════════════════════════════════════════════════════════════════════════════
+EXECUTE: Phase 1 - Entry Price Fix & Signal Freshness
+═══════════════════════════════════════════════════════════════════════════════
+
+RSI Strategy work is COMPLETE. Now implementing infrastructure upgrade.
+
+This is highest ROI, lowest risk - improves every strategy without changing logic.
+
+═══════════════════════════════════════════════════════════════════════════════
+CRITICAL GUARDRAIL (NON-NEGOTIABLE)
+═══════════════════════════════════════════════════════════════════════════════
+
+Freshness NEVER blocks trades unless a toggle is explicitly ON.
+Freshness is CONTEXT, not a VETO.
+
+═══════════════════════════════════════════════════════════════════════════════
+TASK 1.1: Update TradeDecision interface
+═══════════════════════════════════════════════════════════════════════════════
+File: src/strategies/types.ts
+
+Add to TradeDecision interface:
+
+interface TradeDecision {
+  // ... existing fields ...
+  
+  // NEW: Structured entry price
+  entry: {
+    price: number;        // Raw: 1.0850
+    formatted: string;    // Display: "1.08500"
+  };
+  
+  // NEW: Signal timing metadata
+  timing: {
+    firstDetected: string;    // ISO timestamp of original detection
+    signalAge: {
+      ms: number;             // Milliseconds since first detection
+      display: string;        // "2h 15m ago" | "Just now"
+    };
+    validUntil: string;       // Expiry time
+    isStale: boolean;         // True if > 4 hours old (INFO ONLY)
+  };
+}
+
+═══════════════════════════════════════════════════════════════════════════════
+TASK 1.2: Create signalStore.ts
+═══════════════════════════════════════════════════════════════════════════════
+File: src/storage/signalStore.ts (NEW)
+
+import { logger } from '../utils/logger.js';
+
+interface StoredSignal {
+  key: string;
+  symbol: string;
+  strategyId: string;
+  direction: 'long' | 'short';
+  firstDetected: string;  // ISO timestamp
+  lastSeen: string;       // ISO timestamp
+}
+
+const signalStore = new Map<string, StoredSignal>();
+
+/**
+ * Normalize signal key for consistent lookups
+ */
+function getSignalKey(symbol: string, strategyId: string, direction: string): string {
+  return `${symbol.toUpperCase()}:${strategyId.toLowerCase()}:${direction.toLowerCase()}`;
+}
+
+/**
+ * Track a signal and return its first detection time
+ * - Same signal (same key): preserve original firstDetected
+ * - Direction flip: reset firstDetected to now
+ */
+export function trackSignal(
+  symbol: string, 
+  strategyId: string, 
+  direction: 'long' | 'short'
+): StoredSignal {
+  const key = getSignalKey(symbol, strategyId, direction);
+  const now = new Date().toISOString();
+  
+  const existing = signalStore.get(key);
+  
+  if (existing) {
+    // Same signal exists - update lastSeen, preserve firstDetected
+    existing.lastSeen = now;
+    logger.debug(`Signal persisted: ${key} (first: ${existing.firstDetected})`);
+    return existing;
+  }
+  
+  // Check for opposite direction signal (flip detection)
+  const oppositeDir = direction === 'long' ? 'short' : 'long';
+  const oppositeKey = getSignalKey(symbol, strategyId, oppositeDir);
+  if (signalStore.has(oppositeKey)) {
+    signalStore.delete(oppositeKey);
+    logger.info(`Signal flipped: ${symbol} ${strategyId} ${oppositeDir} → ${direction}`);
+  }
+  
+  // New signal - store with current timestamp
+  const newSignal: StoredSignal = {
+    key,
+    symbol,
+    strategyId,
+    direction,
+    firstDetected: now,
+    lastSeen: now,
+  };
+  
+  signalStore.set(key, newSignal);
+  logger.debug(`New signal tracked: ${key}`);
+  
+  return newSignal;
+}
+
+/**
+ * Get first detection time for a signal (if exists)
+ */
+export function getFirstDetection(
+  symbol: string, 
+  strategyId: string, 
+  direction: string
+): string | null {
+  const key = getSignalKey(symbol, strategyId, direction);
+  return signalStore.get(key)?.firstDetected || null;
+}
+
+/**
+ * Clear stale signals (optional cleanup)
+ */
+export function clearStaleSignals(maxAgeMs: number = 24 * 60 * 60 * 1000): number {
+  const now = Date.now();
+  let cleared = 0;
+  
+  for (const [key, signal] of signalStore.entries()) {
+    const age = now - new Date(signal.lastSeen).getTime();
+    if (age > maxAgeMs) {
+      signalStore.delete(key);
+      cleared++;
+    }
+  }
+  
+  if (cleared > 0) {
+    logger.info(`Cleared ${cleared} stale signals (>${maxAgeMs}ms old)`);
+  }
+  
+  return cleared;
+}
+
+/**
+ * Get all active signals (for debugging)
+ */
+export function getAllSignals(): StoredSignal[] {
+  return Array.from(signalStore.values());
+}
+
+═══════════════════════════════════════════════════════════════════════════════
+TASK 1.3: Create timeUtils.ts
+═══════════════════════════════════════════════════════════════════════════════
+File: src/utils/timeUtils.ts (NEW)
+
+/**
+ * Format signal age for display
+ */
+export function formatSignalAge(firstDetected: string): { ms: number; display: string } {
+  const ms = Date.now() - new Date(firstDetected).getTime();
+  
+  let display: string;
+  
+  if (ms < 60_000) {
+    display = "Just now";
+  } else if (ms < 3600_000) {
+    const mins = Math.floor(ms / 60_000);
+    display = `${mins}m ago`;
+  } else if (ms < 86400_000) {
+    const hours = Math.floor(ms / 3600_000);
+    const mins = Math.floor((ms % 3600_000) / 60_000);
+    display = mins > 0 ? `${hours}h ${mins}m ago` : `${hours}h ago`;
+  } else {
+    const days = Math.floor(ms / 86400_000);
+    const hours = Math.floor((ms % 86400_000) / 3600_000);
+    display = hours > 0 ? `${days}d ${hours}h ago` : `${days}d ago`;
+  }
+  
+  return { ms, display };
+}
+
+/**
+ * Check if signal is stale (default 4 hours)
+ * NOTE: This is INFO ONLY - does not block trades
+ */
+export function isStale(ms: number, thresholdHours: number = 4): boolean {
+  return ms > thresholdHours * 60 * 60 * 1000;
+}
+
+/**
+ * Format price with appropriate decimal places
+ */
+export function formatPrice(price: number, symbol: string): string {
+  // JPY pairs use 3 decimals, others use 5
+  const isJpy = symbol.toUpperCase().includes('JPY');
+  const decimals = isJpy ? 3 : 5;
+  return price.toFixed(decimals);
+}
+
+═══════════════════════════════════════════════════════════════════════════════
+TASK 1.4: Integrate into Decision Building
+═══════════════════════════════════════════════════════════════════════════════
+File: src/strategies/utils.ts (or wherever buildDecision lives)
+
+Update buildDecision() to include timing data:
+
+import { trackSignal } from '../storage/signalStore.js';
+import { formatSignalAge, isStale, formatPrice } from '../utils/timeUtils.js';
+
+function buildDecision(params: BuildDecisionParams): TradeDecision {
+  const { symbol, strategyId, direction, entryPrice, ... } = params;
+  
+  // Track signal and get first detection time
+  const signal = trackSignal(symbol, strategyId, direction);
+  const age = formatSignalAge(signal.firstDetected);
+  
+  // Calculate expiry (e.g., 4 hours from now)
+  const validUntil = new Date(Date.now() + 4 * 60 * 60 * 1000).toISOString();
+  
+  return {
+    // ... existing fields ...
+    
+    // NEW: Structured entry
+    entry: {
+      price: entryPrice,
+      formatted: formatPrice(entryPrice, symbol),
+    },
+    
+    // NEW: Timing metadata
+    timing: {
+      firstDetected: signal.firstDetected,
+      signalAge: age,
+      validUntil,
+      isStale: isStale(age.ms),  // INFO ONLY
+    },
+    
+    // Keep entryPrice for backward compatibility
+    entryPrice,
+  };
+}
+
+═══════════════════════════════════════════════════════════════════════════════
+TASK 1.5: Update Frontend
+═══════════════════════════════════════════════════════════════════════════════
+File: public/js/app.js
+
+1. Entry price display (with fallback):
+   const entryDisplay = decision.entry?.formatted || decision.entryPrice?.toFixed(5);
+
+2. Add signal age badge:
+   <span class="signal-age">
+     🕐 ${decision.timing?.signalAge?.display || 'Unknown'}
+   </span>
+
+3. Stale warning styling:
+   if (decision.timing?.isStale) {
+     card.classList.add('stale-signal');  // Yellow/orange border
+   }
+
+File: public/css/styles.css
+
+.signal-age {
+  font-size: 0.85em;
+  color: #666;
+  margin-top: 8px;
+}
+
+.stale-signal {
+  border-left: 4px solid #f0ad4e;  /* Warning orange */
+}
+
+.stale-signal .signal-age {
+  color: #f0ad4e;
+  font-weight: bold;
+}
+
+═══════════════════════════════════════════════════════════════════════════════
+AFTER COMPLETION - PROVIDE:
+═══════════════════════════════════════════════════════════════════════════════
+
+1. Updated types.ts (show TradeDecision interface)
+2. New signalStore.ts (full file)
+3. New timeUtils.ts (full file)
+4. Updated buildDecision() (relevant section)
+5. Updated app.js (signal age display section)
+6. Example Decision object with timing data:
+   {
+     symbol: "EURUSD",
+     direction: "long",
+     entry: { price: 1.0850, formatted: "1.08500" },
+     timing: {
+       firstDetected: "2026-01-01T12:30:00Z",
+       signalAge: { ms: 7200000, display: "2h ago" },
+       validUntil: "2026-01-01T18:30:00Z",
+       isStale: false
+     },
+     ...
+   }
+7. Screenshot of UI with signal age badge
+
+═══════════════════════════════════════════════════════════════════════════════
+SMOKE TESTS
+═══════════════════════════════════════════════════════════════════════════════
+
+| # | Test | Pass Criteria |
+|---|------|---------------|
+| 1 | New signal | firstDetected = now, display = "Just now" |
+| 2 | Persisted signal | Same signal 1hr later shows "1h ago" |
+| 3 | Flipped signal | Direction change resets firstDetected |
+| 4 | Entry formatting | JPY pairs show 3 decimals, others 5 |
+| 5 | Stale indicator | >4hr signal shows isStale: true |
+| 6 | UI display | Signal age badge visible on trade cards |
+| 7 | Backward compat | Old entryPrice field still works |
+
+═══════════════════════════════════════════════════════════════════════════════
+
+EXECUTE NOW. This is pure infrastructure - no strategy logic changes.
