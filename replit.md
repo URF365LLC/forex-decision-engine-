@@ -7,6 +7,17 @@ A trading decision engine for Forex, Metals, and Cryptocurrency markets, designe
 Preferred communication style: Simple, everyday language.
 
 ## Recent Changes (2026-01-01)
+**Auto-Scan & Signal Freshness (Latest)**
+- Added Auto-Scan feature: Background scanner runs every 5 minutes using batch API
+- Signal Freshness Tracking: Shows "Detected Xh Ym ago" timestamps to prevent late entries
+- Auto-Scan UI toggle in Watchlist panel with email config, min grade filter, status display
+- New services: `batchDataService.ts` (Twelve Data /batch endpoint), `autoScanService.ts`, `alertService.ts`
+- New API endpoints: POST /api/autoscan/start, /stop, GET /api/autoscan/status, PUT /api/autoscan/config
+- Signal freshness tracker: `signalFreshnessTracker.ts` with SYMBOL::STRATEGY::DIRECTION key format
+- Time utilities: `timeUtils.ts` with formatSignalAge(), isStale() (4hr threshold), formatEntryPrice()
+- Decision interface extended with `entry: { price, formatted }` and `timing: { firstDetected, signalAge, validUntil, isStale }`
+- Email alerts via Resend (optional - requires RESEND_API_KEY secret)
+
 **Frontend UI Update - Multi-Asset Class Support**
 - Added Metals (2), Indices (6), and Commodities (2) sections to watchlist panel
 - Strategy dropdown now dynamically loads all 9 strategies from API
@@ -133,6 +144,7 @@ Orchestrates trade signal generation:
 -   `TWELVE_DATA_CRYPTO_EXCHANGE`: Crypto exchange for consistency (default: Binance).
 -   `PORT`: Server port (default: 5000).
 -   `LOG_LEVEL`: Logging verbosity (debug/info/warn/error, default: info).
+-   `RESEND_API_KEY`: (Optional) API key for Resend email service. If configured, enables email alerts for new trade signals via Auto-Scan feature. Get your key at https://resend.com.
 
 ### NPM Dependencies
 -   **Runtime**: `express`, `cors`, `dotenv`.
