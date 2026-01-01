@@ -1002,6 +1002,116 @@ const App = {
         this.switchScreen('watchlist');
       }
     });
+    
+    // Auto-scan toggle
+    UI.$('autoscan-toggle')?.addEventListener('change', (e) => {
+      if (e.target.checked) {
+        this.startAutoScan();
+      } else {
+        this.stopAutoScan();
+      }
+    });
+    
+    // Load auto-scan status on init
+    this.loadAutoScanStatus();
+  },
+  
+  async loadAutoScanStatus() {
+    try {
+      const response = await fetch('/api/autoscan/status');
+      const status = await response.json();
+      this.updateAutoScanUI(status);
+      
+      if (status.isRunning) {
+        UI.$('autoscan-toggle').checked = true;
+        UI.show('autoscan-config');
+      }
+    } catch (error) {
+      console.error('Failed to load auto-scan status:', error);
+    }
+  },
+  
+  async startAutoScan() {
+    const email = UI.$('autoscan-email')?.value || '';
+    const minGrade = UI.$('autoscan-grade')?.value || 'B';
+    
+    try {
+      const response = await fetch('/api/autoscan/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, minGrade }),
+      });
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        UI.show('autoscan-config');
+        this.updateAutoScanUI(data.status);
+        UI.toast('Auto-scan started! Scans every 5 minutes.', 'success');
+        
+        this.autoScanInterval = setInterval(() => this.loadAutoScanStatus(), 60000);
+      } else {
+        UI.$('autoscan-toggle').checked = false;
+        UI.toast('Failed to start auto-scan', 'error');
+      }
+    } catch (error) {
+      UI.$('autoscan-toggle').checked = false;
+      UI.toast('Failed to start auto-scan', 'error');
+    }
+  },
+  
+  async stopAutoScan() {
+    try {
+      const response = await fetch('/api/autoscan/stop', {
+        method: 'POST',
+      });
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        this.updateAutoScanUI(data.status);
+        UI.toast('Auto-scan stopped', 'info');
+        
+        if (this.autoScanInterval) {
+          clearInterval(this.autoScanInterval);
+          this.autoScanInterval = null;
+        }
+      }
+    } catch (error) {
+      UI.toast('Failed to stop auto-scan', 'error');
+    }
+  },
+  
+  updateAutoScanUI(status) {
+    const runningEl = UI.$('autoscan-running');
+    const lastEl = UI.$('autoscan-last');
+    const nextEl = UI.$('autoscan-next');
+    const signalsEl = UI.$('autoscan-signals');
+    
+    if (runningEl) {
+      runningEl.textContent = status.isRunning ? 'Running' : 'Stopped';
+      runningEl.className = 'status-value ' + (status.isRunning ? 'running' : 'stopped');
+    }
+    
+    if (lastEl && status.lastScanAt) {
+      const lastDate = new Date(status.lastScanAt);
+      lastEl.textContent = lastDate.toLocaleTimeString();
+    }
+    
+    if (nextEl && status.nextScanAt) {
+      const nextDate = new Date(status.nextScanAt);
+      nextEl.textContent = nextDate.toLocaleTimeString();
+    } else if (nextEl) {
+      nextEl.textContent = '-';
+    }
+    
+    if (signalsEl && status.lastScanResults) {
+      signalsEl.textContent = status.lastScanResults.newSignals;
+    }
+    
+    if (status.isRunning) {
+      UI.show('autoscan-config');
+    }
   },
 };
 

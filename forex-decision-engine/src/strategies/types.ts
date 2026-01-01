@@ -145,6 +145,16 @@ export interface GradeUpgrade {
   message: string;
 }
 
+export interface SignalTiming {
+  firstDetected: string;
+  signalAge: {
+    ms: number;
+    display: string;
+  };
+  validUntil: string;
+  isStale: boolean;
+}
+
 export interface Decision {
   symbol: string;
   displayName: string;
@@ -154,6 +164,10 @@ export interface Decision {
   grade: SignalGrade;
   confidence: number;
   entryPrice: number;
+  entry: {
+    price: number;
+    formatted: string;
+  };
   entryZone: null;
   stopLoss: { price: number; pips: number; formatted: string } | null;
   takeProfit: { price: number; pips: number; rr: number; formatted: string } | null;
@@ -172,6 +186,7 @@ export interface Decision {
   timeframes: { trend: string; entry: string };
   timestamp: string;
   validUntil: string;
+  timing?: SignalTiming;
   gating?: GatingInfo;
   upgrade?: GradeUpgrade;
 }

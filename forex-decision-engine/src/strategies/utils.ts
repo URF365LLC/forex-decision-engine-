@@ -21,6 +21,8 @@ import {
 } from './types.js';
 import { createLogger } from '../services/logger.js';
 import { getCryptoContractSize, DEFAULTS } from '../config/defaults.js';
+import { trackSignal } from '../storage/signalFreshnessTracker.js';
+import { formatSignalAge, isStale, formatEntryPrice } from '../utils/timeUtils.js';
 
 const logger = createLogger('StrategyUtils');
 
@@ -334,6 +336,9 @@ export function buildDecision(params: DecisionParams): Decision {
   const now = new Date();
   const validUntil = new Date(now.getTime() + 4 * 60 * 60 * 1000);
 
+  const trackedSignal = trackSignal(symbol, strategyId, direction);
+  const signalAge = formatSignalAge(trackedSignal.firstDetected);
+
   return {
     symbol,
     displayName: symbol,
@@ -343,6 +348,10 @@ export function buildDecision(params: DecisionParams): Decision {
     grade,
     confidence,
     entryPrice,
+    entry: {
+      price: entryPrice,
+      formatted: formatEntryPrice(entryPrice, symbol),
+    },
     entryZone: null,
     stopLoss: {
       price: stopLoss,
@@ -365,5 +374,11 @@ export function buildDecision(params: DecisionParams): Decision {
     timeframes: getStrategyTimeframes(strategyTimeframes, settings.style, symbol),
     timestamp: now.toISOString(),
     validUntil: validUntil.toISOString(),
+    timing: {
+      firstDetected: trackedSignal.firstDetected,
+      signalAge,
+      validUntil: validUntil.toISOString(),
+      isStale: isStale(signalAge.ms),
+    },
   };
 }
