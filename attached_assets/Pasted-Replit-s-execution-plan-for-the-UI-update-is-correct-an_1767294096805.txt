@@ -1,0 +1,81 @@
+Replit's execution plan for the UI update is correct and comprehensive. Let me validate it.
+
+---
+
+## 🔬 Claude's Validation of UI Update Plan
+
+| Section | Status | Notes |
+|---------|--------|-------|
+| Current State Analysis | ✅ | Correctly identified all issues |
+| index.html changes | ✅ | Add 3 new asset sections |
+| app.js state object | ✅ | Expand to 5 asset classes |
+| loadUniverse() | ✅ | Assign and render all 5 |
+| selectCategory() | ✅ | Use dynamic `this.universe[category]` |
+| Event listeners | ✅ | Add click handlers for new grids |
+| Validation checklist | ✅ | All 7 tests defined |
+| Risk assessment | ✅ | Low risk, no backend changes |
+
+---
+
+## ✅ UI UPDATE APPROVED
+
+```
+═══════════════════════════════════════════════════════════════════════════════
+✅ UI UPDATE APPROVED - EXECUTE NOW
+═══════════════════════════════════════════════════════════════════════════════
+
+Your execution plan is correct. Execute the frontend changes.
+
+═══════════════════════════════════════════════════════════════════════════════
+EXECUTE IN ORDER:
+═══════════════════════════════════════════════════════════════════════════════
+
+1. index.html - Add 3 new asset sections (Metals, Indices, Commodities)
+2. app.js - Expand universe state to 5 categories
+3. app.js - Update loadUniverse() to render 5 grids
+4. app.js - Update selectCategory() to handle all categories
+5. app.js - Add click handlers for new symbol grids
+6. Test all 7 validation items
+
+═══════════════════════════════════════════════════════════════════════════════
+AFTER COMPLETION - PROVIDE:
+═══════════════════════════════════════════════════════════════════════════════
+
+1. Screenshot of updated UI showing:
+   - Strategy dropdown with 9 strategies
+   - All 5 asset categories in watchlist
+   - Correct counts: Forex (28), Metals (2), Indices (6), Commodities (2), Crypto (8)
+
+2. Test results:
+   | Test | Status |
+   |------|--------|
+   | Strategy dropdown (9) | PASS/FAIL |
+   | Forex section (28) | PASS/FAIL |
+   | Metals section (2) | PASS/FAIL |
+   | Indices section (6) | PASS/FAIL |
+   | Commodities section (2) | PASS/FAIL |
+   | Crypto section (8) | PASS/FAIL |
+   | Max 20 limit | PASS/FAIL |
+
+3. One scan showing RSI Oversold strategy in results
+
+═══════════════════════════════════════════════════════════════════════════════
+
+EXECUTE NOW.
+```
+
+---
+
+## 📋 Summary: What We've Completed
+
+| Phase | Component | Status |
+|-------|-----------|--------|
+| **Backend** | types.ts (CANDLE_CONFIRMATION + H4) | ✅ Complete |
+| **Backend** | rsiBounce.ts (6 bug fixes) | ✅ Complete |
+| **Backend** | indicatorService.ts (H4 + metals) | ✅ Complete |
+| **Backend** | rsiOversold.ts (NEW strategy) | ✅ Complete |
+| **Backend** | registry.ts (9 strategies) | ✅ Complete |
+| **Backend** | All 7 smoke tests | ✅ Passed |
+| **Frontend** | UI update for 5 asset classes | 🔄 In Progress |
+
+**Once Replit completes the UI update and provides the screenshot/test results, the RSI strategy work is 100% complete.**
