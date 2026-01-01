@@ -7,6 +7,13 @@ A trading decision engine for Forex, Metals, and Cryptocurrency markets, designe
 Preferred communication style: Simple, everyday language.
 
 ## Recent Changes (2026-01-01)
+**Frontend UI Update - Multi-Asset Class Support**
+- Added Metals (2), Indices (6), and Commodities (2) sections to watchlist panel
+- Strategy dropdown now dynamically loads all 9 strategies from API
+- Updated `app.js`: universe state, loadUniverse(), selectCategory() for 5 asset classes
+- Added click event handlers for metals-symbols, indices-symbols, commodities-symbols grids
+- Total: 46 instruments across 5 asset classes now visible in UI
+
 **H4 Trend Support + RsiOversold Strategy**
 - TRUE H4 timeframe support via native Twelve Data 4h interval with D1 fallback
 - New `RsiOversold` strategy: with-trend pullback using H4 EMA200+ADX>20, 3-bar RSI lookback, swing-based stops
