@@ -1,12 +1,10 @@
 /**
  * Crypto Indicator Service
- * Fetches OHLCV from Alpha Vantage CRYPTO_INTRADAY
- * Computes technical indicators locally (EMA, RSI, ADX, ATR)
- * 
- * Why separate from forex?
- * Alpha Vantage indicator endpoints (EMA, RSI, etc.) don't support crypto.
- * We must fetch raw OHLCV and calculate indicators ourselves.
+ * DEPRECATED: Twelve-only mode is enabled
+ * This file is kept as backup only
  */
+
+throw new Error('FATAL: Crypto service disabled - Twelve-only mode');
 
 import { alphaVantage, OHLCVBar, IndicatorValue } from '../services/alphaVantageClient.js';
 import { kucoin } from '../services/kucoinClient.js';

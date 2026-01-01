@@ -39,6 +39,32 @@ function makeNoTradeCacheKey(symbol: string, strategyId: string): string {
   return `no-trade:${symbol}:${strategyId}`;
 }
 
+function padIndicatorToBarsLength<T>(
+  indicator: T[],
+  barsLength: number,
+  indicatorName: string,
+  symbol: string
+): T[] {
+  if (indicator.length === barsLength) {
+    return indicator;
+  }
+
+  if (indicator.length === 0) {
+    logger.warn(`${symbol}: ${indicatorName} is empty, filling with NaN`);
+    return new Array(barsLength).fill(NaN as unknown as T);
+  }
+
+  if (indicator.length > barsLength) {
+    logger.warn(`${symbol}: ${indicatorName} longer than bars (${indicator.length} > ${barsLength}), trimming oldest`);
+    return indicator.slice(indicator.length - barsLength);
+  }
+
+  const padCount = barsLength - indicator.length;
+  logger.warn(`${symbol}: ${indicatorName} shorter than bars (${indicator.length} < ${barsLength}), padding with NaN`);
+  const padding = new Array(padCount).fill(NaN as unknown as T);
+  return [...padding, ...indicator];
+}
+
 function convertToStrategyIndicatorData(
   symbol: string,
   oldData: AnyIndicatorData
@@ -52,35 +78,56 @@ function convertToStrategyIndicatorData(
     volume: b.volume,
   }));
 
-  const extractValues = (arr: { timestamp: string; value: number | null }[] | undefined): number[] => {
-    if (!arr) return [];
-    return arr.map(v => v.value ?? 0);
+  const barsLength = bars.length;
+
+  const extractAndPad = (
+    arr: { timestamp: string; value: number | null }[] | undefined,
+    name: string
+  ): number[] => {
+    if (!arr || arr.length === 0) {
+      logger.warn(`${symbol}: ${name} is empty, filling with NaN`);
+      return new Array(barsLength).fill(NaN);
+    }
+    const values = arr.map(v => (v.value !== null && v.value !== undefined ? v.value : NaN));
+    return padIndicatorToBarsLength(values, barsLength, name, symbol);
   };
 
-  // Extract stochastic data (k and d values)
-  const stochData = oldData.stoch?.map(s => ({ k: s.k, d: s.d })) || [];
-  
-  // Extract Bollinger Bands data
-  const bbandsData = oldData.bbands?.map(b => ({ 
+  const stochRaw = oldData.stoch?.map(s => ({ k: s.k, d: s.d })) || [];
+  const stochData = padIndicatorToBarsLength(stochRaw, barsLength, 'stoch', symbol);
+
+  const bbandsRaw = oldData.bbands?.map(b => ({ 
     upper: b.upper, 
     middle: b.middle, 
     lower: b.lower 
   })) || [];
+  const bbandsData = padIndicatorToBarsLength(bbandsRaw, barsLength, 'bbands', symbol);
+
+  const macdRaw = oldData.macd?.map(m => ({
+    macd: m.macd,
+    signal: m.signal,
+    histogram: m.histogram,
+  })) || [];
+  const macdData = padIndicatorToBarsLength(macdRaw, barsLength, 'macd', symbol);
 
   return {
     symbol,
     bars,
-    ema20: extractValues(oldData.ema20),
-    ema50: extractValues(oldData.ema50),
-    ema200: extractValues(oldData.ema200),
-    sma20: extractValues(oldData.sma20),
-    rsi: extractValues(oldData.rsi),
+    ema20: extractAndPad(oldData.ema20, 'ema20'),
+    ema50: extractAndPad(oldData.ema50, 'ema50'),
+    ema200: extractAndPad(oldData.ema200, 'ema200'),
+    sma20: extractAndPad(oldData.sma20, 'sma20'),
+    rsi: extractAndPad(oldData.rsi, 'rsi'),
     stoch: stochData,
-    willr: extractValues(oldData.willr),
-    cci: extractValues(oldData.cci),
+    willr: extractAndPad(oldData.willr, 'willr'),
+    cci: extractAndPad(oldData.cci, 'cci'),
     bbands: bbandsData,
-    atr: extractValues(oldData.atr),
-    adx: extractValues(oldData.adx),
+    atr: extractAndPad(oldData.atr, 'atr'),
+    adx: extractAndPad(oldData.adx, 'adx'),
+    ema8: extractAndPad(oldData.ema8, 'ema8'),
+    ema21: extractAndPad(oldData.ema21, 'ema21'),
+    ema55: extractAndPad(oldData.ema55, 'ema55'),
+    macd: macdData,
+    obv: extractAndPad(oldData.obv, 'obv'),
   };
 }
 

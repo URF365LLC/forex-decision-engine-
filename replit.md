@@ -6,6 +6,15 @@ A trading decision engine for Forex, Metals, and Cryptocurrency markets, designe
 ## User Preferences
 Preferred communication style: Simple, everyday language.
 
+## Recent Changes (2025-12-31)
+**Twelve Data Migration Complete**
+- Migrated from Alpha Vantage + KuCoin to Twelve Data as the unified data source
+- All asset classes (forex, metals, crypto) now use the same indicator service
+- Added new indicators: EMA8, EMA21, EMA55, MACD, OBV
+- Implemented NaN padding for indicator array alignment (prevents silent index drift bugs)
+- Added startup validation for data pipeline integrity
+- Tripwires added to deprecated Alpha Vantage, KuCoin, and Crypto Indicator Service files
+
 ## System Architecture
 
 ### UI/UX Decisions
@@ -23,14 +32,15 @@ Preferred communication style: Simple, everyday language.
 
 #### Decision Engine (`src/engine/`)
 Orchestrates trade signal generation:
--   **Indicator Factory & Services**: Routes and fetches OHLCV and technical indicators from Alpha Vantage (Forex/Metals) or computes them locally (Crypto).
+-   **Indicator Factory & Services**: Unified routing - all symbols (forex/metals/crypto) go through `indicatorService.ts` which uses Twelve Data API exclusively.
 -   **Trend Filter**: Determines higher timeframe trend using EMA 200 + ADX.
 -   **Entry Trigger**: Detects pullbacks to EMA 20/50 zones with RSI confirmation.
 -   **Position Sizer**: Calculates risk-based lot sizing adhering to prop firm constraints.
 -   **Grader**: Scores confluence, assigning A+/B/C/no-trade grades.
--   **Strategy Analyzer**: Routes to multiple intraday strategies (e.g., RSI Oversold Bounce, Bollinger Mean Reversion, EMA Pullback).
+-   **Strategy Analyzer**: Routes to multiple intraday strategies with NaN padding for indicator alignment.
 -   **Safety Gates**: Incorporates volatility gating and signal cooldown mechanisms.
 -   **Grade Tracker**: Monitors and detects signal grade improvements or direction flips.
+-   **Startup Validation**: `startupValidation.ts` tests EUR/USD, BTC/USD, XAU/USD on startup.
 
 #### Configuration (`src/config/`)
 -   **Strategy Parameters**: Fixed, not user-configurable.
@@ -38,12 +48,17 @@ Orchestrates trade signal generation:
 -   **Defaults**: E8 Markets prop firm rules (0.5% risk, 4% daily loss limit, 6% max drawdown), including specific leverage settings for different asset classes and crypto contract sizes.
 
 #### Services (`src/services/`)
--   **Alpha Vantage Client**: API wrapper with caching and rate limiting.
+-   **Twelve Data Client**: Unified API wrapper for all asset classes with retry logic, symbol normalization, and crypto exchange handling.
 -   **Cache**: In-memory TTL cache for market data and decisions, with separate TTLs for different timeframes and "no-trade" decisions.
 -   **Rate Limiter**: Token bucket algorithm for API calls.
 -   **Signal Cooldown**: Prevents duplicate signals based on grade or direction.
 -   **Volatility Gate**: Filters signals during extreme ATR conditions.
 -   **Logger**: Structured logging with various levels.
+
+#### Deprecated Services (Tripwired)
+-   **Alpha Vantage Client** (`alphaVantageClient.ts`): DISABLED - throws error if imported.
+-   **KuCoin Client** (`kucoinClient.ts`): DISABLED - throws error if imported.
+-   **Crypto Indicator Service** (`cryptoIndicatorService.ts`): DISABLED - throws error if imported.
 
 #### Storage (`src/storage/`)
 -   **Signal Store**: In-memory storage with JSON file persistence (`data/signals.json`), using atomic writes.
@@ -74,25 +89,22 @@ Orchestrates trade signal generation:
 -   **Journaling**: Comprehensive trade journaling with P&L calculation, stats tracking, and quick trade action buttons in the frontend.
 -   **Strategy Isolation**: Caching of decisions is isolated per strategy to prevent stale data when switching.
 -   **Margin-Aware Position Sizing**: Accounts for leverage and margin constraints, especially for crypto assets.
+-   **Indicator Alignment**: NaN padding ensures all indicator arrays match bars.length, preventing silent index drift bugs.
 
 ## External Dependencies
 
-### Alpha Vantage API
--   **Purpose**: Market data and technical indicators for Forex, Metals, and most Cryptocurrencies.
--   **Configuration**: `ALPHAVANTAGE_API_KEY` environment variable.
--   **Rate Limit**: 150 calls/minute (Premium tier for Forex/Crypto).
--   **Endpoints Used**: FX_INTRADAY, FX_DAILY (forex), CRYPTO_INTRADAY (crypto), TIME_SERIES_DAILY (metals), EMA, RSI, ADX, ATR, STOCH, WILLR, CCI, BBANDS, SMA.
--   **Metals Limitation**: Alpha Vantage does NOT support intraday data for metals (XAUUSD, XAGUSD). TIME_SERIES_DAILY is used for both price data and indicators. Metals use D1/D1 timeframes only.
-
-### KuCoin API
--   **Purpose**: Fallback OHLCV data for BNBUSD and BCHUSD, which are not fully supported by Alpha Vantage.
--   **Configuration**: No API key required.
--   **Symbol Mapping**: BNBUSD → BNB-USDT, BCHUSD → BCH-USDT.
--   **Rate Limit**: 100 requests per 10 seconds.
+### Twelve Data API (Primary)
+-   **Purpose**: Unified market data and technical indicators for all asset classes (Forex, Metals, Crypto).
+-   **Configuration**: `TWELVE_DATA_API_KEY` environment variable (required).
+-   **Crypto Exchange**: `TWELVE_DATA_CRYPTO_EXCHANGE` (default: Binance).
+-   **Rate Limit**: Varies by plan, implements retry with exponential backoff.
+-   **Endpoints Used**: /time_series, /ema, /sma, /rsi, /atr, /adx, /stoch, /willr, /cci, /bbands, /macd, /obv.
+-   **Symbol Normalization**: EURUSD → EUR/USD, BTCUSD → BTC/USD internally.
 
 ### Environment Variables
--   `ALPHAVANTAGE_API_KEY`: API key for market data (required).
--   `PORT`: Server port (default: 3000).
+-   `TWELVE_DATA_API_KEY`: API key for Twelve Data (required).
+-   `TWELVE_DATA_CRYPTO_EXCHANGE`: Crypto exchange for consistency (default: Binance).
+-   `PORT`: Server port (default: 5000).
 -   `LOG_LEVEL`: Logging verbosity (debug/info/warn/error, default: info).
 
 ### NPM Dependencies

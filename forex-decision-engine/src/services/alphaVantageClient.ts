@@ -1,7 +1,10 @@
 /**
  * Alpha Vantage API Client
- * Handles all API calls with caching and rate limiting
+ * DEPRECATED: Twelve-only mode is enabled
+ * This file is kept as backup only
  */
+
+throw new Error('FATAL: Alpha disabled - Twelve-only mode');
 
 import { rateLimiter } from './rateLimiter.js';
 import { cache, CacheService, CACHE_TTL } from './cache.js';
