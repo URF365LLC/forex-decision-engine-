@@ -1,0 +1,112 @@
+Excellent progress! Let me verify the implementation against our three-way validated requirements.
+
+-----
+
+## 🔍 Claude’s Implementation Verification
+
+### Checking Against Mandatory Fixes
+
+|Requirement                             |Status|Evidence                                                          |
+|----------------------------------------|------|------------------------------------------------------------------|
+|**1. Symbol conversion - FAIL FAST**    |✅     |“throws an error for unknown symbols (no heuristic guessing)”     |
+|**2. Position sizing guards**           |❓     |Not mentioned - **VERIFY**                                        |
+|**3. Batch failure - ABORT not degrade**|❓     |Not mentioned - **VERIFY**                                        |
+|**4. Tripwire universe.ts**             |✅     |“Added error throw at module load”                                |
+|**5. Commission documentation**         |❓     |Not mentioned - **VERIFY**                                        |
+|**6. Rate limiter queue protection**    |✅     |“200 max queue size with FATAL error on overflow”                 |
+|**7. API versioning**                   |✅     |“Legacy format for backward compatibility + Full instrument specs”|
+|**8. Startup spec validation**          |✅     |“validates all 46 instrument specs at startup”                    |
+
+-----
+
+## 📋 Verification Prompt for Replit
+
+**Send to Replit:**
+
+```
+IMPLEMENTATION VERIFICATION REQUIRED
+
+Great progress on the migration. Before marking complete, verify these specific items:
+
+═══════════════════════════════════════════════════════════════════════════════
+VERIFICATION CHECKLIST
+═══════════════════════════════════════════════════════════════════════════════
+
+1. POSITION SIZING GUARDS (Critical)
+   Show me the calculatePositionSize() function.
+   Confirm it has:
+   
+   if (!Number.isFinite(lots) || lots <= 0) {
+     logger.error(`Invalid position size: ${lots}`);
+     return null;
+   }
+
+2. BATCH FAILURE HANDLING (Critical)
+   Show me the batch request logic in twelveDataClient.ts.
+   Confirm it does NOT degrade to per-symbol calls.
+   Should retry batch once, then abort.
+
+3. COMMISSION DOCUMENTATION
+   Show me the commission calculation in calculatePositionSize().
+   Confirm it has the E8-specific comment:
+   
+   // E8 Markets: 0.035% each way = 0.07% round trip on notional value
+
+4. GREP VERIFICATION
+   Run these commands and show output:
+   
+   grep -R "universe.ts" src/ --include="*.ts" | grep -v "universe.ts:"
+   grep -R "from.*universe" src/ --include="*.ts"
+   
+   Both should return ZERO results (except the tripwired file itself).
+
+5. SMOKE TEST
+   Run a quick test:
+   
+   curl http://localhost:5000/api/analyze -X POST \
+     -H "Content-Type: application/json" \
+     -d '{"symbol": "EURUSD", "style": "intraday"}'
+   
+   Show the response (or first 50 lines if long).
+
+6. CRYPTO SMOKE TEST
+   curl http://localhost:5000/api/analyze -X POST \
+     -H "Content-Type: application/json" \
+     -d '{"symbol": "BTCUSD", "style": "intraday"}'
+   
+   Show the response.
+
+7. UNKNOWN SYMBOL TEST (Fail-Fast Verification)
+   curl http://localhost:5000/api/analyze -X POST \
+     -H "Content-Type: application/json" \
+     -d '{"symbol": "FAKESYM", "style": "intraday"}'
+   
+   Should return an error like "Unknown symbol: FAKESYM"
+
+8. STARTUP LOG
+   Show the startup log that displays:
+   - DATA_PROVIDER=Twelve
+   - CRYPTO_EXCHANGE=Binance
+   - Instrument count validation
+
+═══════════════════════════════════════════════════════════════════════════════
+
+Provide evidence for each item above.
+```
+
+-----
+
+## 🎯 What We’re Verifying
+
+|Test                  |Why It Matters                                 |
+|----------------------|-----------------------------------------------|
+|Position sizing guards|Prevents infinite/negative lots crashing trades|
+|Batch abort logic     |Prevents rate limit cascade on failures        |
+|Commission docs       |Future maintainability + audit trail           |
+|Grep verification     |Confirms single source of truth                |
+|EURUSD smoke test     |Forex path works                               |
+|BTCUSD smoke test     |Crypto path works                              |
+|FAKESYM test          |Fail-fast is enforced                          |
+|Startup log           |Confirms Twelve-only mode                      |
+
+Once Replit provides evidence for all 8 items, we can mark the migration **COMPLETE** and move to the 24-hour dry-run phase.​​​​​​​​​​​​​​​​

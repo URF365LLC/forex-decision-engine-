@@ -47,7 +47,7 @@ function getLeverage(symbol: string, assetClass: string): number {
   return DEFAULTS.leverage.forex;
 }
 
-export function calculatePositionSize(input: SizingInput): PositionSize {
+export function calculatePositionSize(input: SizingInput): PositionSize | null {
   const { symbol, entryPrice, stopLossPrice, accountSize, riskPercent } = input;
   
   const riskAmount = accountSize * (riskPercent / 100);
@@ -121,6 +121,18 @@ export function calculatePositionSize(input: SizingInput): PositionSize {
   }
   
   lots = Math.round(lots * 100) / 100;
+  
+  // Guard: Prevent infinite/NaN/negative lot sizes from propagating
+  if (!Number.isFinite(lots) || lots <= 0) {
+    logger.error(`Invalid position size calculated: ${lots}`, {
+      symbol,
+      entryPrice,
+      stopLossPrice,
+      riskPercent,
+      accountSize,
+    });
+    return null;
+  }
   
   let isValid = true;
   let warning: string | null = null;
