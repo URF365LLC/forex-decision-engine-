@@ -36,6 +36,7 @@ import { createLogger } from './services/logger.js';
 import { gradeTracker } from './services/gradeTracker.js';
 import { autoScanService } from './services/autoScanService.js';
 import { alertService } from './services/alertService.js';
+import { grokSentimentService } from './services/grokSentimentService.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -721,6 +722,76 @@ function broadcastUpgrade(data: any): void {
     }
   }
 }
+
+// ═══════════════════════════════════════════════════════════════
+// SENTIMENT ENDPOINTS
+// ═══════════════════════════════════════════════════════════════
+
+app.get('/api/sentiment/status', (req, res) => {
+  res.json({
+    enabled: grokSentimentService.isEnabled(),
+    cache: grokSentimentService.getCacheStats(),
+  });
+});
+
+app.get('/api/sentiment/:symbol', async (req, res) => {
+  const { symbol } = req.params;
+  
+  if (!grokSentimentService.isEnabled()) {
+    return res.status(503).json({ 
+      error: 'Sentiment analysis not configured',
+      message: 'XAI_API_KEY is required for sentiment analysis'
+    });
+  }
+  
+  try {
+    const sentiment = await grokSentimentService.getSentiment(symbol.toUpperCase());
+    
+    if (!sentiment) {
+      return res.status(404).json({ 
+        error: 'Sentiment unavailable',
+        symbol 
+      });
+    }
+    
+    res.json(sentiment);
+  } catch (error) {
+    logger.error(`Sentiment fetch error: ${error}`);
+    res.status(500).json({ error: 'Failed to fetch sentiment' });
+  }
+});
+
+app.post('/api/sentiment/batch', async (req, res) => {
+  const { symbols } = req.body;
+  
+  if (!grokSentimentService.isEnabled()) {
+    return res.status(503).json({ 
+      error: 'Sentiment analysis not configured'
+    });
+  }
+  
+  if (!Array.isArray(symbols) || symbols.length === 0) {
+    return res.status(400).json({ error: 'symbols array required' });
+  }
+  
+  if (symbols.length > 10) {
+    return res.status(400).json({ error: 'Maximum 10 symbols per batch' });
+  }
+  
+  try {
+    const results = await grokSentimentService.getBatchSentiment(symbols);
+    const response: Record<string, any> = {};
+    
+    for (const [symbol, sentiment] of results.entries()) {
+      response[symbol] = sentiment;
+    }
+    
+    res.json(response);
+  } catch (error) {
+    logger.error(`Batch sentiment error: ${error}`);
+    res.status(500).json({ error: 'Failed to fetch batch sentiment' });
+  }
+});
 
 // ═══════════════════════════════════════════════════════════════
 // SERVE FRONTEND

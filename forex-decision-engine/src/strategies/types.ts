@@ -155,6 +155,14 @@ export interface SignalTiming {
   isStale: boolean;
 }
 
+export interface SentimentData {
+  rating: 'bullish' | 'bearish' | 'neutral' | 'mixed';
+  score: number;
+  confidence: number;
+  summary: string;
+  timestamp: string;
+}
+
 export interface Decision {
   symbol: string;
   displayName: string;
@@ -189,6 +197,7 @@ export interface Decision {
   timing?: SignalTiming;
   gating?: GatingInfo;
   upgrade?: GradeUpgrade;
+  sentiment?: SentimentData;
 }
 
 export interface IStrategy {
