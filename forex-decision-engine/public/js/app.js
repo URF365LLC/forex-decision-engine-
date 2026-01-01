@@ -5,7 +5,7 @@
 
 const App = {
   // State
-  universe: { forex: [], crypto: [] },
+  universe: { forex: [], metals: [], indices: [], commodities: [], crypto: [] },
   selectedSymbols: [],
   results: [],
   currentFilter: 'all',
@@ -167,11 +167,17 @@ const App = {
       const data = await API.getUniverse();
       this.universe = {
         forex: data.forex || [],
+        metals: data.metals || [],
+        indices: data.indices || [],
+        commodities: data.commodities || [],
         crypto: data.crypto || [],
       };
       
-      // Render symbol grids
+      // Render symbol grids for all 5 asset classes
       UI.renderSymbolGrid('forex-symbols', this.universe.forex, this.selectedSymbols);
+      UI.renderSymbolGrid('metals-symbols', this.universe.metals, this.selectedSymbols);
+      UI.renderSymbolGrid('indices-symbols', this.universe.indices, this.selectedSymbols);
+      UI.renderSymbolGrid('commodities-symbols', this.universe.commodities, this.selectedSymbols);
       UI.renderSymbolGrid('crypto-symbols', this.universe.crypto, this.selectedSymbols);
     } catch (error) {
       console.error('Failed to load universe:', error);
@@ -290,7 +296,7 @@ const App = {
    * Select all symbols in category
    */
   selectCategory(category) {
-    const symbols = category === 'forex' ? this.universe.forex : this.universe.crypto;
+    const symbols = this.universe[category] || [];
     const allSelected = symbols.every(s => this.selectedSymbols.includes(s));
 
     if (allSelected) {
@@ -921,6 +927,24 @@ const App = {
     });
 
     UI.$('crypto-symbols')?.addEventListener('click', (e) => {
+      e.preventDefault();
+      const item = e.target.closest('.symbol-item');
+      if (item) this.toggleSymbol(item.dataset.symbol);
+    });
+
+    UI.$('metals-symbols')?.addEventListener('click', (e) => {
+      e.preventDefault();
+      const item = e.target.closest('.symbol-item');
+      if (item) this.toggleSymbol(item.dataset.symbol);
+    });
+
+    UI.$('indices-symbols')?.addEventListener('click', (e) => {
+      e.preventDefault();
+      const item = e.target.closest('.symbol-item');
+      if (item) this.toggleSymbol(item.dataset.symbol);
+    });
+
+    UI.$('commodities-symbols')?.addEventListener('click', (e) => {
       e.preventDefault();
       const item = e.target.closest('.symbol-item');
       if (item) this.toggleSymbol(item.dataset.symbol);
