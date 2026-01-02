@@ -392,6 +392,9 @@ const App = {
       // Switch to results screen
       UI.switchScreen('results');
       UI.renderResults(this.results, this.currentFilter);
+      
+      // Fetch sentiment asynchronously for tradeable signals (non-blocking)
+      this.fetchSentimentForResults();
 
     } catch (error) {
       console.error('Scan error:', error);
@@ -409,6 +412,61 @@ const App = {
    */
   async refresh() {
     await this.runScan();
+  },
+
+  /**
+   * Fetch sentiment for tradeable signals progressively (staggered requests)
+   */
+  async fetchSentimentForResults() {
+    const tradeableDecisions = this.results.filter(d => d.grade !== 'no-trade');
+    if (tradeableDecisions.length === 0) return;
+    
+    // Stagger requests 1.2s apart to respect backend rate limits and show progressive loading
+    tradeableDecisions.forEach((decision, index) => {
+      setTimeout(() => {
+        this.fetchSentimentForSymbol(decision.symbol).catch(() => {});
+      }, index * 1200);
+    });
+  },
+  
+  /**
+   * Fetch sentiment for a single symbol and update its card
+   */
+  async fetchSentimentForSymbol(symbol) {
+    try {
+      const response = await fetch(`/api/sentiment/${encodeURIComponent(symbol)}`);
+      if (!response.ok) return;
+      
+      const data = await response.json();
+      if (!data.sentiment) return;
+      
+      // Find and update the decision
+      const decision = this.results.find(d => d.symbol === symbol);
+      if (decision) {
+        decision.sentiment = data.sentiment;
+        
+        // Update just this card's sentiment badge without full re-render
+        const card = document.querySelector(`.decision-card[data-symbol="${symbol}"]`);
+        if (card) {
+          const existingBadge = card.querySelector('.sentiment-badge');
+          const newBadgeHTML = UI.createSentimentBadge(data.sentiment);
+          if (existingBadge) {
+            existingBadge.outerHTML = newBadgeHTML;
+          } else if (newBadgeHTML) {
+            // Insert badge after signal-age span
+            const signalAge = card.querySelector('.signal-age');
+            const cardBody = card.querySelector('.card-body');
+            if (signalAge) {
+              signalAge.insertAdjacentHTML('afterend', newBadgeHTML);
+            } else if (cardBody) {
+              cardBody.insertAdjacentHTML('afterbegin', newBadgeHTML);
+            }
+          }
+        }
+      }
+    } catch (error) {
+      // Silent fail - sentiment is optional
+    }
   },
 
   /**

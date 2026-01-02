@@ -5669,7 +5669,61 @@
       "valid_until": "2026-01-02T04:10:46.051Z",
       "result": null,
       "result_notes": null
+    },
+    {
+      "id": 316,
+      "symbol": "BTCUSD",
+      "style": "intraday",
+      "direction": "long",
+      "grade": "C",
+      "entry_low": null,
+      "entry_high": null,
+      "stop_loss": 88446.707045,
+      "take_profit": 89623.73591,
+      "position_lots": 0.11,
+      "risk_amount": 50,
+      "reason": "Resistance at 88500.00000 broken. Price retested broken resistance as support. Bullish candle confirmation",
+      "created_at": "2026-01-02T00:13:52.973Z",
+      "valid_until": "2026-01-02T04:13:52.973Z",
+      "result": null,
+      "result_notes": null
+    },
+    {
+      "id": 317,
+      "symbol": "SOLUSD",
+      "style": "intraday",
+      "direction": "long",
+      "grade": "C",
+      "entry_low": null,
+      "entry_high": null,
+      "stop_loss": 125.73576812499999,
+      "take_profit": 129.25846375,
+      "position_lots": 42.58,
+      "risk_amount": 50,
+      "reason": "Resistance at 125.80000 broken. Price retested broken resistance as support. Bullish candle confirmation",
+      "created_at": "2026-01-02T00:13:55.914Z",
+      "valid_until": "2026-01-02T04:13:55.914Z",
+      "result": null,
+      "result_notes": null
+    },
+    {
+      "id": 318,
+      "symbol": "XRPUSD",
+      "style": "intraday",
+      "direction": "long",
+      "grade": "C",
+      "entry_low": null,
+      "entry_high": null,
+      "stop_loss": 1.86710209555,
+      "take_profit": 1.9054958088999998,
+      "position_lots": 39.07,
+      "risk_amount": 50,
+      "reason": "Resistance at 1.87540 broken. Price retested broken resistance as support. Bullish candle confirmation",
+      "created_at": "2026-01-02T00:13:57.472Z",
+      "valid_until": "2026-01-02T04:13:57.472Z",
+      "result": null,
+      "result_notes": null
     }
   ],
-  "nextId": 316
+  "nextId": 319
 }

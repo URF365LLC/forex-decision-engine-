@@ -190,6 +190,32 @@
       "id": "1767312575529-lf633yvwg",
       "createdAt": "2026-01-02T00:09:35.529Z",
       "updatedAt": "2026-01-02T00:09:35.529Z"
+    },
+    {
+      "source": "signal",
+      "symbol": "BCHUSD",
+      "direction": "short",
+      "style": "intraday",
+      "grade": "B",
+      "strategyId": "triple-ema",
+      "strategyName": "Triple EMA Crossover",
+      "confidence": 60,
+      "reasonCodes": [
+        "EMA_BEARISH_STACK",
+        "EMA_PULLBACK",
+        "TREND_ALIGNED",
+        "RR_FAVORABLE"
+      ],
+      "tradeType": "pullback",
+      "action": "taken",
+      "entryPrice": 593.3,
+      "stopLoss": 598.03356,
+      "takeProfit": 583.83288,
+      "lots": 10.56,
+      "status": "pending",
+      "id": "1767312822075-a46clnz3g",
+      "createdAt": "2026-01-02T00:13:42.075Z",
+      "updatedAt": "2026-01-02T00:13:42.075Z"
     }
   ]
 }
