@@ -231,8 +231,12 @@ app.post('/api/analyze', async (req, res) => {
     // Analyze
     const decision = await analyzeSymbol(sanitizedSymbol, userSettings);
     
-    // Save to store (if it's a trade signal)
+    // Fetch sentiment for tradeable signals
     if (decision.grade !== 'no-trade') {
+      const sentiment = await grokSentimentService.getSentiment(sanitizedSymbol);
+      if (sentiment) {
+        decision.sentiment = sentiment;
+      }
       signalStore.saveSignal(decision);
     }
     
@@ -300,9 +304,13 @@ app.post('/api/scan', async (req, res) => {
       decisions = await scanSymbols(sanitizedSymbols, userSettings);
     }
     
-    // Save trade signals (handle both decision types)
+    // Fetch sentiment and save trade signals (handle both decision types)
     for (const decision of decisions) {
       if (decision.grade !== 'no-trade') {
+        const sentiment = await grokSentimentService.getSentiment(decision.symbol);
+        if (sentiment) {
+          (decision as any).sentiment = sentiment;
+        }
         signalStore.saveSignal(decision as any);
       }
     }
