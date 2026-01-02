@@ -23,10 +23,13 @@ import {
 } from './config/e8InstrumentSpecs.js';
 import { DEFAULTS, RISK_OPTIONS } from './config/defaults.js';
 import { STYLE_PRESETS } from './config/strategy.js';
-import { analyzeSymbol, scanSymbols, UserSettings, Decision } from './engine/decisionEngine.js';
+// LEGACY ENGINE DISABLED (V1.1 - 2026-01-02) - Three-way audit finding
+// import { analyzeSymbol, scanSymbols } from './engine/decisionEngine.js';
+import { UserSettings } from './engine/decisionEngine.js';
 import { scanWithStrategy, clearStrategyCache } from './engine/strategyAnalyzer.js';
 import { strategyRegistry } from './strategies/index.js';
-import { Decision as StrategyDecision } from './strategies/types.js';
+import { Decision as StrategyDecision, Decision } from './strategies/types.js';
+import { checkDrawdownLimits } from './services/drawdownGuard.js';
 import { validateSettings, validateSymbol, validateSymbols, validateJournalUpdate, sanitizeNotes } from './utils/validation.js';
 import { signalStore } from './storage/signalStore.js';
 import { journalStore, TradeJournalEntry, JournalFilters } from './storage/journalStore.js';
@@ -208,49 +211,47 @@ app.get('/api/strategies', (req, res) => {
 
 /**
  * Analyze single symbol
+ * DEPRECATED: Use POST /api/scan with strategyId instead (V1.1 - 2026-01-02)
  */
 app.post('/api/analyze', async (req, res) => {
-  try {
-    const { symbol, settings } = req.body;
-    
-    // Validate symbol
-    const symbolResult = validateSymbol(symbol);
-    if (!symbolResult.valid) {
-      return res.status(400).json({ error: symbolResult.errors.join(', ') });
+  logger.warn('DEPRECATED: /api/analyze called - this route is disabled in V1.1');
+  return res.status(410).json({
+    error: 'legacy_endpoint_disabled',
+    message: 'POST /api/analyze is deprecated. Use POST /api/scan with strategyId parameter.',
+    migration: {
+      newEndpoint: 'POST /api/scan',
+      requiredParams: { symbols: ['SYMBOL'], strategyId: 'rsi-bounce' },
+      documentationUrl: '/api/strategies'
     }
-    
-    // Validate settings
-    const settingsResult = validateSettings(settings);
-    if (!settingsResult.valid) {
-      return res.status(400).json({ error: settingsResult.errors.join(', ') });
-    }
-    
-    const userSettings = settingsResult.sanitized as UserSettings;
-    const sanitizedSymbol = symbolResult.sanitized as string;
-    
-    // Analyze
-    const decision = await analyzeSymbol(sanitizedSymbol, userSettings);
-    
-    // Save to store (if it's a trade signal)
-    if (decision.grade !== 'no-trade') {
-      signalStore.saveSignal(decision);
-    }
-    
-    res.json({ success: true, decision });
-  } catch (error) {
-    logger.error('Analyze error', { error });
-    res.status(500).json({ 
-      error: error instanceof Error ? error.message : 'Analysis failed' 
-    });
-  }
+  });
 });
 
 /**
  * Scan multiple symbols
+ * V1.1: strategyId is REQUIRED, drawdown check is MANDATORY (unless paperTrading)
  */
 app.post('/api/scan', async (req, res) => {
   const { symbols, settings, strategyId, force } = req.body;
-  const lockKey = strategyId || 'default';
+  
+  // GATE 1: strategyId is REQUIRED (V1.1)
+  if (!strategyId) {
+    logger.warn('REJECTED: /api/scan called without strategyId');
+    return res.status(400).json({
+      error: 'strategy_required',
+      message: 'strategyId is required. Use GET /api/strategies to see available options.',
+      availableStrategies: strategyRegistry.listIds(),
+    });
+  }
+  
+  if (!strategyRegistry.get(strategyId)) {
+    return res.status(400).json({
+      error: 'invalid_strategy',
+      message: `Unknown strategy: ${strategyId}`,
+      availableStrategies: strategyRegistry.listIds(),
+    });
+  }
+  
+  const lockKey = strategyId;
   
   if (isScanInProgress(lockKey)) {
     if (force) {
@@ -265,7 +266,7 @@ app.post('/api/scan', async (req, res) => {
     }
   }
   
-  // Validate inputs before acquiring lock
+  // GATE 2: Validate symbols
   const symbolsResult = validateSymbols(symbols);
   if (!symbolsResult.valid) {
     return res.status(400).json({ error: symbolsResult.errors.join(', ') });
@@ -277,6 +278,42 @@ app.post('/api/scan', async (req, res) => {
   }
   
   const sanitizedSymbols = symbolsResult.sanitized as string[];
+  const userSettings = settingsResult.sanitized as UserSettings;
+  
+  // GATE 3: Drawdown check (MANDATORY unless paperTrading)
+  const isPaperTrading = userSettings.paperTrading === true;
+  if (!isPaperTrading) {
+    const equity = userSettings.equity || userSettings.accountSize;
+    if (!equity || equity <= 0) {
+      logger.warn('REJECTED: /api/scan called without equity (live mode)');
+      return res.status(400).json({
+        error: 'equity_required',
+        message: 'settings.equity is required for live trading. Use settings.paperTrading=true for paper mode.',
+      });
+    }
+    
+    const ddCheck = checkDrawdownLimits({
+      accountId: userSettings.accountId || 'default',
+      equity,
+      startOfDayEquity: userSettings.startOfDayEquity,
+      peakEquity: userSettings.peakEquity,
+      dailyLossLimitPct: userSettings.dailyLossLimitPct || 4,
+      maxDrawdownPct: userSettings.maxDrawdownPct || 6,
+    });
+    
+    if (!ddCheck.allowed) {
+      logger.error('BLOCKED: Drawdown limit exceeded', ddCheck);
+      return res.status(403).json({
+        error: 'drawdown_limit_exceeded',
+        message: ddCheck.reason,
+        metrics: ddCheck.metrics,
+      });
+    }
+    
+    if (ddCheck.metrics.warnings.length > 0) {
+      logger.warn('Drawdown warnings', { warnings: ddCheck.metrics.warnings });
+    }
+  }
   
   if (!acquireScanLock(lockKey, sanitizedSymbols.length)) {
     return res.status(429).json({ 
@@ -286,21 +323,14 @@ app.post('/api/scan', async (req, res) => {
   }
   
   try {
-    const userSettings = settingsResult.sanitized as UserSettings;
+    logger.info(`Scanning with strategy: ${strategyId}`, { 
+      symbols: sanitizedSymbols.length, 
+      paperTrading: isPaperTrading 
+    });
     
-    // Use strategy-specific scanning if strategyId provided
-    let decisions: (Decision | StrategyDecision)[];
+    const decisions = await scanWithStrategy(sanitizedSymbols, strategyId, userSettings);
     
-    if (strategyId && strategyRegistry.get(strategyId)) {
-      // Use new multi-strategy system
-      logger.info(`Scanning with strategy: ${strategyId}`);
-      decisions = await scanWithStrategy(sanitizedSymbols, strategyId, userSettings);
-    } else {
-      // Fallback to legacy decision engine
-      decisions = await scanSymbols(sanitizedSymbols, userSettings);
-    }
-    
-    // Save trade signals (handle both decision types)
+    // Save trade signals
     for (const decision of decisions) {
       if (decision.grade !== 'no-trade') {
         signalStore.saveSignal(decision as any);

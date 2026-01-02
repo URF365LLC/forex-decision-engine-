@@ -1,0 +1,212 @@
+═══════════════════════════════════════════════════════════════════════════════
+CRITICAL FIXES - DO IMMEDIATELY (Before any live trading)
+═══════════════════════════════════════════════════════════════════════════════
+
+FIX 1: Sentiment Display Bug (5 min)
+─────────────────────────────────────────────────────────────────────────────────
+FILE: public/js/app.js
+LINE: 551-556
+
+// CURRENT (BROKEN)
+if (data.sentiment) {
+  this.sentimentCache[symbol] = { data: data.sentiment, fetchedAt: Date.now() };
+  container.innerHTML = UI.createSentimentBadge(data.sentiment);
+}
+
+// FIXED
+if (data.rating) {
+  this.sentimentCache[symbol] = { data, fetchedAt: Date.now() };
+  container.innerHTML = UI.createSentimentBadge(data);
+}
+
+FIX 2: Add entry Field to createNoTradeDecision (5 min)
+─────────────────────────────────────────────────────────────────────────────────
+FILE: src/engine/strategyAnalyzer.ts
+LINE: 412-438
+
+// ADD this field to the returned object
+entry: {
+  price: 0,
+  formatted: '—',
+},
+
+FIX 3: Add timeframes to ALL Strategies Missing It (15 min)
+─────────────────────────────────────────────────────────────────────────────────
+Add to meta object in each file:
+
+StochasticOversold.ts:  timeframes: { trend: 'H1', entry: 'H1' },
+BollingerMR.ts:         timeframes: { trend: 'H1', entry: 'H1' },
+WilliamsEma.ts:         timeframes: { trend: 'H1', entry: 'H1' },
+CciZeroLine.ts:         timeframes: { trend: 'H1', entry: 'H1' },
+BreakRetest.ts:         timeframes: { trend: 'D1', entry: 'H1' },  // Uses D1 trend
+TripleEma.ts:           timeframes: { trend: 'H1', entry: 'H1' },
+
+NOTE: Verify each strategy's actual timeframe usage before adding.
+
+FIX 4: Implement Alert Cooldown (30 min) - CRITICAL GUARDRAIL
+─────────────────────────────────────────────────────────────────────────────────
+FILE: src/services/alertService.ts (or autoScanService.ts)
+
+const alertCooldowns = new Map<string, number>();
+const COOLDOWN_MS = 60 * 60 * 1000;  // 1 hour
+
+export function canSendAlert(
+  symbol: string, 
+  strategyId: string, 
+  direction: string
+): boolean {
+  const key = `${symbol}::${strategyId}::${direction}`;
+  const lastAlert = alertCooldowns.get(key) || 0;
+  
+  if (Date.now() - lastAlert < COOLDOWN_MS) {
+    logger.debug(`Alert cooldown active: ${key}`);
+    return false;
+  }
+  
+  return true;
+}
+
+export function recordAlert(
+  symbol: string, 
+  strategyId: string, 
+  direction: string
+): void {
+  const key = `${symbol}::${strategyId}::${direction}`;
+  alertCooldowns.set(key, Date.now());
+}
+
+// In auto-scan loop:
+if (canSendAlert(symbol, strategyId, direction)) {
+  await sendTradeAlert(decision, email);
+  recordAlert(symbol, strategyId, direction);
+}
+
+FIX 5: Implement Max Emails Per Hour (15 min) - CRITICAL GUARDRAIL
+─────────────────────────────────────────────────────────────────────────────────
+FILE: src/services/alertService.ts
+
+let emailsThisHour = 0;
+let hourStart = Date.now();
+const MAX_EMAILS_PER_HOUR = 20;
+
+export function canSendEmail(): boolean {
+  // Reset counter if hour has passed
+  if (Date.now() - hourStart > 60 * 60 * 1000) {
+    emailsThisHour = 0;
+    hourStart = Date.now();
+  }
+  
+  if (emailsThisHour >= MAX_EMAILS_PER_HOUR) {
+    logger.warn(`Email rate limit reached (${MAX_EMAILS_PER_HOUR}/hour)`);
+    return false;
+  }
+  
+  return true;
+}
+
+export function recordEmailSent(): void {
+  emailsThisHour++;
+}
+
+// In sendTradeAlert:
+export async function sendTradeAlert(decision: Decision, email: string): Promise<boolean> {
+  if (!canSendEmail()) {
+    return false;
+  }
+  
+  // ... send email logic ...
+  
+  recordEmailSent();
+  return true;
+}
+
+FIX 6: Remove Dead Code (2 min)
+─────────────────────────────────────────────────────────────────────────────────
+FILE: public/js/ui.js
+LINE: 195
+
+// DELETE this line (sentiment is fetched on-demand, not embedded)
+const sentimentHTML = decision.sentiment ? this.createSentimentBadge(decision.sentiment) : '';
+
+═══════════════════════════════════════════════════════════════════════════════
+MEDIUM PRIORITY FIXES (After critical)
+═══════════════════════════════════════════════════════════════════════════════
+
+FIX 7: Type convertToIndicatorData Return (5 min)
+─────────────────────────────────────────────────────────────────────────────────
+FILE: src/services/autoScanService.ts
+LINE: 224
+
+// Change from:
+function convertToIndicatorData(data: any): any
+
+// To:
+function convertToIndicatorData(data: BatchSymbolData): IndicatorData
+
+FIX 8: Add Date Validation to formatSignalAge (5 min)
+─────────────────────────────────────────────────────────────────────────────────
+FILE: src/utils/timeUtils.ts
+LINE: 16
+
+export function formatSignalAge(firstDetected: string): { ms: number; display: string } {
+  const date = new Date(firstDetected);
+  
+  // Validate date
+  if (isNaN(date.getTime())) {
+    return { ms: 0, display: 'Unknown' };
+  }
+  
+  const ms = Date.now() - date.getTime();
+  // ... rest of function
+}
+
+FIX 9: Add Fetch Timeouts (15 min)
+─────────────────────────────────────────────────────────────────────────────────
+Add AbortController with timeout to all fetch calls:
+
+const controller = new AbortController();
+const timeoutId = setTimeout(() => controller.abort(), 30000);  // 30 sec
+
+try {
+  const response = await fetch(url, {
+    ...options,
+    signal: controller.signal,
+  });
+  clearTimeout(timeoutId);
+  return response;
+} catch (error) {
+  clearTimeout(timeoutId);
+  if (error.name === 'AbortError') {
+    throw new Error('Request timeout');
+  }
+  throw error;
+}
+
+═══════════════════════════════════════════════════════════════════════════════
+EXECUTION ORDER
+═══════════════════════════════════════════════════════════════════════════════
+
+1. FIX 3: Add timeframes (TypeScript must compile)
+2. FIX 2: Add entry field (Type error)
+3. FIX 4: Alert cooldown (CRITICAL guardrail)
+4. FIX 5: Max emails/hour (CRITICAL guardrail)
+5. FIX 1: Sentiment display bug
+6. FIX 6: Remove dead code
+7. FIX 7-9: Medium priority
+
+Total estimated time: ~1.5 hours
+
+═══════════════════════════════════════════════════════════════════════════════
+AFTER FIXES - VERIFY:
+═══════════════════════════════════════════════════════════════════════════════
+
+[ ] TypeScript compiles without errors
+[ ] All 9 strategies have timeframes defined
+[ ] Alert cooldown working (test: same signal doesn't re-alert within 1hr)
+[ ] Max emails working (test: stops after 20)
+[ ] Sentiment badge displays correctly
+[ ] No type errors in strategyAnalyzer
+
+═══════════════════════════════════════════════════════════════════════════════
+
+EXECUTE FIXES NOW. Report back when complete.

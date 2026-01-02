@@ -253,7 +253,7 @@ class TwelveDataClient {
     const requestParams: Record<string, string> = {
       symbol: normalizedSymbol,
       interval: mappedInterval,
-      outputsize: '100',
+      outputsize: '300',
       ...params,
     };
 
@@ -327,7 +327,7 @@ class TwelveDataClient {
     const params: Record<string, string> = {
       symbol: normalizedSymbol,
       interval: mappedInterval,
-      outputsize: '100',
+      outputsize: '300',
       fast_k_period: String(fastkPeriod),
       slow_k_period: String(slowkPeriod),
       slow_d_period: String(slowdPeriod),
@@ -376,7 +376,7 @@ class TwelveDataClient {
     const params: Record<string, string> = {
       symbol: normalizedSymbol,
       interval: mappedInterval,
-      outputsize: '100',
+      outputsize: '300',
       time_period: String(period),
       sd: String(nbdevup),
     };
@@ -425,7 +425,7 @@ class TwelveDataClient {
     const params: Record<string, string> = {
       symbol: normalizedSymbol,
       interval: mappedInterval,
-      outputsize: '100',
+      outputsize: '300',
       fast_period: String(fastPeriod),
       slow_period: String(slowPeriod),
       signal_period: String(signalPeriod),
@@ -469,7 +469,7 @@ class TwelveDataClient {
     const params: Record<string, string> = {
       symbol: normalizedSymbol,
       interval: mappedInterval,
-      outputsize: '100',
+      outputsize: '300',
     };
 
     if (this.isCryptoPair(normalizedSymbol)) {

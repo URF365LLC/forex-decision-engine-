@@ -18,14 +18,15 @@ export class StochasticOversold implements IStrategy {
     avgRR: 1.5,
     signalsPerWeek: '20-30',
     requiredIndicators: ['bars', 'stoch', 'atr', 'ema200'],
+    timeframes: { trend: 'H4', entry: 'H1' },
     version: '2025-12-29',
   };
 
   async analyze(data: IndicatorData, settings: UserSettings): Promise<Decision | null> {
     const { symbol, bars, stoch, atr, ema200 } = data;
     
-    if (!bars || bars.length < 50) return null;
-    if (!validateIndicators(data as Record<string, unknown>, this.meta.requiredIndicators, 50)) return null;
+    if (!bars || bars.length < 250) return null;
+    if (!validateIndicators(data as unknown as Record<string, unknown>, this.meta.requiredIndicators, 250)) return null;
     
     const entryIdx = bars.length - 1;
     const signalIdx = bars.length - 2;

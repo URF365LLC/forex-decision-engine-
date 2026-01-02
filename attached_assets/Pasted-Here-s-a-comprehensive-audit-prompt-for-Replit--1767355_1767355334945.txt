@@ -1,0 +1,270 @@
+Here's a comprehensive audit prompt for Replit:
+
+---
+
+```
+═══════════════════════════════════════════════════════════════════════════════
+FULL SYSTEM AUDIT REQUEST - SENIOR DEVELOPER LEVEL
+═══════════════════════════════════════════════════════════════════════════════
+
+Perform a complete, line-by-line audit of the entire forex-decision-engine 
+codebase. This is a production trading system connected to a live prop account.
+Zero tolerance for bugs, silent failures, or data integrity issues.
+
+═══════════════════════════════════════════════════════════════════════════════
+AUDIT SCOPE
+═══════════════════════════════════════════════════════════════════════════════
+
+Scan EVERY file in these directories:
+- src/
+- public/js/
+- public/css/
+- Root config files (package.json, tsconfig.json, .env.example, etc.)
+
+═══════════════════════════════════════════════════════════════════════════════
+AUDIT CATEGORIES
+═══════════════════════════════════════════════════════════════════════════════
+
+For each file, evaluate and report:
+
+1. CRITICAL BUGS (P0)
+   - Runtime errors that crash the system
+   - Data corruption or loss
+   - Security vulnerabilities (exposed keys, injection risks)
+   - Race conditions in async code
+   - Memory leaks
+   - Infinite loops or recursion without base case
+   - Division by zero without guards
+   - Array index out of bounds
+   - Null/undefined reference errors
+   - Type mismatches that bypass TypeScript
+
+2. LOGIC ERRORS (P1)
+   - Incorrect calculations (especially financial: entry, SL, TP, position sizing)
+   - Wrong comparison operators (< vs <=, > vs >=)
+   - Off-by-one errors in loops or array indexing
+   - Inverted boolean logic
+   - Missing edge case handling
+   - Incorrect date/time handling
+   - Currency/decimal precision issues
+
+3. DATA INTEGRITY (P1)
+   - Lookahead bias in signal generation
+   - Stale data being used as current
+   - Cache invalidation issues
+   - Data not aligned (H1 vs H4 array lengths)
+   - Missing validation on API responses
+   - Silent failures that return partial data
+
+4. API & INTEGRATION ISSUES (P1)
+   - Twelve Data API misuse
+   - Rate limiting not respected
+   - Error responses not handled
+   - Timeouts not configured
+   - Retry logic missing or broken
+   - Batch API format issues
+
+5. PERFORMANCE ISSUES (P2)
+   - N+1 query patterns
+   - Unnecessary re-fetching
+   - Blocking operations in async context
+   - Large arrays copied instead of referenced
+   - Missing caching where beneficial
+   - Inefficient loops or algorithms
+
+6. CODE QUALITY (P2)
+   - Dead code (unused functions, variables, imports)
+   - Duplicated logic that should be abstracted
+   - Inconsistent naming conventions
+   - Missing or incorrect TypeScript types
+   - any types that should be specific
+   - Console.log statements that should be logger calls
+   - Hardcoded values that should be config
+   - Magic numbers without explanation
+
+7. ERROR HANDLING (P2)
+   - Try/catch blocks that swallow errors silently
+   - Missing error handling on promises
+   - Errors not logged with sufficient context
+   - User-facing errors exposing internal details
+   - Missing graceful degradation
+
+8. SECURITY (P1)
+   - API keys in code (not env vars)
+   - SQL/NoSQL injection risks
+   - XSS vulnerabilities in frontend
+   - CORS misconfiguration
+   - Missing input validation
+   - Sensitive data in logs
+
+9. CONFIGURATION & ENVIRONMENT (P2)
+   - Missing environment variables
+   - Inconsistent config between files
+   - Development settings in production code
+   - Missing .env.example entries
+
+10. TESTING & RELIABILITY (P3)
+    - Missing validation that should exist
+    - Assertions that could prevent bugs
+    - Invariants not enforced
+    - Defensive coding opportunities
+
+═══════════════════════════════════════════════════════════════════════════════
+OUTPUT FORMAT
+═══════════════════════════════════════════════════════════════════════════════
+
+For each finding, report:
+
+FILE: [exact file path]
+LINE: [line number or range]
+SEVERITY: [P0-CRITICAL / P1-HIGH / P2-MEDIUM / P3-LOW]
+CATEGORY: [from list above]
+ISSUE: [clear description of the problem]
+IMPACT: [what could go wrong in production]
+CURRENT CODE:
+```
+[paste the problematic code]
+```
+RECOMMENDED FIX:
+```
+[paste the corrected code]
+```
+RATIONALE: [why this fix is correct]
+
+═══════════════════════════════════════════════════════════════════════════════
+SPECIFIC AREAS OF CONCERN (Check These First)
+═══════════════════════════════════════════════════════════════════════════════
+
+1. SIGNAL GENERATION INTEGRITY
+   - src/strategies/intraday/*.ts
+   - Verify signalIdx = bars.length - 2 (not -1)
+   - Verify no lookahead (using future data)
+   - Verify NaN/null guards on all indicator access
+   - Verify atIndex() used correctly
+
+2. H4 TREND DATA HANDLING
+   - src/engine/indicatorService.ts
+   - Verify H4 data is actually fetched (not H1 proxy)
+   - Verify trendIdx separate from signalIdx
+   - Verify alignment validation exists
+   - Verify D1 fallback works and logs correctly
+
+3. BATCH API IMPLEMENTATION
+   - src/services/batchDataService.ts
+   - Verify :: delimiter used (not _)
+   - Verify chunking at 50 requests
+   - Verify partial failure handling
+   - Verify auth header approach
+
+4. AUTO-SCAN GUARDRAILS
+   - src/services/autoScanService.ts
+   - Verify overlap protection (isRunningScan flag)
+   - Verify alert cooldown per symbol
+   - Verify max emails per hour
+   - Verify NEW signals only (not re-alerts)
+
+5. SIGNAL FRESHNESS
+   - src/storage/signalFreshnessTracker.ts
+   - Verify key format SYMBOL::STRATEGY::DIRECTION
+   - Verify direction flip resets timestamp
+   - Verify isStale is info-only (never blocks)
+
+6. GROK SENTIMENT
+   - src/services/grokSentimentService.ts
+   - Verify display-only mode is default
+   - Verify never modifies SL/TP/sizing
+   - Verify graceful degradation on failure
+   - Verify cache TTL is 5 minutes
+
+7. FRONTEND DATA HANDLING
+   - public/js/app.js
+   - Verify entry.formatted fallback to entryPrice
+   - Verify timing data displayed correctly
+   - Verify sentiment badges handle all states
+
+8. TYPE SAFETY
+   - src/strategies/types.ts
+   - Verify all interfaces complete
+   - Verify no conflicting type definitions
+   - Verify Decision interface has all new fields
+
+═══════════════════════════════════════════════════════════════════════════════
+GUARDRAILS TO VERIFY (Must All Be TRUE)
+═══════════════════════════════════════════════════════════════════════════════
+
+Answer YES or NO for each:
+
+[ ] 1. All strategies use signalIdx = bars.length - 2 (not -1)
+[ ] 2. No strategy uses future data (lookahead bias)
+[ ] 3. All indicator access uses atIndex() or equivalent safe access
+[ ] 4. All NaN checks use Number.isFinite() not just truthy checks
+[ ] 5. H4 trend data uses separate trendIdx from H1 signalIdx
+[ ] 6. D1 fallback logs TREND_FALLBACK_D1_USED
+[ ] 7. Batch API uses :: delimiter
+[ ] 8. Auto-scan has overlap protection
+[ ] 9. Auto-scan has alert cooldown (1hr per symbol)
+[ ] 10. Auto-scan has max emails/hour limit (20)
+[ ] 11. Sentiment is display-only by default
+[ ] 12. Sentiment never modifies SL/TP/position sizing
+[ ] 13. Signal freshness never blocks trades
+[ ] 14. entryPrice populated for backward compatibility
+[ ] 15. All API keys in environment variables (not hardcoded)
+[ ] 16. All async functions have error handling
+[ ] 17. All fetch calls have timeout handling
+[ ] 18. No console.log in production code (use logger)
+[ ] 19. No TODO/FIXME comments for critical functionality
+[ ] 20. All TypeScript compiles without errors
+
+═══════════════════════════════════════════════════════════════════════════════
+DELIVERABLE
+═══════════════════════════════════════════════════════════════════════════════
+
+Produce a comprehensive audit report with:
+
+1. EXECUTIVE SUMMARY
+   - Total files scanned
+   - Total issues found by severity
+   - System health score (0-100)
+   - Top 5 most critical issues
+
+2. DETAILED FINDINGS
+   - All issues in the format specified above
+   - Grouped by severity (P0 first, then P1, P2, P3)
+
+3. GUARDRAIL VERIFICATION
+   - Answer all 20 guardrail questions
+   - Provide evidence (file:line) for each
+
+4. FILE-BY-FILE STATUS
+   - List each file with:
+     - Status: CLEAN / HAS_ISSUES
+     - Issue count by severity
+     - Brief summary
+
+5. RECOMMENDED PRIORITY ORDER
+   - List fixes in order of priority
+   - Estimate effort (5min / 30min / 1hr / 4hr)
+
+6. ARCHITECTURAL OBSERVATIONS
+   - Any patterns that could cause future issues
+   - Suggestions for improvement (not required, nice-to-have)
+
+═══════════════════════════════════════════════════════════════════════════════
+IMPORTANT NOTES
+═══════════════════════════════════════════════════════════════════════════════
+
+- This is a LIVE TRADING SYSTEM connected to real money
+- False negatives (missing bugs) are worse than false positives
+- If uncertain about something, FLAG IT for human review
+- Do not skip files - scan EVERYTHING
+- Be thorough, not fast
+- This audit will be reviewed by Claude and ChatGPT
+
+═══════════════════════════════════════════════════════════════════════════════
+
+BEGIN FULL SYSTEM AUDIT NOW.
+```
+
+---
+
+This prompt will get Replit to perform a thorough, systematic audit. Once they deliver the report, paste it here and I'll cross-validate their findings.

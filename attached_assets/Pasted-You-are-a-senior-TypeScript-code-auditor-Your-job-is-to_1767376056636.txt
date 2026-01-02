@@ -1,0 +1,78 @@
+You are a senior TypeScript code auditor. Your job is to VERIFY a document’s claims against THIS repo’s codebase and produce proof-level results.
+
+INPUT DOC (local file): /mnt/data/three-way-audit-consensus.md
+
+TASK:
+1) Read /mnt/data/three-way-audit-consensus.md and extract:
+   - each “Confirmed Critical Issue”
+   - the specific file + line references it claims (e.g., server.ts routes, defaults.ts:77-88, e8InstrumentSpecs.ts:87-89, utils.ts:108-116, etc.)
+   - the proposed fix plan (Phase 0/1/2)
+
+2) Now compare those claims against the ACTUAL code in this repo:
+   - Locate the exact files mentioned and confirm whether the doc’s claims are true.
+   - For each claim, output:
+     - CLAIM (quote or paraphrase)
+     - STATUS: CONFIRMED / REFUTED / PARTIALLY CONFIRMED
+     - PROOF: file path + exact line numbers + exact code snippet
+     - IMPACT: what breaks / what risk exists
+     - FIX: minimal code change (exact diff or code block)
+
+3) HARD REQUIREMENTS:
+   - Do NOT “assume” anything. If a claim relies on broker specs or third-party behavior, label it UNVERIFIABLE from code.
+   - If any line numbers in the doc don’t match the repo, find the correct lines and report both.
+   - Be brutally honest: if the doc is wrong, say so and show why.
+
+VALIDATIONS (must do all):
+A) Dual Engine Problem:
+   - Verify whether /api/analyze calls legacy decisionEngine.
+   - Verify whether /api/scan falls back to legacy when strategyId missing/invalid.
+   - Confirm where legacy sets entry price (ATR zone midpoint, etc.)
+
+B) Crypto Contract Sizes:
+   - Verify values in defaults.ts CRYPTO_CONTRACT_SIZES
+   - Verify values in e8InstrumentSpecs.ts for the same symbols
+   - Trace which is USED AT RUNTIME for sizing (imports + call chain)
+   - Compare with the doc’s “MT5 ground truth values” as: UNVERIFIABLE unless repo includes the screenshots/values source.
+   - If the repo does NOT contain the MT5 screenshots, label those numbers as external and not code-proven.
+
+C) NEXT_OPEN enforcement:
+   - Find ALL strategy files and confirm entryBar.open pattern.
+   - Verify whether bars include forming candle (TwelveData /time_series behavior). If not provable from code, mark AMBIGUOUS.
+   - Identify if there is any closed-bar filter implemented. If none, flag as AMBIGUOUS.
+
+D) Indicator alignment:
+   - Find validateIndicators and verify whether mismatch only logs or blocks.
+   - Determine whether downstream logic “accidentally” blocks signals due to null checks.
+
+E) Warm-up:
+   - Find minBars default.
+   - Identify strategies using EMA200 or similarly long periods.
+   - Verify Twelve Data outputsize for indicators & bars; determine if EMA200 can be stable.
+
+F) Drawdown enforcement:
+   - Verify whether there is runtime drawdown guard (not config).
+   - If missing, implement a minimal guard as a new module and show exactly where to call it.
+
+G) position.isValid not enforced:
+   - Find where sizing returns isValid false and whether callers check it.
+   - If not checked, propose enforcement point.
+
+OUTPUT:
+1) A table:
+   | Issue | Doc Claim | Code Reality | Verdict | Blocking? | Fix Location |
+2) A “Patch Set” section containing:
+   - exact unified diffs for the Phase 0 + Phase 1 fixes (in this order):
+     1) disable /api/analyze OR force it through strategy system
+     2) require strategyId for /api/scan and remove legacy fallback
+     3) fix crypto contract sizes (single source of truth) + add startup assertion
+     4) hard-fail indicator mismatch
+     5) increase warm-up to 250 for EMA200 strategies
+     6) increase Twelve Data outputsize for any endpoints used by EMA200/ADX etc.
+     7) add drawdown guard (minimal viable) + enforce position.isValid
+
+3) After patches: list quick verification commands (curl + npm run typecheck) that prove fixes worked.
+
+CONSTRAINTS:
+- Show code. Show diffs. No fluff.
+- Prefer minimal diffs that don’t change architecture.
+- Do not rewrite the whole app. Surgical changes only.
