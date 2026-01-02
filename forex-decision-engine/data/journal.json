@@ -138,6 +138,58 @@
       "rMultiple": 2.2,
       "result": "win",
       "closedAt": "2025-12-31T16:36:02.105Z"
+    },
+    {
+      "source": "signal",
+      "symbol": "BTCUSD",
+      "direction": "short",
+      "style": "intraday",
+      "grade": "B",
+      "strategyId": "bollinger-mr",
+      "strategyName": "Bollinger Mean Reversion",
+      "confidence": 60,
+      "reasonCodes": [
+        "BB_TOUCH_UPPER",
+        "RSI_OVERBOUGHT",
+        "TREND_ALIGNED",
+        "RR_FAVORABLE"
+      ],
+      "tradeType": "pullback",
+      "action": "taken",
+      "entryPrice": 88740.61,
+      "stopLoss": 89016.76779,
+      "takeProfit": 88000.5715,
+      "lots": 0.01,
+      "status": "running",
+      "id": "1767312203306-kgvft5ie1",
+      "createdAt": "2026-01-02T00:03:23.306Z",
+      "updatedAt": "2026-01-02T00:03:23.306Z"
+    },
+    {
+      "source": "signal",
+      "symbol": "ADAUSD",
+      "direction": "short",
+      "style": "intraday",
+      "grade": "B",
+      "strategyId": "rsi-oversold",
+      "strategyName": "RSI Oversold Pullback",
+      "confidence": 60,
+      "reasonCodes": [
+        "TREND_ALIGNED",
+        "RSI_OVERBOUGHT",
+        "CANDLE_CONFIRMATION",
+        "RR_FAVORABLE"
+      ],
+      "tradeType": "pullback",
+      "action": "taken",
+      "entryPrice": 0.36,
+      "stopLoss": 0.361,
+      "takeProfit": 0.3475,
+      "lots": 100,
+      "status": "pending",
+      "id": "1767312575529-lf633yvwg",
+      "createdAt": "2026-01-02T00:09:35.529Z",
+      "updatedAt": "2026-01-02T00:09:35.529Z"
     }
   ]
 }
