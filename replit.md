@@ -18,11 +18,12 @@ Preferred communication style: Simple, everyday language.
 - Decision interface extended with `entry: { price, formatted }` and `timing: { firstDetected, signalAge, validUntil, isStale }`
 - Email alerts via Resend (optional - requires RESEND_API_KEY secret)
 
-**Grok AI Sentiment Analysis**
-- Added grokSentimentService.ts: xAI Grok API integration for X/Twitter market sentiment
-- Sentiment caching with 5-minute TTL to reduce API costs
-- New API endpoints: GET /api/sentiment/:symbol, POST /api/sentiment/batch, GET /api/sentiment/status
-- Frontend sentiment badges on trade cards (bullish/bearish/neutral/mixed with score)
+**Grok AI Sentiment Analysis (On-Demand)**
+- Added grokSentimentService.ts: xAI Grok-3 API integration for X/Twitter market sentiment
+- On-demand "Get Sentiment" button on trade cards - user controls API usage
+- Frontend caching (5-min TTL) to prevent duplicate API calls per session
+- Sentiment displayed as colored badges: bullish (green), bearish (red), neutral (gray), mixed (amber)
+- API endpoints: GET /api/sentiment/:symbol, POST /api/sentiment/batch, GET /api/sentiment/status
 - Requires XAI_API_KEY secret for X/Twitter sentiment analysis
 
 **Frontend UI Update - Multi-Asset Class Support**
