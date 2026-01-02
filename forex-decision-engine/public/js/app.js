@@ -519,6 +519,48 @@ const App = {
   },
 
   // ═══════════════════════════════════════════════════════════════
+  // SENTIMENT FUNCTIONALITY
+  // ═══════════════════════════════════════════════════════════════
+
+  sentimentCache: {},
+
+  async fetchSentiment(symbol) {
+    const container = document.getElementById(`sentiment-${symbol}`);
+    if (!container) return;
+
+    if (this.sentimentCache[symbol]) {
+      const cached = this.sentimentCache[symbol];
+      const age = Date.now() - cached.fetchedAt;
+      if (age < 5 * 60 * 1000) {
+        container.innerHTML = UI.createSentimentBadge(cached.data);
+        return;
+      }
+    }
+
+    container.innerHTML = '<span class="sentiment-loading">🧠 Fetching sentiment...</span>';
+
+    try {
+      const response = await fetch(`/api/sentiment/${encodeURIComponent(symbol)}`);
+      const data = await response.json();
+      
+      if (data.error) {
+        container.innerHTML = `<span class="sentiment-error">⚠️ ${data.error}</span>`;
+        return;
+      }
+      
+      if (data.sentiment) {
+        this.sentimentCache[symbol] = { data: data.sentiment, fetchedAt: Date.now() };
+        container.innerHTML = UI.createSentimentBadge(data.sentiment);
+      } else {
+        container.innerHTML = '<span class="sentiment-unavailable">No sentiment data</span>';
+      }
+    } catch (error) {
+      console.error('Sentiment fetch error:', error);
+      container.innerHTML = '<span class="sentiment-error">⚠️ Failed to fetch</span>';
+    }
+  },
+
+  // ═══════════════════════════════════════════════════════════════
   // JOURNAL FUNCTIONALITY
   // ═══════════════════════════════════════════════════════════════
 
