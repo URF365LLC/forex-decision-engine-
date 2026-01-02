@@ -6,8 +6,20 @@ A trading decision engine for Forex, Metals, and Cryptocurrency markets, designe
 ## User Preferences
 Preferred communication style: Simple, everyday language.
 
-## Recent Changes (2026-01-01)
-**Auto-Scan & Signal Freshness (Latest)**
+## Recent Changes (2026-01-02)
+**V1.1 Emergency Patches - Three-Way Audit Fixes**
+- CRITICAL: Fixed crypto contract sizes preventing 100,000x position sizing error (BTCUSD: 1→2, ETHUSD: 1→20, XRPUSD: 1→100000)
+- Created `drawdownGuard.ts`: E8 Markets compliance (4% daily, 6% total limits) with persistent state
+- Server route lockdown: `/api/analyze` disabled (410 Gone), `/api/scan` requires strategyId
+- Hard-fail indicator validation: Array mismatches now block trades (was just warning)
+- Increased data lookback: outputsize 100→300, EMA200 strategies require 250 bars (was 50)
+- Added timeframes metadata to 6 strategies missing it
+- Fixed frontend sentiment bugs (app.js data.sentiment→data.rating, ui.js dead code removed)
+- Fixed strategyAnalyzer.ts missing entry field in createNoTradeDecision
+- Updated signalStore.ts to use new Decision type from strategies/types.js
+
+## Previous Changes (2026-01-01)
+**Auto-Scan & Signal Freshness**
 - Added Auto-Scan feature: Background scanner runs every 5 minutes using batch API
 - Signal Freshness Tracking: Shows "Detected Xh Ym ago" timestamps to prevent late entries
 - Auto-Scan UI toggle in Watchlist panel with email config, min grade filter, status display
