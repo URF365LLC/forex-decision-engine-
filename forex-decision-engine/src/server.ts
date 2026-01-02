@@ -231,12 +231,8 @@ app.post('/api/analyze', async (req, res) => {
     // Analyze
     const decision = await analyzeSymbol(sanitizedSymbol, userSettings);
     
-    // Fetch sentiment for tradeable signals
+    // Save to store (sentiment is fetched by frontend asynchronously)
     if (decision.grade !== 'no-trade') {
-      const sentiment = await grokSentimentService.getSentiment(sanitizedSymbol);
-      if (sentiment) {
-        decision.sentiment = sentiment;
-      }
       signalStore.saveSignal(decision);
     }
     
@@ -304,13 +300,9 @@ app.post('/api/scan', async (req, res) => {
       decisions = await scanSymbols(sanitizedSymbols, userSettings);
     }
     
-    // Fetch sentiment and save trade signals (handle both decision types)
+    // Save trade signals (sentiment is fetched by frontend asynchronously for fast scans)
     for (const decision of decisions) {
       if (decision.grade !== 'no-trade') {
-        const sentiment = await grokSentimentService.getSentiment(decision.symbol);
-        if (sentiment) {
-          (decision as any).sentiment = sentiment;
-        }
         signalStore.saveSignal(decision as any);
       }
     }
@@ -665,8 +657,8 @@ app.post('/api/autoscan/start', (req, res) => {
       intervalMs,
       onNewSignal: (decision, isNew) => {
         if (isNew && email) {
-          alertService.sendTradeAlert(decision, email).catch(err => {
-            logger.error(`Alert email failed: ${err}`);
+          alertService.sendTradeAlert(decision, email).catch((err: Error) => {
+            logger.error(`Alert email failed: ${err.message}`);
           });
         }
         broadcastUpgrade({ type: 'new_signal', decision, isNew });
