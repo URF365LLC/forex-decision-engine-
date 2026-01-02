@@ -122,6 +122,27 @@
             </select>
           </div>
           
+          <div class="form-group">
+            <label>Trading Mode</label>
+            <div class="radio-group">
+              <label class="radio-option">
+                <input type="radio" name="trading-mode" value="paper" checked>
+                <span class="radio-label">
+                  <strong>Paper Trading</strong>
+                  <small>Practice mode - no drawdown limits enforced</small>
+                </span>
+              </label>
+              <label class="radio-option live-mode-option">
+                <input type="radio" name="trading-mode" value="live">
+                <span class="radio-label">
+                  <strong>Live Trading</strong>
+                  <small>E8 Markets rules: 4% daily / 6% total drawdown limits</small>
+                </span>
+              </label>
+            </div>
+            <span class="form-hint" id="trading-mode-hint">Paper mode skips drawdown checks during development</span>
+          </div>
+          
           <button type="submit" class="btn btn-primary">Save Settings</button>
         </form>
         
