@@ -51,13 +51,16 @@ const Storage = {
    * Get settings
    */
   getSettings() {
-    return this.get(this.KEYS.SETTINGS, {
+    const defaults = {
       accountSize: 10000,
       riskPercent: 0.5,
       style: 'intraday',
       timezone: 'America/Chicago',
       paperTrading: true,  // Default to paper trading during development
-    });
+    };
+    const saved = this.get(this.KEYS.SETTINGS, {});
+    // Merge saved settings with defaults (ensures paperTrading is always set)
+    return { ...defaults, ...saved, paperTrading: saved.paperTrading ?? true };
   },
 
   /**
