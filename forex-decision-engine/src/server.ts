@@ -234,12 +234,14 @@ app.post('/api/scan', async (req, res) => {
   const { symbols, settings, strategyId, force } = req.body;
   
   // GATE 1: strategyId is REQUIRED (V1.1)
+  const allStrategies = strategyRegistry.list().map(s => s.id);
+  
   if (!strategyId) {
     logger.warn('REJECTED: /api/scan called without strategyId');
     return res.status(400).json({
       error: 'strategy_required',
       message: 'strategyId is required. Use GET /api/strategies to see available options.',
-      availableStrategies: strategyRegistry.listIds(),
+      availableStrategies: allStrategies,
     });
   }
   
@@ -247,7 +249,7 @@ app.post('/api/scan', async (req, res) => {
     return res.status(400).json({
       error: 'invalid_strategy',
       message: `Unknown strategy: ${strategyId}`,
-      availableStrategies: strategyRegistry.listIds(),
+      availableStrategies: allStrategies,
     });
   }
   
