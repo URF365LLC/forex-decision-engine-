@@ -548,9 +548,9 @@ const App = {
         return;
       }
       
-      if (data.sentiment) {
-        this.sentimentCache[symbol] = { data: data.sentiment, fetchedAt: Date.now() };
-        container.innerHTML = UI.createSentimentBadge(data.sentiment);
+      if (data.rating) {
+        this.sentimentCache[symbol] = { data: data, fetchedAt: Date.now() };
+        container.innerHTML = UI.createSentimentBadge(data);
       } else {
         container.innerHTML = '<span class="sentiment-unavailable">No sentiment data</span>';
       }

@@ -99,18 +99,23 @@ export function validateIndicators(
   if (!data.bars || !Array.isArray(data.bars) || data.bars.length < minBars) {
     return false;
   }
+
+  const barsLength = (data.bars as unknown[]).length;
   
   for (const ind of required) {
     if (ind === 'bars') continue;
     const indicator = data[ind];
     if (!indicator || !Array.isArray(indicator)) return false;
     if (indicator.length < minBars) return false;
-    if (indicator.length !== (data.bars as unknown[]).length) {
-      logger.warn('Indicator length mismatch', { 
+    if (indicator.length !== barsLength) {
+      logger.error('FATAL: Indicator length mismatch - signal generation ABORTED', { 
         indicator: ind, 
         indicatorLength: indicator.length, 
-        barsLength: (data.bars as unknown[]).length 
+        barsLength,
+        difference: Math.abs(indicator.length - barsLength),
+        action: 'Trade rejected to prevent data corruption'
       });
+      return false;
     }
   }
   return true;

@@ -422,6 +422,7 @@ function createNoTradeDecision(symbol: string, strategyId: string, errors: strin
     grade: 'no-trade',
     confidence: 0,
     entryPrice: 0,
+    entry: { price: 0, formatted: '—' },
     entryZone: null,
     stopLoss: null,
     takeProfit: null,

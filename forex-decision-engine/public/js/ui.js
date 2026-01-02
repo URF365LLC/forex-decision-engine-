@@ -191,8 +191,8 @@ const UI = {
     const freshnessHTML = signalAgeDisplay ? 
       `<span class="signal-age ${isStale ? 'stale' : ''}">🕐 Detected ${signalAgeDisplay}</span>` : '';
 
-    // Sentiment display
-    const sentimentHTML = decision.sentiment ? this.createSentimentBadge(decision.sentiment) : '';
+    // Sentiment display - no longer on decision object, fetched on-demand
+    const sentimentHTML = '';
 
     return `
       <div class="decision-card ${gradeClass} ${staleClass}" data-symbol="${decision.symbol}" data-grade="${decision.grade}">

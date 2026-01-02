@@ -18,6 +18,7 @@ export class WilliamsEma implements IStrategy {
     avgRR: 1.5,
     signalsPerWeek: '15-20',
     requiredIndicators: ['bars', 'willr', 'ema50', 'atr'],
+    timeframes: { trend: 'H4', entry: 'H1' },
     version: '2025-12-29',
   };
 
@@ -25,7 +26,7 @@ export class WilliamsEma implements IStrategy {
     const { symbol, bars, willr, ema50, atr } = data;
     
     if (!bars || bars.length < 50) return null;
-    if (!validateIndicators(data as Record<string, unknown>, this.meta.requiredIndicators, 50)) return null;
+    if (!validateIndicators(data as unknown as Record<string, unknown>, this.meta.requiredIndicators, 50)) return null;
     
     const entryIdx = bars.length - 1;
     const signalIdx = bars.length - 2;

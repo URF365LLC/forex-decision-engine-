@@ -88,22 +88,39 @@ export const PIP_VALUES = {
 } as const;
 
 // ═══════════════════════════════════════════════════════════════
-// CRYPTO CONTRACT SIZES (E8 Markets MT5)
-// 1 lot = X coins (source: E8 Markets contract specifications)
+// CRYPTO CONTRACT SIZES - E8 Markets MT5 Specifications
+// VERIFIED: 2026-01-02 via MT5 Symbol Specification screenshots
+// CRITICAL: Unknown symbols FAIL CLOSED - do NOT default to 1
 // ═══════════════════════════════════════════════════════════════
 
 export const CRYPTO_CONTRACT_SIZES: Record<string, number> = {
-  BTCUSD: 1,       // 1 lot = 1 BTC
-  ETHUSD: 1,       // 1 lot = 1 ETH
-  LTCUSD: 1,       // 1 lot = 1 LTC
-  BCHUSD: 1,       // 1 lot = 1 BCH
-  SOLUSD: 1,       // 1 lot = 1 SOL
-  XRPUSD: 100,     // 1 lot = 100 XRP
-  ADAUSD: 100,     // 1 lot = 100 ADA
-  BNBUSD: 1,       // 1 lot = 1 BNB
+  BTCUSD: 2,           // 1 lot = 2 BTC        (MT5 verified)
+  ETHUSD: 20,          // 1 lot = 20 ETH       (MT5 verified)
+  XRPUSD: 100000,      // 1 lot = 100,000 XRP  (MT5 verified)
+  ADAUSD: 100000,      // 1 lot = 100,000 ADA  (MT5 verified)
+  SOLUSD: 500,         // 1 lot = 500 SOL      (MT5 verified)
+  LTCUSD: 500,         // 1 lot = 500 LTC      (MT5 verified)
+  BCHUSD: 200,         // 1 lot = 200 BCH      (MT5 verified)
+  BNBUSD: 200,         // 1 lot = 200 BNB      (MT5 verified)
 } as const;
 
-export function getCryptoContractSize(symbol: string): number {
-  const normalized = symbol.toUpperCase().replace(/[^A-Z]/g, '');
-  return CRYPTO_CONTRACT_SIZES[normalized] ?? 1;
+export const KNOWN_CRYPTO_SYMBOLS = Object.keys(CRYPTO_CONTRACT_SIZES);
+
+export function getCryptoContractSize(symbol: string): number | null {
+  const normalized = symbol.toUpperCase().replace(/[\/\-_]/g, '');
+  const size = CRYPTO_CONTRACT_SIZES[normalized];
+
+  if (size === undefined) {
+    console.error(`[FATAL] getCryptoContractSize: Unknown symbol "${symbol}" (normalized: "${normalized}")`);
+    console.error(`[FATAL] Known symbols: ${KNOWN_CRYPTO_SYMBOLS.join(', ')}`);
+    console.error(`[FATAL] Trade MUST be blocked to prevent position sizing catastrophe`);
+    return null;
+  }
+
+  return size;
+}
+
+export function isKnownCryptoSymbol(symbol: string): boolean {
+  const normalized = symbol.toUpperCase().replace(/[\/\-_]/g, '');
+  return normalized in CRYPTO_CONTRACT_SIZES;
 }

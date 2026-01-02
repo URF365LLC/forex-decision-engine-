@@ -190,6 +190,31 @@
       "id": "1767312575529-lf633yvwg",
       "createdAt": "2026-01-02T00:09:35.529Z",
       "updatedAt": "2026-01-02T00:09:35.529Z"
+    },
+    {
+      "source": "signal",
+      "symbol": "USDJPY",
+      "direction": "long",
+      "style": "intraday",
+      "grade": "B",
+      "strategyId": "ema-pullback-intra",
+      "strategyName": "EMA Pullback",
+      "confidence": 65,
+      "reasonCodes": [
+        "TREND_ALIGNED",
+        "EMA_PULLBACK",
+        "RR_FAVORABLE"
+      ],
+      "tradeType": "pullback",
+      "action": "taken",
+      "entryPrice": 156.698,
+      "stopLoss": 156.44636,
+      "takeProfit": 157.14848,
+      "lots": 0.25,
+      "status": "running",
+      "id": "1767323359568-mqf20f5sd",
+      "createdAt": "2026-01-02T03:09:19.568Z",
+      "updatedAt": "2026-01-02T03:09:19.568Z"
     }
   ]
 }

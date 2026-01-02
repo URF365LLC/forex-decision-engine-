@@ -3,7 +3,7 @@
  * In-memory signal storage (persists to JSON file)
  */
 
-import { Decision } from '../engine/decisionEngine.js';
+import { Decision } from '../strategies/types.js';
 import { createLogger } from '../services/logger.js';
 import fs from 'fs';
 import path from 'path';
@@ -92,14 +92,17 @@ class SignalStore {
    * Save a decision to storage
    */
   saveSignal(decision: Decision): number {
+    // V1.1: Use entry.price (new) or entryPrice (legacy fallback)
+    const entryPrice = decision.entry?.price ?? decision.entryPrice ?? 0;
+    
     const signal: StoredSignal = {
       id: this.nextId++,
       symbol: decision.symbol,
       style: decision.style,
       direction: decision.direction,
       grade: decision.grade,
-      entry_low: decision.entryZone?.low ?? null,
-      entry_high: decision.entryZone?.high ?? null,
+      entry_low: entryPrice || null,
+      entry_high: entryPrice || null,
       stop_loss: decision.stopLoss?.price ?? null,
       take_profit: decision.takeProfit?.price ?? null,
       position_lots: decision.position?.lots ?? null,

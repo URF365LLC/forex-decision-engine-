@@ -38,6 +38,7 @@ export class BreakRetest implements IStrategy {
     avgRR: 2.0,
     signalsPerWeek: '10-15',
     requiredIndicators: ['bars', 'atr'],
+    timeframes: { trend: 'H4', entry: 'H1' },
     version: '2025-12-29',
   };
 
