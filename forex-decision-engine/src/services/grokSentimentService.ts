@@ -127,7 +127,7 @@ Search keywords: ${keywords}
 What is the current market sentiment based on recent posts? Consider posts from the last 24 hours.`;
 
       const response = await this.client.chat.completions.create({
-        model: 'grok-2-1212',
+        model: 'grok-3',
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt },
