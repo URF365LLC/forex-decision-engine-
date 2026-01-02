@@ -22,7 +22,6 @@ Preferred communication style: Simple, everyday language.
 - Added grokSentimentService.ts: xAI Grok API integration for X/Twitter market sentiment
 - Sentiment caching with 5-minute TTL to reduce API costs
 - New API endpoints: GET /api/sentiment/:symbol, POST /api/sentiment/batch, GET /api/sentiment/status
-- Frontend progressive loading: sentiment badges appear 1.2s apart as each request completes
 - Frontend sentiment badges on trade cards (bullish/bearish/neutral/mixed with score)
 - Requires XAI_API_KEY secret for X/Twitter sentiment analysis
 
