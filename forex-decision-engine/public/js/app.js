@@ -195,6 +195,10 @@ const App = {
     UI.$('risk-percent').value = settings.riskPercent;
     UI.$('timezone').value = settings.timezone;
     
+    // Set trading mode radio
+    const tradingModeRadio = document.querySelector(`input[name="trading-mode"][value="${settings.paperTrading ? 'paper' : 'live'}"]`);
+    if (tradingModeRadio) tradingModeRadio.checked = true;
+    
     // Set trading style radio
     const styleRadio = document.querySelector(`input[name="style"][value="${settings.style}"]`);
     if (styleRadio) styleRadio.checked = true;
@@ -206,11 +210,13 @@ const App = {
    * Save settings
    */
   saveSettings() {
+    const tradingMode = document.querySelector('input[name="trading-mode"]:checked')?.value || 'paper';
     const settings = {
       accountSize: parseFloat(UI.$('account-size').value) || 10000,
       riskPercent: parseFloat(UI.$('risk-percent').value) || 0.5,
       style: document.querySelector('input[name="style"]:checked')?.value || 'intraday',
       timezone: UI.$('timezone').value || 'America/Chicago',
+      paperTrading: tradingMode === 'paper',
     };
 
     // Validate
