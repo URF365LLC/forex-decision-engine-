@@ -56,6 +56,7 @@ const Storage = {
       riskPercent: 0.5,
       style: 'intraday',
       timezone: 'America/Chicago',
+      paperTrading: true,  // Default to paper trading during development
     });
   },
 
