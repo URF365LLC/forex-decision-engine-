@@ -231,7 +231,7 @@ app.post('/api/analyze', async (req, res) => {
     // Analyze
     const decision = await analyzeSymbol(sanitizedSymbol, userSettings);
     
-    // Save to store (sentiment is fetched by frontend asynchronously)
+    // Save to store (if it's a trade signal)
     if (decision.grade !== 'no-trade') {
       signalStore.saveSignal(decision);
     }
@@ -300,7 +300,7 @@ app.post('/api/scan', async (req, res) => {
       decisions = await scanSymbols(sanitizedSymbols, userSettings);
     }
     
-    // Save trade signals (sentiment is fetched by frontend asynchronously for fast scans)
+    // Save trade signals (handle both decision types)
     for (const decision of decisions) {
       if (decision.grade !== 'no-trade') {
         signalStore.saveSignal(decision as any);
@@ -657,8 +657,8 @@ app.post('/api/autoscan/start', (req, res) => {
       intervalMs,
       onNewSignal: (decision, isNew) => {
         if (isNew && email) {
-          alertService.sendTradeAlert(decision, email).catch((err: Error) => {
-            logger.error(`Alert email failed: ${err.message}`);
+          alertService.sendTradeAlert(decision, email).catch(err => {
+            logger.error(`Alert email failed: ${err}`);
           });
         }
         broadcastUpgrade({ type: 'new_signal', decision, isNew });
