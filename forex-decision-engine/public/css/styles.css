@@ -1091,6 +1091,50 @@ input:checked + .toggle-slider:before {
   color: var(--accent-amber);
 }
 
+/* Sentiment Container & Button */
+.sentiment-container {
+  margin-top: var(--spacing-sm);
+  padding-top: var(--spacing-sm);
+  border-top: 1px solid var(--border-color);
+}
+
+.btn-sentiment {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-sentiment:hover {
+  background: var(--bg-secondary);
+  border-color: var(--accent-primary);
+}
+
+.sentiment-loading {
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.sentiment-error {
+  color: var(--accent-danger);
+  font-size: 0.85rem;
+}
+
+.sentiment-unavailable {
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  font-style: italic;
+}
+
 .grade-b-plus {
   background: var(--accent-amber-bg);
   color: var(--accent-amber);

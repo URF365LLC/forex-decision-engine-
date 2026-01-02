@@ -223,6 +223,9 @@ const UI = {
           <button class="btn btn-journal btn-skipped" onclick="App.logTrade('${decision.symbol}', 'skipped')">✗ Skipped</button>
           <button class="btn btn-journal btn-missed" onclick="App.logTrade('${decision.symbol}', 'missed')">⏰ Missed</button>
         </div>
+        <div class="sentiment-container" id="sentiment-${decision.symbol}">
+          <button class="btn btn-sentiment" onclick="App.fetchSentiment('${decision.symbol}')">🧠 Get Sentiment</button>
+        </div>
         ` : ''}
       </div>
     `;
