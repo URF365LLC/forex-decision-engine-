@@ -11,6 +11,13 @@ import { getInstrumentSpec } from '../config/e8InstrumentSpecs.js';
 
 const logger = createLogger('AlphaVantage');
 
+function getAssetClass(symbol: string): 'forex' | 'crypto' | 'metals' {
+  const spec = getInstrumentSpec(symbol);
+  if (spec?.type === 'metal') return 'metals';
+  if (spec?.type === 'crypto') return 'crypto';
+  return 'forex';
+}
+
 // ═══════════════════════════════════════════════════════════════
 // TYPES
 // ═══════════════════════════════════════════════════════════════

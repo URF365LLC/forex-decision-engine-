@@ -244,20 +244,11 @@ app.post('/api/scan', async (req, res) => {
       availableStrategies: allStrategies,
     });
   }
-
-  // "all" strategy scanning is disabled - use strategy-by-strategy for cleaner results
-  if (strategyId === 'all') {
-    return res.status(400).json({
-      error: 'all_strategies_disabled',
-      message: 'Multi-strategy scanning is disabled. Select a specific strategy for cleaner, more efficient results.',
-      availableStrategies: allStrategies,
-    });
-  }
-
+  
   if (!strategyRegistry.get(strategyId)) {
     return res.status(400).json({
       error: 'invalid_strategy',
-      message: `Unknown strategy: ${strategyId}`,
+      message: `Unknown strategy: ${strategyId}.`,
       availableStrategies: allStrategies,
     });
   }
@@ -334,14 +325,13 @@ app.post('/api/scan', async (req, res) => {
   }
   
   try {
-    logger.info(`Scanning with strategy: ${strategyId}`, {
-      symbols: sanitizedSymbols.length,
+    logger.info(`Scanning with strategy: ${strategyId}`, { 
+      symbols: sanitizedSymbols.length, 
       paperTrading: isPaperTrading,
     });
-
-    // Single strategy scan only (cleaner, more efficient)
+    
     const decisions = await scanWithStrategy(sanitizedSymbols, strategyId, userSettings);
-
+    
     // Save trade signals
     for (const decision of decisions) {
       if (decision.grade !== 'no-trade') {
@@ -361,7 +351,6 @@ app.post('/api/scan', async (req, res) => {
       success: true,
       count: decisions.length,
       trades: decisions.filter(d => d.grade !== 'no-trade').length,
-      strategyId,
       decisions,
     });
   } catch (error) {

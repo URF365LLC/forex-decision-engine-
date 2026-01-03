@@ -65,6 +65,10 @@ export function calculatePositionSize(input: SizingInput): PositionSize | null {
   
   if (assetClass === 'crypto') {
     const contractSize = getCryptoContractSize(symbol);
+    if (!contractSize) {
+      logger.error(`Unknown crypto contract size for ${symbol} - sizing aborted`);
+      return null;
+    }
     
     maxLotsByMargin = (accountSize * leverage) / (entryPrice * contractSize);
     
@@ -95,13 +99,11 @@ export function calculatePositionSize(input: SizingInput): PositionSize | null {
       marginLimited,
     });
   } else {
-    const pipDecimals = spec?.digits || 4;
-    const pipSize = pipDecimals === 2 ? 0.01 : 0.0001;
+    const pipSize = spec?.pipSize ?? 0.0001;
+    const basePipValue = spec?.pipValue ?? PIP_VALUES.standard;
     stopLossPips = stopLossDistance / pipSize;
     
-    if (symbol.endsWith('JPY')) {
-      pipValue = 8.5;
-    }
+    pipValue = basePipValue;
     
     if (stopLossPips > 0 && pipValue > 0) {
       lots = riskAmount / (stopLossPips * pipValue);
