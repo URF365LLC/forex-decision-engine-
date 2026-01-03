@@ -12,7 +12,7 @@
 import { IStrategy, StrategyMeta, Decision, IndicatorData, UserSettings, ReasonCode } from '../types.js';
 import { atIndex, validateOrder, validateIndicators, buildDecision, clamp } from '../utils.js';
 import {
-  runPreFlight, logPreFlight, allValidNumbers,
+  runPreFlight, logPreFlight, createPreflightRejection, allValidNumbers,
   isTrendAligned, getTrendConfidenceAdjustment,
 } from '../SignalQualityGate.js';
 
@@ -39,7 +39,7 @@ export class CciZeroLine implements IStrategy {
       strategyType: 'momentum', minBars: 250,
       trendBarsH4, ema200H4, adxH4,
     });
-    if (!preflight.passed) { logPreFlight(symbol, this.meta.id, preflight); return null; }
+    if (!preflight.passed) { logPreFlight(symbol, this.meta.id, preflight); return createPreflightRejection(symbol, this.meta, preflight); }
     
     if (!validateIndicators(data as Record<string, unknown>, ['bars', 'cci', 'ema200', 'atr'], 250)) return null;
     

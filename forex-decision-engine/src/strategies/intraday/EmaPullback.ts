@@ -9,7 +9,7 @@
 import { IStrategy, StrategyMeta, Decision, IndicatorData, UserSettings, ReasonCode } from '../types.js';
 import { atIndex, validateOrder, validateIndicators, buildDecision, normalizedSlope, clamp } from '../utils.js';
 import {
-  runPreFlight, logPreFlight, allValidNumbers, isTrendAligned, getTrendConfidenceAdjustment,
+  runPreFlight, logPreFlight, createPreflightRejection, allValidNumbers, isTrendAligned, getTrendConfidenceAdjustment,
 } from '../SignalQualityGate.js';
 
 export class EmaPullback implements IStrategy {
@@ -36,7 +36,7 @@ export class EmaPullback implements IStrategy {
       strategyType: 'trend-continuation', minBars: 250,
       trendBarsH4, ema200H4, adxH4,
     });
-    if (!preflight.passed) { logPreFlight(symbol, this.meta.id, preflight); return null; }
+    if (!preflight.passed) { logPreFlight(symbol, this.meta.id, preflight); return createPreflightRejection(symbol, this.meta, preflight); }
     
     if (!validateIndicators(data as unknown as Record<string, unknown>, ['bars', 'ema20', 'ema50', 'ema200', 'rsi', 'adx', 'atr'], 250)) return null;
     

@@ -8,7 +8,7 @@
 import { IStrategy, StrategyMeta, Decision, IndicatorData, UserSettings, ReasonCode } from '../types.js';
 import { atIndex, validateOrder, validateIndicators, buildDecision, clamp } from '../utils.js';
 import {
-  runPreFlight, logPreFlight, isValidNumber, isValidBBand, allValidNumbers,
+  runPreFlight, logPreFlight, createPreflightRejection, isValidNumber, isValidBBand, allValidNumbers,
   isTrendAligned, getTrendConfidenceAdjustment,
 } from '../SignalQualityGate.js';
 
@@ -36,7 +36,7 @@ export class RsiBounce implements IStrategy {
       strategyType: 'mean-reversion', minBars: 50,
       trendBarsH4, ema200H4, adxH4,
     });
-    if (!preflight.passed) { logPreFlight(symbol, this.meta.id, preflight); return null; }
+    if (!preflight.passed) { logPreFlight(symbol, this.meta.id, preflight); return createPreflightRejection(symbol, this.meta, preflight); }
     
     if (!validateIndicators(data as unknown as Record<string, unknown>, ['bars', 'rsi', 'bbands', 'atr', 'sma20'], 50)) return null;
     
