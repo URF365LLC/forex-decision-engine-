@@ -96,8 +96,8 @@ export class RsiBounce implements IStrategy {
     confidence += preflight.confidenceAdjustments;
     
     const entryPrice = entryBar.open;
-    const stopLossPrice = direction === 'long' ? entryPrice - (atrSignal * 1.5) : entryPrice + (atrSignal * 1.5);
-    const takeProfitPrice = direction === 'long' ? entryPrice + (atrSignal * 2) : entryPrice - (atrSignal * 2);
+    const stopLossPrice = direction === 'long' ? entryPrice - (atrSignal! * 1.5) : entryPrice + (atrSignal! * 1.5);
+    const takeProfitPrice = direction === 'long' ? entryPrice + (atrSignal! * 2) : entryPrice - (atrSignal! * 2);
     
     if (!validateOrder(direction, entryPrice, stopLossPrice, takeProfitPrice)) return null;
     

@@ -20,7 +20,10 @@ export type RequiredIndicator =
   | 'bbands' 
   | 'atr' 
   | 'adx' 
-  | 'macd';
+  | 'macd'
+  | 'trendBarsH4'
+  | 'ema200H4'
+  | 'adxH4';
 
 export type ReasonCode = 
   // RSI conditions
@@ -75,6 +78,7 @@ export interface Bar {
 }
 
 export interface IndicatorData {
+  [key: string]: unknown;
   symbol: string;
   bars: Bar[];
   ema20?: number[];
