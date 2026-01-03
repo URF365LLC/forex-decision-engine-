@@ -261,24 +261,24 @@ class JournalStore {
     if (!entry.exitPrice || entry.status !== 'closed') return null;
 
     const spec = getInstrumentSpec(entry.symbol);
-    const pipDecimals = spec?.digits || 4;
-    const pipValue = Math.pow(10, -pipDecimals);
+    const pipValue = spec?.pipValue ?? 10;
+    const pipSize = spec?.pipSize ?? Math.pow(10, -((spec?.digits as number | undefined) ?? 4));
     const assetClass = spec?.type || 'forex';
     
     const directionMultiplier = entry.direction === 'long' ? 1 : -1;
     const priceMove = (entry.exitPrice - entry.entryPrice) * directionMultiplier;
-    const pnlPips = priceMove / pipValue;
+    const pnlPips = priceMove / pipSize;
     
     const riskDistance = Math.abs(entry.entryPrice - entry.stopLoss);
-    const riskPips = riskDistance / pipValue;
+    const riskPips = riskDistance / pipSize;
     const rMultiple = riskPips > 0 ? pnlPips / riskPips : 0;
     
     let pnlDollars: number;
     if (assetClass === 'crypto') {
-      pnlDollars = priceMove * entry.lots;
+      const contractSize = spec?.contractSize ?? 1;
+      pnlDollars = priceMove * contractSize * entry.lots;
     } else {
-      const pipValuePerLot = entry.symbol.endsWith('JPY') ? 1000 : 10;
-      pnlDollars = pnlPips * pipValuePerLot * entry.lots;
+      pnlDollars = pnlPips * pipValue * entry.lots;
     }
 
     return {

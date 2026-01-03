@@ -3,6 +3,8 @@
  * Version: 2025-12-29
  */
 
+import { getInstrumentSpec } from '../config/e8InstrumentSpecs.js';
+
 export type TradingStyle = 'intraday' | 'swing';
 export type SignalDirection = 'long' | 'short';
 export type SignalGrade = 'A+' | 'A' | 'B+' | 'B' | 'C' | 'no-trade';
@@ -163,7 +165,37 @@ export interface SignalTiming {
     display: string;
   };
   validUntil: string;
+  degradeAfter: string;
+  optimalWindowMinutes: number;
+  expiryMinutes: number;
+  state: 'optimal' | 'degrading' | 'expired';
   isStale: boolean;
+}
+
+export interface ExitTarget {
+  label: string;
+  price: number;
+  pips: number;
+  rr: number;
+  percent: number;
+  action: string;
+  formatted: string;
+}
+
+export interface RunnerPlan {
+  percent: number;
+  trail?: {
+    type: 'atr' | 'structure';
+    activateAtRr: number;
+    offsetPips: number;
+    notes?: string;
+  };
+}
+
+export interface TieredExitPlan {
+  tp1: ExitTarget;
+  tp2: ExitTarget;
+  runner: RunnerPlan;
 }
 
 export interface SentimentData {
@@ -206,6 +238,7 @@ export interface Decision {
   timestamp: string;
   validUntil: string;
   timing?: SignalTiming;
+  exitPlan?: TieredExitPlan;
   gating?: GatingInfo;
   upgrade?: GradeUpgrade;
   sentiment?: SentimentData;
@@ -217,11 +250,21 @@ export interface IStrategy {
 }
 
 export function getPipInfo(symbol: string): { pipSize: number; pipValue: number; digits: number } {
-  const isJpy = symbol.includes('JPY');
-  const isCrypto = ['BTC', 'ETH', 'SOL', 'XRP', 'ADA', 'BNB', 'BCH', 'LTC'].some(c => symbol.includes(c));
+  const spec = getInstrumentSpec(symbol);
+  if (spec) {
+    return {
+      pipSize: spec.pipSize,
+      pipValue: spec.pipValue,
+      digits: spec.digits,
+    };
+  }
+
+  const normalized = symbol.toUpperCase();
+  const isJpy = normalized.includes('JPY');
+  const isCrypto = ['BTC', 'ETH', 'SOL', 'XRP', 'ADA', 'BNB', 'BCH', 'LTC'].some(c => normalized.includes(c));
   if (isCrypto) return { pipSize: 1, pipValue: 1, digits: 2 };
-  if (isJpy) return { pipSize: 0.01, pipValue: 0.01, digits: 3 };
-  return { pipSize: 0.0001, pipValue: 0.0001, digits: 5 };
+  if (isJpy) return { pipSize: 0.01, pipValue: 8.5, digits: 3 };
+  return { pipSize: 0.0001, pipValue: 10, digits: 5 };
 }
 
 export function formatPrice(price: number, symbol: string): string {

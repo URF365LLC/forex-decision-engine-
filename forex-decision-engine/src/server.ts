@@ -26,7 +26,7 @@ import { STYLE_PRESETS } from './config/strategy.js';
 // LEGACY ENGINE DISABLED (V1.1 - 2026-01-02) - Three-way audit finding
 // import { analyzeSymbol, scanSymbols } from './engine/decisionEngine.js';
 import { UserSettings } from './engine/decisionEngine.js';
-import { scanWithStrategy, scanWithAllStrategies, clearStrategyCache } from './engine/strategyAnalyzer.js';
+import { scanWithStrategy, clearStrategyCache } from './engine/strategyAnalyzer.js';
 import { strategyRegistry } from './strategies/index.js';
 import { Decision as StrategyDecision, Decision } from './strategies/types.js';
 import { checkDrawdownLimits } from './services/drawdownGuard.js';
@@ -240,16 +240,16 @@ app.post('/api/scan', async (req, res) => {
     logger.warn('REJECTED: /api/scan called without strategyId');
     return res.status(400).json({
       error: 'strategy_required',
-      message: 'strategyId is required. Use GET /api/strategies to see available options, or use "all" for multi-strategy scan.',
-      availableStrategies: [...allStrategies, 'all'],
+      message: 'strategyId is required. Use GET /api/strategies to see available options.',
+      availableStrategies: allStrategies,
     });
   }
   
-  if (strategyId !== 'all' && !strategyRegistry.get(strategyId)) {
+  if (!strategyRegistry.get(strategyId)) {
     return res.status(400).json({
       error: 'invalid_strategy',
-      message: `Unknown strategy: ${strategyId}. Use "all" for multi-strategy scan.`,
-      availableStrategies: [...allStrategies, 'all'],
+      message: `Unknown strategy: ${strategyId}.`,
+      availableStrategies: allStrategies,
     });
   }
   
@@ -325,21 +325,12 @@ app.post('/api/scan', async (req, res) => {
   }
   
   try {
-    const isAllStrategies = strategyId === 'all';
-    
     logger.info(`Scanning with strategy: ${strategyId}`, { 
       symbols: sanitizedSymbols.length, 
       paperTrading: isPaperTrading,
-      multiStrategy: isAllStrategies,
     });
     
-    let decisions: StrategyDecision[];
-    
-    if (isAllStrategies) {
-      decisions = await scanWithAllStrategies(sanitizedSymbols, userSettings);
-    } else {
-      decisions = await scanWithStrategy(sanitizedSymbols, strategyId, userSettings);
-    }
+    const decisions = await scanWithStrategy(sanitizedSymbols, strategyId, userSettings);
     
     // Save trade signals
     for (const decision of decisions) {
@@ -360,7 +351,6 @@ app.post('/api/scan', async (req, res) => {
       success: true,
       count: decisions.length,
       trades: decisions.filter(d => d.grade !== 'no-trade').length,
-      multiStrategy: isAllStrategies,
       decisions,
     });
   } catch (error) {

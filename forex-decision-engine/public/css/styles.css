@@ -670,6 +670,18 @@ body {
   color: var(--text-muted);
 }
 
+.timing.optimal {
+  color: var(--text-muted);
+}
+
+.timing.degrading {
+  color: var(--accent-amber);
+}
+
+.timing.expired {
+  color: var(--accent-red);
+}
+
 .card-actions {
   display: flex;
   gap: var(--spacing-sm);

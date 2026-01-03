@@ -127,10 +127,9 @@ const App = {
       const strategies = await response.json();
       this.strategies = strategies;
       
-      dropdown.innerHTML = `<option value="all">All Strategies</option>` +
-        strategies.map(s => 
-          `<option value="${s.id}">${s.name} (${s.winRate}% WR)</option>`
-        ).join('');
+      dropdown.innerHTML = strategies.map(s => 
+        `<option value="${s.id}">${s.name} (${s.winRate}% WR)</option>`
+      ).join('');
       
       // Restore saved selection or use first option
       const saved = localStorage.getItem('selectedStrategy');
