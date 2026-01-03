@@ -19,7 +19,9 @@ import {
   formatPrice, 
   calculatePips,
   TieredExitPlan,
-  ExitTarget 
+  ExitTarget,
+  ExitManagement,
+  TieredExit
 } from './types.js';
 import { createLogger } from '../services/logger.js';
 import { getCryptoContractSize, DEFAULTS, LOT_SIZES } from '../config/defaults.js';
@@ -646,6 +648,48 @@ export function buildDecision(params: DecisionParams): Decision {
       ? 'degrading'
       : 'optimal';
 
+  const atrPips = atr ? atr / pipSize : undefined;
+  const tieredPlan = buildTieredExitPlan(symbol, direction, entryPrice, stopLoss, pipSize, stopLossPips, atrPips);
+  
+  const exitManagement: ExitManagement = {
+    mode: 'tiered',
+    tieredExits: [
+      {
+        level: 1,
+        price: tieredPlan.tp1.price,
+        pips: tieredPlan.tp1.pips,
+        rr: tieredPlan.tp1.rr,
+        formatted: tieredPlan.tp1.formatted,
+        action: 'close_50%',
+        description: tieredPlan.tp1.action,
+      },
+      {
+        level: 2,
+        price: tieredPlan.tp2.price,
+        pips: tieredPlan.tp2.pips,
+        rr: tieredPlan.tp2.rr,
+        formatted: tieredPlan.tp2.formatted,
+        action: 'close_25%',
+        description: tieredPlan.tp2.action,
+      },
+    ],
+    breakEvenTrigger: {
+      afterTP: 1,
+      price: entryPrice,
+      formatted: formatPrice(entryPrice, symbol),
+    },
+    trailingStop: tieredPlan.runner.trail ? {
+      activateAfterR: tieredPlan.runner.trail.activateAtRr,
+      trailDistance: tieredPlan.runner.trail.offsetPips,
+      trailDistancePips: tieredPlan.runner.trail.offsetPips,
+    } : undefined,
+    instructions: [
+      `1. At TP1 (${tieredPlan.tp1.formatted}): Close 50%, move SL to breakeven (${formatPrice(entryPrice, symbol)})`,
+      `2. At TP2 (${tieredPlan.tp2.formatted}): Close 25%, let runner trail`,
+      tieredPlan.runner.trail ? `3. Trail remaining 25% at ${tieredPlan.runner.trail.offsetPips} pips behind price` : '',
+    ].filter(Boolean),
+  };
+
   return {
     symbol,
     displayName: symbol,
@@ -692,6 +736,9 @@ export function buildDecision(params: DecisionParams): Decision {
       expiryMinutes: timingWindows.expiryMinutes,
       state,
       isStale: isStale(signalAge.ms),
+      optimalEntryWindow: timingWindows.optimalMinutes,
     },
+    exitPlan: tieredPlan,
+    exitManagement,
   };
 }

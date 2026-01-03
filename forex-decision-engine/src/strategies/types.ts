@@ -272,6 +272,7 @@ export interface Decision {
   validUntil: string;
   timing?: SignalTiming;
   exitPlan?: TieredExitPlan;
+  exitManagement?: ExitManagement;
   gating?: GatingInfo;
   upgrade?: GradeUpgrade;
   sentiment?: SentimentData;
@@ -439,7 +440,7 @@ export function calculateValidityWindow(
                    timezone === 'America/Chicago' ? 'CST' :
                    timezone === 'Europe/London' ? 'GMT' : 'UTC';
 
-  const validWindow = `Valid ${formatTime(now)} - ${formatTime(validUntil)} ${tzAbbrev}`;
+  const degradeAfter = new Date(now.getTime() + optimalWindowMinutes * 60 * 1000);
 
   return {
     firstDetected: now.toISOString(),
@@ -448,8 +449,10 @@ export function calculateValidityWindow(
       display: 'Just detected',
     },
     validUntil: validUntil.toISOString(),
-    validFrom: now.toISOString(),
-    validWindow,
+    degradeAfter: degradeAfter.toISOString(),
+    optimalWindowMinutes,
+    expiryMinutes: validityMinutes,
+    state: 'optimal',
     isStale: false,
     optimalEntryWindow: optimalWindowMinutes,
   };
