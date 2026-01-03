@@ -6,9 +6,9 @@
 
 import { twelveData } from '../services/twelveDataClient.js';
 import type { OHLCVBar, IndicatorValue, MACDValue } from '../services/twelveDataClient.js';
-import { STRATEGY, TradingStyle, getStyleConfig } from '../config/strategy.js';
-import { getAssetType } from '../config/e8InstrumentSpecs.js';
+import { STRATEGY, TradingStyle } from '../config/strategy.js';
 import { createLogger } from '../services/logger.js';
+import { cache, CacheService, CACHE_TTL } from '../services/cache.js';
 
 const logger = createLogger('IndicatorService');
 
@@ -59,6 +59,46 @@ interface TrendDataH4 {
   adxH4: IndicatorValue[];
   trendTimeframeUsed: 'H4' | 'D1';
   trendFallbackUsed: boolean;
+}
+
+const indicatorInflight = new Map<string, Promise<unknown>>();
+const BUNDLE_CACHE_VERSION = 'v2';
+
+async function fetchWithCache<T>(
+  key: string,
+  ttlSeconds: number,
+  fetcher: () => Promise<T>,
+  label: string,
+  errors: string[],
+  fallback: T
+): Promise<T> {
+  const cached = cache.get<T>(key);
+  if (cached) {
+    logger.debug(`Indicator cache HIT: ${label}`);
+    return cached;
+  }
+
+  if (indicatorInflight.has(key)) {
+    return indicatorInflight.get(key) as Promise<T>;
+  }
+
+  const promise = (async () => {
+    try {
+      const result = await fetcher();
+      cache.set(key, result, ttlSeconds);
+      return result;
+    } catch (e) {
+      const message = e instanceof Error ? e.message : 'Unknown error';
+      errors.push(`${label}: ${message}`);
+      logger.warn(`Indicator fetch failed for ${label}: ${message}`);
+      return fallback;
+    } finally {
+      indicatorInflight.delete(key);
+    }
+  })();
+
+  indicatorInflight.set(key, promise);
+  return promise;
 }
 
 async function fetchTrendDataH4(symbol: string): Promise<TrendDataH4> {
@@ -130,11 +170,22 @@ export async function fetchIndicators(
   symbol: string,
   style: TradingStyle
 ): Promise<IndicatorData> {
-  const config = getStyleConfig(style);
   const errors: string[] = [];
-  
   const entryInterval = '1h';
+  const bundleKey = CacheService.makeKey(symbol, style, 'indicator-bundle', { version: BUNDLE_CACHE_VERSION });
+  const bundleTtl = CACHE_TTL.indicator['60min'];
+  const dailyTtl = CACHE_TTL.indicator.daily;
+  const h4Ttl = CACHE_TTL.H4;
   
+  const cachedBundle = cache.get<IndicatorData>(bundleKey);
+  if (cachedBundle) {
+    logger.debug(`Indicator bundle cache hit for ${symbol} (${style})`);
+    // structuredClone available in Node 20+
+    return typeof structuredClone === 'function'
+      ? structuredClone(cachedBundle)
+      : JSON.parse(JSON.stringify(cachedBundle));
+  }
+
   logger.info(`Fetching indicators for ${symbol} (${style}) via Twelve Data`);
 
   const data: IndicatorData = {
@@ -164,149 +215,205 @@ export async function fetchIndicators(
   };
 
   try {
-    try {
-      data.entryBars = await twelveData.getOHLCV(symbol, entryInterval, 'full');
-      logger.debug(`Got ${data.entryBars.length} entry bars for ${symbol}`);
-    } catch (e) {
-      errors.push(`Entry bars: ${e instanceof Error ? e.message : 'Unknown error'}`);
-    }
+    const [entryBars, trendBars, ema200, adx, h4Trend] = await Promise.all([
+      fetchWithCache(
+        CacheService.makeKey(symbol, entryInterval, 'entry-bars', { style }),
+        CACHE_TTL.H1,
+        () => twelveData.getOHLCV(symbol, entryInterval, 'full'),
+        'Entry bars',
+        errors,
+        []
+      ),
+      fetchWithCache(
+        CacheService.makeKey(symbol, 'daily', 'trend-bars', { style }),
+        dailyTtl,
+        () => twelveData.getOHLCV(symbol, 'daily', 'compact'),
+        'Trend bars',
+        errors,
+        []
+      ),
+      fetchWithCache(
+        CacheService.makeKey(symbol, 'daily', 'ema200', { style }),
+        dailyTtl,
+        () => twelveData.getEMA(symbol, 'daily', STRATEGY.trend.ema.period),
+        'EMA200',
+        errors,
+        []
+      ),
+      fetchWithCache(
+        CacheService.makeKey(symbol, 'daily', 'adx', { style }),
+        dailyTtl,
+        () => twelveData.getADX(symbol, 'daily', STRATEGY.trend.adx.period),
+        'ADX',
+        errors,
+        []
+      ),
+      fetchWithCache<TrendDataH4>(
+        CacheService.makeKey(symbol, 'H4', 'trend-pack', { style }),
+        h4Ttl,
+        () => fetchTrendDataH4(symbol),
+        'H4 trend pack',
+        errors,
+        { trendBarsH4: [], ema200H4: [], adxH4: [], trendTimeframeUsed: 'H4', trendFallbackUsed: false }
+      ),
+    ]);
 
-    try {
-      data.trendBars = await twelveData.getOHLCV(symbol, 'daily', 'compact');
-      logger.debug(`Got ${data.trendBars.length} trend bars for ${symbol}`);
-    } catch (e) {
-      errors.push(`Trend bars: ${e instanceof Error ? e.message : 'Unknown error'}`);
-    }
+    const [
+      ema20,
+      ema50,
+      rsi,
+      atr,
+      stoch,
+      willr,
+      cci,
+      bbands,
+      sma20,
+      ema8,
+      ema21,
+      ema55,
+      macd,
+      obv,
+    ] = await Promise.all([
+      fetchWithCache(
+        CacheService.makeKey(symbol, entryInterval, 'ema20', { style }),
+        bundleTtl,
+        () => twelveData.getEMA(symbol, entryInterval, STRATEGY.entry.emaFast.period),
+        'EMA20',
+        errors,
+        []
+      ),
+      fetchWithCache(
+        CacheService.makeKey(symbol, entryInterval, 'ema50', { style }),
+        bundleTtl,
+        () => twelveData.getEMA(symbol, entryInterval, STRATEGY.entry.emaSlow.period),
+        'EMA50',
+        errors,
+        []
+      ),
+      fetchWithCache(
+        CacheService.makeKey(symbol, entryInterval, 'rsi', { style }),
+        bundleTtl,
+        () => twelveData.getRSI(symbol, entryInterval, STRATEGY.entry.rsi.period),
+        'RSI',
+        errors,
+        []
+      ),
+      fetchWithCache(
+        CacheService.makeKey(symbol, entryInterval, 'atr', { style }),
+        bundleTtl,
+        () => twelveData.getATR(symbol, entryInterval, STRATEGY.stopLoss.atr.period),
+        'ATR',
+        errors,
+        []
+      ),
+      fetchWithCache(
+        CacheService.makeKey(symbol, entryInterval, 'stoch', { style }),
+        bundleTtl,
+        () => twelveData.getStochastic(symbol, entryInterval, 14, 3, 3),
+        'STOCH',
+        errors,
+        []
+      ),
+      fetchWithCache(
+        CacheService.makeKey(symbol, entryInterval, 'willr', { style }),
+        bundleTtl,
+        () => twelveData.getWilliamsR(symbol, entryInterval, 14),
+        'WILLR',
+        errors,
+        []
+      ),
+      fetchWithCache(
+        CacheService.makeKey(symbol, entryInterval, 'cci', { style }),
+        bundleTtl,
+        () => twelveData.getCCI(symbol, entryInterval, 20),
+        'CCI',
+        errors,
+        []
+      ),
+      fetchWithCache(
+        CacheService.makeKey(symbol, entryInterval, 'bbands', { style }),
+        bundleTtl,
+        () => twelveData.getBBands(symbol, entryInterval, 20, 2, 2),
+        'BBANDS',
+        errors,
+        []
+      ),
+      fetchWithCache(
+        CacheService.makeKey(symbol, entryInterval, 'sma20', { style }),
+        bundleTtl,
+        () => twelveData.getSMA(symbol, entryInterval, 20),
+        'SMA20',
+        errors,
+        []
+      ),
+      fetchWithCache(
+        CacheService.makeKey(symbol, entryInterval, 'ema8', { style }),
+        bundleTtl,
+        () => twelveData.getEMA(symbol, entryInterval, 8),
+        'EMA8',
+        errors,
+        []
+      ),
+      fetchWithCache(
+        CacheService.makeKey(symbol, entryInterval, 'ema21', { style }),
+        bundleTtl,
+        () => twelveData.getEMA(symbol, entryInterval, 21),
+        'EMA21',
+        errors,
+        []
+      ),
+      fetchWithCache(
+        CacheService.makeKey(symbol, entryInterval, 'ema55', { style }),
+        bundleTtl,
+        () => twelveData.getEMA(symbol, entryInterval, 55),
+        'EMA55',
+        errors,
+        []
+      ),
+      fetchWithCache(
+        CacheService.makeKey(symbol, entryInterval, 'macd', { style }),
+        bundleTtl,
+        () => twelveData.getMACD(symbol, entryInterval, 12, 26, 9),
+        'MACD',
+        errors,
+        []
+      ),
+      fetchWithCache(
+        CacheService.makeKey(symbol, entryInterval, 'obv', { style }),
+        bundleTtl,
+        () => twelveData.getOBV(symbol, entryInterval),
+        'OBV',
+        errors,
+        []
+      ),
+    ]);
 
-    if (data.entryBars.length > 0) {
-      data.currentPrice = data.entryBars[data.entryBars.length - 1].close;
-    }
+    data.entryBars = entryBars;
+    data.trendBars = trendBars;
+    data.currentPrice = entryBars.length > 0 ? entryBars[entryBars.length - 1].close : 0;
+    data.ema200 = ema200;
+    data.adx = adx;
+    data.ema20 = ema20;
+    data.ema50 = ema50;
+    data.rsi = rsi;
+    data.atr = atr;
+    data.stoch = stoch;
+    data.willr = willr;
+    data.cci = cci;
+    data.bbands = bbands;
+    data.sma20 = sma20;
+    data.ema8 = ema8;
+    data.ema21 = ema21;
+    data.ema55 = ema55;
+    data.macd = macd;
+    data.obv = obv;
 
-    try {
-      data.ema200 = await twelveData.getEMA(symbol, 'daily', STRATEGY.trend.ema.period);
-      logger.debug(`Got ${data.ema200.length} EMA200 values for ${symbol}`);
-    } catch (e) {
-      errors.push(`EMA200: ${e instanceof Error ? e.message : 'Unknown error'}`);
-    }
-
-    try {
-      data.adx = await twelveData.getADX(symbol, 'daily', STRATEGY.trend.adx.period);
-      logger.debug(`Got ${data.adx.length} ADX values for ${symbol}`);
-    } catch (e) {
-      errors.push(`ADX: ${e instanceof Error ? e.message : 'Unknown error'}`);
-    }
-
-    try {
-      data.ema20 = await twelveData.getEMA(symbol, entryInterval, STRATEGY.entry.emaFast.period);
-      logger.debug(`Got ${data.ema20.length} EMA20 values for ${symbol}`);
-    } catch (e) {
-      errors.push(`EMA20: ${e instanceof Error ? e.message : 'Unknown error'}`);
-    }
-
-    try {
-      data.ema50 = await twelveData.getEMA(symbol, entryInterval, STRATEGY.entry.emaSlow.period);
-      logger.debug(`Got ${data.ema50.length} EMA50 values for ${symbol}`);
-    } catch (e) {
-      errors.push(`EMA50: ${e instanceof Error ? e.message : 'Unknown error'}`);
-    }
-
-    try {
-      data.rsi = await twelveData.getRSI(symbol, entryInterval, STRATEGY.entry.rsi.period);
-      logger.debug(`Got ${data.rsi.length} RSI values for ${symbol}`);
-    } catch (e) {
-      errors.push(`RSI: ${e instanceof Error ? e.message : 'Unknown error'}`);
-    }
-
-    try {
-      data.atr = await twelveData.getATR(symbol, entryInterval, STRATEGY.stopLoss.atr.period);
-      logger.debug(`Got ${data.atr.length} ATR values for ${symbol}`);
-    } catch (e) {
-      errors.push(`ATR: ${e instanceof Error ? e.message : 'Unknown error'}`);
-    }
-
-    try {
-      data.stoch = await twelveData.getStochastic(symbol, entryInterval, 14, 3, 3);
-      logger.debug(`Got ${data.stoch.length} STOCH values for ${symbol}`);
-    } catch (e) {
-      errors.push(`STOCH: ${e instanceof Error ? e.message : 'Unknown error'}`);
-    }
-
-    try {
-      data.willr = await twelveData.getWilliamsR(symbol, entryInterval, 14);
-      logger.debug(`Got ${data.willr.length} WILLR values for ${symbol}`);
-    } catch (e) {
-      errors.push(`WILLR: ${e instanceof Error ? e.message : 'Unknown error'}`);
-    }
-
-    try {
-      data.cci = await twelveData.getCCI(symbol, entryInterval, 20);
-      logger.debug(`Got ${data.cci.length} CCI values for ${symbol}`);
-    } catch (e) {
-      errors.push(`CCI: ${e instanceof Error ? e.message : 'Unknown error'}`);
-    }
-
-    try {
-      data.bbands = await twelveData.getBBands(symbol, entryInterval, 20, 2, 2);
-      logger.debug(`Got ${data.bbands.length} BBANDS values for ${symbol}`);
-    } catch (e) {
-      errors.push(`BBANDS: ${e instanceof Error ? e.message : 'Unknown error'}`);
-    }
-
-    try {
-      data.sma20 = await twelveData.getSMA(symbol, entryInterval, 20);
-      logger.debug(`Got ${data.sma20.length} SMA20 values for ${symbol}`);
-    } catch (e) {
-      errors.push(`SMA20: ${e instanceof Error ? e.message : 'Unknown error'}`);
-    }
-
-    try {
-      data.ema8 = await twelveData.getEMA(symbol, entryInterval, 8);
-      logger.debug(`Got ${data.ema8.length} EMA8 values for ${symbol}`);
-    } catch (e) {
-      errors.push(`EMA8: ${e instanceof Error ? e.message : 'Unknown error'}`);
-    }
-
-    try {
-      data.ema21 = await twelveData.getEMA(symbol, entryInterval, 21);
-      logger.debug(`Got ${data.ema21.length} EMA21 values for ${symbol}`);
-    } catch (e) {
-      errors.push(`EMA21: ${e instanceof Error ? e.message : 'Unknown error'}`);
-    }
-
-    try {
-      data.ema55 = await twelveData.getEMA(symbol, entryInterval, 55);
-      logger.debug(`Got ${data.ema55.length} EMA55 values for ${symbol}`);
-    } catch (e) {
-      errors.push(`EMA55: ${e instanceof Error ? e.message : 'Unknown error'}`);
-    }
-
-    try {
-      data.macd = await twelveData.getMACD(symbol, entryInterval, 12, 26, 9);
-      logger.debug(`Got ${data.macd.length} MACD values for ${symbol}`);
-    } catch (e) {
-      errors.push(`MACD: ${e instanceof Error ? e.message : 'Unknown error'}`);
-    }
-
-    try {
-      data.obv = await twelveData.getOBV(symbol, entryInterval);
-      logger.debug(`Got ${data.obv.length} OBV values for ${symbol}`);
-    } catch (e) {
-      errors.push(`OBV: ${e instanceof Error ? e.message : 'Unknown error'}`);
-    }
-
-    // Fetch H4 trend data (with D1 fallback)
-    try {
-      const h4Trend = await fetchTrendDataH4(symbol);
-      data.trendBarsH4 = h4Trend.trendBarsH4;
-      data.ema200H4 = h4Trend.ema200H4;
-      data.adxH4 = h4Trend.adxH4;
-      data.trendTimeframeUsed = h4Trend.trendTimeframeUsed;
-      data.trendFallbackUsed = h4Trend.trendFallbackUsed;
-      validateH4Alignment(data);
-    } catch (e) {
-      errors.push(`H4 trend data: ${e instanceof Error ? e.message : 'Unknown error'}`);
-    }
-
+    data.trendBarsH4 = h4Trend.trendBarsH4;
+    data.ema200H4 = h4Trend.ema200H4;
+    data.adxH4 = h4Trend.adxH4;
+    data.trendTimeframeUsed = h4Trend.trendTimeframeUsed;
+    data.trendFallbackUsed = h4Trend.trendFallbackUsed;
+    validateH4Alignment(data);
   } catch (e) {
     errors.push(`General error: ${e instanceof Error ? e.message : 'Unknown error'}`);
   }
@@ -317,6 +424,7 @@ export async function fetchIndicators(
     logger.warn(`Indicator fetch completed with ${errors.length} errors for ${symbol}`, errors);
   } else {
     logger.info(`Indicator fetch completed successfully for ${symbol}`);
+    cache.set(bundleKey, data, bundleTtl);
   }
 
   return data;

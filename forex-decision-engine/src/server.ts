@@ -695,15 +695,17 @@ app.get('/api/upgrades/recent', (req, res) => {
 
 app.post('/api/autoscan/start', (req, res) => {
   try {
-    const { minGrade = 'B', email, intervalMs = 5 * 60 * 1000 } = req.body;
+    const { minGrade = 'B', email, intervalMs = 5 * 60 * 1000, symbols, strategies } = req.body;
     
     autoScanService.start({
       minGrade,
       email,
       intervalMs,
+      symbols,
+      strategies,
       onNewSignal: (decision, isNew) => {
-        if (isNew && email) {
-          alertService.sendTradeAlert(decision, email).catch(err => {
+        if (email) {
+          alertService.sendTradeAlert(decision, email, { isNew }).catch(err => {
             logger.error(`Alert email failed: ${err}`);
           });
         }
