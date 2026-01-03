@@ -48,6 +48,7 @@ export interface BatchIndicatorData {
   willr: number[];
   ema200H4: number[];
   adxH4: number[];
+  trendBarsH4: Bar[];
   errors: string[];
 }
 
@@ -175,6 +176,12 @@ function buildBatchRequest(
         url: `/adx?symbol=${symbolParam}&interval=${trendInterval}&time_period=14&outputsize=250`
       };
     }
+    
+    if (indicators.includes('trendBarsH4')) {
+      request[`${symbol}::time_series::H4`] = {
+        url: `/time_series?symbol=${symbolParam}&interval=${trendInterval}&outputsize=250`
+      };
+    }
   }
   
   return request;
@@ -234,6 +241,7 @@ function createEmptyBatchData(symbol: string): BatchIndicatorData {
     willr: [],
     ema200H4: [],
     adxH4: [],
+    trendBarsH4: [],
     errors: [],
   };
 }
@@ -267,7 +275,11 @@ function parseAndMergeResults(
     
     switch (indicator) {
       case 'time_series':
-        data.bars = parseTimeSeries(result.values);
+        if (timeframe === 'H4') {
+          data.trendBarsH4 = parseTimeSeries(result.values);
+        } else {
+          data.bars = parseTimeSeries(result.values);
+        }
         break;
       case 'ema20':
         data.ema20 = parseIndicatorValues(result.values, 'ema');
@@ -322,7 +334,7 @@ export async function fetchAllSymbolData(
   } = {}
 ): Promise<Map<string, BatchIndicatorData>> {
   const {
-    indicators = ['ema20', 'ema50', 'rsi', 'atr', 'stoch', 'cci', 'bbands', 'willr', 'ema200H4', 'adxH4'],
+    indicators = ['ema20', 'ema50', 'rsi', 'atr', 'stoch', 'cci', 'bbands', 'willr', 'ema200H4', 'adxH4', 'trendBarsH4'],
     entryInterval = '1h',
     trendInterval = '4h',
   } = options;
