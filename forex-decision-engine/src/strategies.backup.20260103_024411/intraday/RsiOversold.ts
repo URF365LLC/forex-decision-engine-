@@ -1,14 +1,23 @@
 /**
- * RSI Oversold Strategy - With-Trend Pullback - PROP-GRADE V2
+ * RSI Oversold Strategy - With-Trend Pullback
  * Uses TRUE H4 EMA200+ADX>20 for trend confirmation
+ * Version: 2026-01-01
  * 
- * V2 FIXES: Added preflight, increased minBars to 250, isValidNumber checks
- * NOTE: Already had best architecture - minimal changes needed
+ * SEATBELT 1: Fail-fast if H4 trend data is missing/invalid
+ * SEATBELT 2: Separate trendIdx for H4 vs signalIdx for H1
  */
 
-import type { IStrategy, StrategyMeta, Decision, IndicatorData, UserSettings, ReasonCode, SignalDirection, Bar } from '../types.js';
+import type { 
+  IStrategy, 
+  StrategyMeta, 
+  Decision, 
+  IndicatorData,
+  UserSettings, 
+  ReasonCode,
+  SignalDirection,
+  Bar
+} from '../types.js';
 import { atIndex, validateOrder, buildDecision, clamp } from '../utils.js';
-import { runPreFlight, logPreFlight, isValidNumber } from '../SignalQualityGate.js';
 
 const MIN_RSI_LOOKBACK = 3;
 const SWING_LOOKBACK = 10;
@@ -19,7 +28,11 @@ function findSwingHighInBars(bars: Bar[], lookback: number): number | null {
   if (bars.length < lookback) return null;
   const recentBars = bars.slice(-lookback);
   let highestHigh = 0;
-  for (const bar of recentBars) { if (bar.high > highestHigh) highestHigh = bar.high; }
+  for (const bar of recentBars) {
+    if (bar.high > highestHigh) {
+      highestHigh = bar.high;
+    }
+  }
   return highestHigh;
 }
 
@@ -27,7 +40,11 @@ function findSwingLowInBars(bars: Bar[], lookback: number): number | null {
   if (bars.length < lookback) return null;
   const recentBars = bars.slice(-lookback);
   let lowestLow = Infinity;
-  for (const bar of recentBars) { if (bar.low < lowestLow) lowestLow = bar.low; }
+  for (const bar of recentBars) {
+    if (bar.low < lowestLow) {
+      lowestLow = bar.low;
+    }
+  }
   return lowestLow === Infinity ? null : lowestLow;
 }
 
@@ -41,30 +58,33 @@ export class RsiOversold implements IStrategy {
     winRate: 62,
     avgRR: 2.0,
     signalsPerWeek: '10-20',
-    requiredIndicators: ['bars', 'rsi', 'atr', 'trendBarsH4', 'ema200H4', 'adxH4'],
-    version: '2026-01-02',
+    requiredIndicators: ['bars', 'rsi', 'atr', 'ema200', 'adx'],
+    version: '2026-01-01',
   };
 
   async analyze(data: IndicatorData, settings: UserSettings): Promise<Decision | null> {
     const { symbol, bars, rsi, atr, trendBarsH4, ema200H4, adxH4, trendTimeframeUsed } = data;
     
-    // V2: PRE-FLIGHT
-    const atrVal = bars && bars.length > 2 ? atIndex(atr, bars.length - 2) : null;
-    const preflight = runPreFlight({
-      symbol, bars: bars || [], interval: 'H1', atr: atrVal,
-      strategyType: 'trend-continuation', minBars: 250,
-      trendBarsH4, ema200H4, adxH4,
-    });
-    if (!preflight.passed) { logPreFlight(symbol, this.meta.id, preflight); return null; }
+    // ==========================================
+    // SEATBELT 1: Fail-fast H4 trend data check
+    // ==========================================
+    if (!trendBarsH4 || trendBarsH4.length < 50) {
+      return null;
+    }
+    if (!ema200H4 || ema200H4.length === 0) {
+      return null;
+    }
+    if (!adxH4 || adxH4.length === 0) {
+      return null;
+    }
     
-    // SEATBELT: H4 trend data check (kept from original - best practice)
-    if (!trendBarsH4 || trendBarsH4.length < 50) return null;
-    if (!ema200H4 || ema200H4.length === 0) return null;
-    if (!adxH4 || adxH4.length === 0) return null;
-    if (!bars || bars.length < 250) return null;
-    if (!rsi || rsi.length < 250) return null;
-    if (!atr || atr.length < 250) return null;
+    if (!bars || bars.length < 50) return null;
+    if (!rsi || rsi.length < 50) return null;
+    if (!atr || atr.length < 50) return null;
 
+    // ==========================================
+    // SEATBELT 2: Separate indices for timeframes
+    // ==========================================
     const signalIdx = bars.length - 2;
     const entryIdx = bars.length - 1;
     const trendIdx = trendBarsH4.length - 1;
@@ -74,19 +94,30 @@ export class RsiOversold implements IStrategy {
     
     const rsiSignal = atIndex(rsi, signalIdx);
     const atrSignal = atIndex(atr, signalIdx);
+    
     const ema200H4Val = ema200H4[trendIdx];
     const adxH4Val = adxH4[trendIdx];
     const trendBar = trendBarsH4[trendIdx];
 
-    // V2: isValidNumber checks
-    if (!isValidNumber(rsiSignal) || !isValidNumber(atrSignal) || 
-        !isValidNumber(ema200H4Val) || !isValidNumber(adxH4Val)) return null;
+    if (
+      rsiSignal === null ||
+      !Number.isFinite(rsiSignal) ||
+      atrSignal === null ||
+      !Number.isFinite(atrSignal) ||
+      ema200H4Val === undefined ||
+      !Number.isFinite(ema200H4Val) ||
+      adxH4Val === undefined ||
+      !Number.isFinite(adxH4Val)
+    ) {
+      return null;
+    }
 
     const triggers: string[] = [];
     const reasonCodes: ReasonCode[] = [];
     let confidence = 0;
     let direction: SignalDirection | null = null;
 
+    // H4 Trend Analysis
     const priceAboveEma200 = trendBar.close > ema200H4Val;
     const priceBelowEma200 = trendBar.close < ema200H4Val;
     const adxStrong = adxH4Val > 20;
@@ -95,12 +126,15 @@ export class RsiOversold implements IStrategy {
     const rsiLookback: number[] = [];
     for (let i = 0; i < MIN_RSI_LOOKBACK; i++) {
       const val = atIndex(rsi, signalIdx - i);
-      if (isValidNumber(val)) rsiLookback.push(val);
+      if (val !== null && Number.isFinite(val)) {
+        rsiLookback.push(val);
+      }
     }
+    
     const minRsi = rsiLookback.length > 0 ? Math.min(...rsiLookback) : 100;
     const maxRsi = rsiLookback.length > 0 ? Math.max(...rsiLookback) : 0;
     
-    // LONG: With uptrend only
+    // LONG: Price above H4 EMA200, ADX > 20, RSI recently touched oversold (<30)
     if (priceAboveEma200 && adxStrong && minRsi < 30) {
       direction = 'long';
       confidence += 40;
@@ -110,18 +144,19 @@ export class RsiOversold implements IStrategy {
       triggers.push(`RSI recently oversold (min ${minRsi.toFixed(1)} in last 3 bars)`);
       reasonCodes.push('RSI_OVERSOLD');
       
-      if (minRsi < 20) { 
-        confidence += 10; 
-        triggers.push('RSI extremely oversold'); 
-        reasonCodes.push('RSI_EXTREME_LOW'); 
-      }
-      if (signalBar.close > signalBar.open) { 
-        confidence += 10; 
-        triggers.push('Bullish candle confirmation'); 
-        reasonCodes.push('CANDLE_CONFIRMATION'); 
+      if (minRsi < 20) {
+        confidence += 10;
+        triggers.push('RSI extremely oversold');
+        reasonCodes.push('RSI_EXTREME_LOW');
       }
       
-    // SHORT: With downtrend only
+      if (signalBar.close > signalBar.open) {
+        confidence += 10;
+        triggers.push('Bullish candle confirmation');
+        reasonCodes.push('CANDLE_CONFIRMATION');
+      }
+      
+    // SHORT: Price below H4 EMA200, ADX > 20, RSI recently touched overbought (>70)
     } else if (priceBelowEma200 && adxStrong && maxRsi > 70) {
       direction = 'short';
       confidence += 40;
@@ -131,50 +166,51 @@ export class RsiOversold implements IStrategy {
       triggers.push(`RSI recently overbought (max ${maxRsi.toFixed(1)} in last 3 bars)`);
       reasonCodes.push('RSI_OVERBOUGHT');
       
-      if (maxRsi > 80) { 
-        confidence += 10; 
-        triggers.push('RSI extremely overbought'); 
-        reasonCodes.push('RSI_EXTREME_HIGH'); 
+      if (maxRsi > 80) {
+        confidence += 10;
+        triggers.push('RSI extremely overbought');
+        reasonCodes.push('RSI_EXTREME_HIGH');
       }
-      if (signalBar.close < signalBar.open) { 
-        confidence += 10; 
-        triggers.push('Bearish candle confirmation'); 
-        reasonCodes.push('CANDLE_CONFIRMATION'); 
+      
+      if (signalBar.close < signalBar.open) {
+        confidence += 10;
+        triggers.push('Bearish candle confirmation');
+        reasonCodes.push('CANDLE_CONFIRMATION');
       }
     }
     
     if (!direction) return null;
     
-    // Apply preflight adjustments
-    confidence += preflight.confidenceAdjustments;
-    
     // Entry and stops
     const entryPrice = entryBar.open;
     
+    // Swing-based stops (10 bars lookback) with ATR fallback
     let stopLossPrice: number;
     if (direction === 'long') {
       const swingLow = findSwingLowInBars(bars, SWING_LOOKBACK);
-      stopLossPrice = swingLow !== null && swingLow < entryPrice 
-        ? swingLow 
+      stopLossPrice = swingLow !== null && swingLow < entryPrice
+        ? swingLow
         : entryPrice - (atrSignal * ATR_FALLBACK_MULT);
     } else {
       const swingHigh = findSwingHighInBars(bars, SWING_LOOKBACK);
-      stopLossPrice = swingHigh !== null && swingHigh > entryPrice 
-        ? swingHigh 
+      stopLossPrice = swingHigh !== null && swingHigh > entryPrice
+        ? swingHigh
         : entryPrice + (atrSignal * ATR_FALLBACK_MULT);
     }
     
     const risk = Math.abs(entryPrice - stopLossPrice);
-    const takeProfitPrice = direction === 'long' 
-      ? entryPrice + (risk * MIN_RR) 
+    const takeProfitPrice = direction === 'long'
+      ? entryPrice + (risk * MIN_RR)
       : entryPrice - (risk * MIN_RR);
     
-    if (!validateOrder(direction, entryPrice, stopLossPrice, takeProfitPrice)) return null;
+    if (!validateOrder(direction, entryPrice, stopLossPrice, takeProfitPrice)) {
+      return null;
+    }
     
     const rr = Math.abs(takeProfitPrice - entryPrice) / risk;
-    if (rr >= MIN_RR) { 
-      confidence += 10; 
-      reasonCodes.push('RR_FAVORABLE'); 
+    if (rr >= MIN_RR) {
+      confidence += 10;
+      reasonCodes.push('RR_FAVORABLE');
     }
 
     if (trendTimeframeUsed === 'D1') {
@@ -182,12 +218,19 @@ export class RsiOversold implements IStrategy {
     }
     
     confidence = clamp(confidence, 0, 100);
-    if (confidence < 50) return null;
     
     return buildDecision({
-      symbol, strategyId: this.meta.id, strategyName: this.meta.name,
-      direction, confidence, entryPrice, stopLoss: stopLossPrice, takeProfit: takeProfitPrice,
-      triggers, reasonCodes, settings, timeframes: this.meta.timeframes,
+      symbol,
+      strategyId: this.meta.id,
+      strategyName: this.meta.name,
+      direction,
+      confidence,
+      entryPrice,
+      stopLoss: stopLossPrice,
+      takeProfit: takeProfitPrice,
+      triggers,
+      reasonCodes,
+      settings,
     });
   }
 }
