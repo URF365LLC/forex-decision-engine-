@@ -1,0 +1,163 @@
+# 🔬 ENTERPRISE VALIDATION PROMPT — STRATEGY ENGINE V2
+## Forex Decision Engine | Prop-Grade Review
+
+You are acting as a **Senior Quant / Principal Engineer** performing a **final validation audit** of a live-capital trading system.
+
+This is NOT a brainstorming task.
+This is NOT a redesign task.
+This is NOT a feature suggestion task.
+
+Your role is to **verify correctness, safety, and execution readiness**.
+
+---
+
+## 🚨 RULES (MANDATORY)
+
+- ❌ Do NOT assume anything — verify only from provided files
+- ❌ Do NOT hallucinate missing logic
+- ❌ If something cannot be proven from code, mark it **UNVERIFIED**
+- ❌ Do NOT propose new strategies or features
+- ✅ Cite **file names + logic paths** when making claims
+- ✅ Treat this as a **prop-firm pre-deployment audit**
+
+---
+
+## 📦 FILES PROVIDED
+
+You have been given:
+- 9 trading strategies (V2, fixed)
+- `SignalQualityGate.ts`
+- Proof file documenting fixes
+- README describing integration
+- Full context that Twelve Data API is used (610 calls/min plan)
+
+Assume:
+- Twelve Data provides **all indicators + OHLCV**
+- Rate limits are NOT a constraint
+- Live trading safety is the priority
+
+---
+
+## 🎯 OBJECTIVE
+
+Determine whether the **Strategy Layer (V2)** can be marked:
+
+> **🟢 GO FOR LIVE (with controlled risk)**  
+> or  
+> **🔴 NO-GO (with explicit blockers)**
+
+---
+
+## 🧪 REQUIRED VALIDATIONS (ALL MUST BE ANSWERED)
+
+### 1️⃣ STRATEGY LOGIC VALIDATION
+For EACH strategy:
+- Is the entry logic internally consistent?
+- Is SL/TP mathematically correct for BOTH long and short?
+- Is minimum R:R ≥ 1.5 enforced?
+- Are falsy-value bugs (0, null, NaN) handled correctly?
+
+Return a table:
+| Strategy | Logical Correctness | Math Safety | Verdict |
+
+---
+
+### 2️⃣ TREND & TIMEFRAME CONSISTENCY
+Verify:
+- All strategies use **H4 EMA200 + ADX** for trend context
+- No strategy silently falls back to H1-only trend logic
+- Timeframe metadata (`meta.timeframes`) matches actual data usage
+
+Verdict:
+- CONSISTENT / INCONSISTENT
+- Evidence from files
+
+---
+
+### 3️⃣ SIGNALQUALITYGATE REVIEW
+Validate that the gate:
+- Enforces **closed-bar execution**
+- Blocks stale signals
+- Rejects insufficient bars
+- Handles volatility/session gating correctly
+- Fail-closes instead of warn-opens
+
+Answer explicitly:
+- Can a live trade be generated from an unclosed candle? YES / NO
+- Can a strategy bypass the gate? YES / NO
+
+---
+
+### 4️⃣ DATA PIPELINE SANITY (Twelve Data)
+Answer **only from logic**, not speculation:
+- Is data fetched per `(symbol + timeframe)`?
+- Are indicators derived deterministically from raw bars?
+- Is any strategy output cached or reused incorrectly?
+
+State clearly:
+> Is the system caching **raw data only**, or **strategy results**?
+
+---
+
+### 5️⃣ RISK & PROP-GRADE SAFETY
+Verify:
+- Counter-trend penalties are meaningful (≥-30)
+- Weak signals are rejected, not graded
+- Strategies fail closed under ambiguity
+
+Would a prop firm consider this:
+- Reckless ❌
+- Acceptable ⚠️
+- Professional ✅
+
+Explain why.
+
+---
+
+## 📊 FINAL SCORECARD (REQUIRED)
+
+Provide this table at the end:
+
+| Area | Status | Blocking |
+|-----|-------|----------|
+| Strategy Math | ? | YES / NO |
+| Trend Alignment | ? | YES / NO |
+| Signal Gate | ? | YES / NO |
+| Data Integrity | ? | YES / NO |
+| Risk Discipline | ? | YES / NO |
+
+---
+
+## 🚦 FINAL VERDICT (MANDATORY)
+
+Choose ONE:
+
+- 🟢 **GO FOR LIVE (controlled exposure)**
+- 🟡 **GO FOR PAPER ONLY**
+- 🔴 **NO-GO**
+
+Then answer:
+- What is the **single biggest remaining risk**, if any?
+- Is that risk **technical**, **statistical**, or **market-based**?
+
+---
+
+## ⛔ WHAT NOT TO DO
+- Do NOT redesign strategies
+- Do NOT suggest new indicators
+- Do NOT optimize performance
+- Do NOT change architecture
+
+Your job is to **validate**, not invent.
+
+---
+
+## 🧠 TONE & STANDARD
+Write like:
+- A senior engineer signing a release
+- A prop-firm reviewer protecting capital
+- A risk manager who blocks systems that are “almost ready”
+
+Be direct. Be precise. Be honest.
+
+BEGIN VALIDATION.
