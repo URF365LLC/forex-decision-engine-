@@ -57,7 +57,8 @@ Core API endpoints facilitate system health checks, symbol retrieval, signal ana
 -   **Strategy Isolation**: Decisions are cached per strategy to prevent data staleness.
 -   **Margin-Aware Position Sizing**: Accounts for leverage and margin constraints, especially for crypto.
 -   **Indicator Alignment**: Uses NaN padding to ensure indicator array consistency.
--   **Auto-Scan & Signal Freshness**: Background scanning every 5 minutes with batch API, tracking signal age.
+-   **Auto-Scan & Signal Freshness**: Background scanning every 5 minutes with batch API, tracking signal age. Config persists to `data/autoScanConfig.json` and auto-starts on server reboot.
+-   **Tiered Exit Management**: Every decision includes exitManagement with TP1 (1R, close 50%, move SL to breakeven), TP2 (2R, close 25%), and trailing runner for remaining 25%.
 -   **Grok AI Sentiment Analysis**: On-demand X/Twitter market sentiment integration with caching.
 -   **Multi-Asset Class Support**: UI and backend support for Forex, Metals, Indices, Commodities, and Crypto.
 -   **H4 Trend Support**: Utilizes native Twelve Data 4h interval with D1 fallback for trend analysis.
