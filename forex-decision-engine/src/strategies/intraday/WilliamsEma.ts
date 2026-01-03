@@ -12,7 +12,7 @@
 import { IStrategy, StrategyMeta, Decision, IndicatorData, UserSettings, ReasonCode } from '../types.js';
 import { atIndex, validateOrder, validateIndicators, buildDecision, isRejectionCandle, clamp } from '../utils.js';
 import {
-  runPreFlight, logPreFlight, createPreflightRejection, allValidNumbers,
+  runPreFlight, logPreFlight, allValidNumbers,
   isTrendAligned, getTrendConfidenceAdjustment,
 } from '../SignalQualityGate.js';
 
@@ -50,7 +50,7 @@ export class WilliamsEma implements IStrategy {
     
     if (!preflight.passed) {
       logPreFlight(symbol, this.meta.id, preflight);
-      return createPreflightRejection(symbol, this.meta, preflight);
+      return null;
     }
     
     if (!validateIndicators(data as Record<string, unknown>, ['bars', 'willr', 'ema200', 'ema20', 'atr'], 250)) return null;

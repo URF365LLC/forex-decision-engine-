@@ -13,7 +13,7 @@
 import { IStrategy, StrategyMeta, Decision, IndicatorData, UserSettings, ReasonCode } from '../types.js';
 import { atIndex, validateOrder, validateIndicators, buildDecision, isRejectionCandle, clamp } from '../utils.js';
 import {
-  runPreFlight, logPreFlight, createPreflightRejection, isValidBBand, allValidNumbers,
+  runPreFlight, logPreFlight, isValidBBand, allValidNumbers,
   isTrendAligned, getTrendConfidenceAdjustment,
 } from '../SignalQualityGate.js';
 
@@ -40,7 +40,7 @@ export class BollingerMR implements IStrategy {
       strategyType: 'mean-reversion', minBars: 250,
       trendBarsH4, ema200H4, adxH4,
     });
-    if (!preflight.passed) { logPreFlight(symbol, this.meta.id, preflight); return createPreflightRejection(symbol, this.meta, preflight); }
+    if (!preflight.passed) { logPreFlight(symbol, this.meta.id, preflight); return null; }
     
     if (!validateIndicators(data as Record<string, unknown>, ['bars', 'bbands', 'rsi', 'atr', 'ema200'], 250)) return null;
     
