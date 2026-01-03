@@ -127,8 +127,8 @@ const App = {
       const strategies = await response.json();
       this.strategies = strategies;
       
-      dropdown.innerHTML = `<option value="all">All Strategies</option>` +
-        strategies.map(s => 
+      // Strategy-by-strategy scanning only (no "all" option - more efficient and cleaner results)
+      dropdown.innerHTML = strategies.map(s =>
           `<option value="${s.id}">${s.name} (${s.winRate}% WR)</option>`
         ).join('');
       
