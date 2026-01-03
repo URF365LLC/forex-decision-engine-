@@ -149,6 +149,18 @@ const UI = {
           `<span class="reason-tag">${code.replace(/_/g, ' ')}</span>`
         ).join('')}
       </div>` : '';
+    
+    // Warnings (preflight/safety checks) - show for both trades and no-trades
+    const warningsHTML = decision.warnings && decision.warnings.length > 0 ?
+      `<div class="warnings-list">
+        ${decision.warnings.map(warning => 
+          `<div class="warning-item">⚠️ ${warning}</div>`
+        ).join('')}
+      </div>` : '';
+    
+    // For no-trade cards, show the rejection reason more prominently
+    const noTradeReasonHTML = isNoTrade && decision.reason && decision.reason !== 'No trade setup found' ?
+      `<div class="rejection-reason">🚫 ${decision.reason}</div>` : '';
 
     // Build trade info section - handle NEXT_OPEN execution model
     let tradeInfoHTML = '';
@@ -209,10 +221,12 @@ const UI = {
         ${strategyInfo}
         <div class="card-body">
           ${tradeInfoHTML}
+          ${noTradeReasonHTML}
+          ${warningsHTML}
           ${freshnessHTML}
           ${sentimentHTML}
           ${reasonCodesHTML}
-          <div class="card-reason">"${decision.reason}"</div>
+          ${!isNoTrade || !noTradeReasonHTML ? `<div class="card-reason">"${decision.reason}"</div>` : ''}
         </div>
         <div class="card-footer">
           <span>${decision.timeframes?.trend || 'H4'}/${decision.timeframes?.entry || 'H1'} | ${validText}</span>

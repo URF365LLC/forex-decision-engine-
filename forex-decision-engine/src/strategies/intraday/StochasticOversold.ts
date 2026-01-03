@@ -12,7 +12,7 @@
 import { IStrategy, StrategyMeta, Decision, IndicatorData, UserSettings, ReasonCode } from '../types.js';
 import { atIndex, validateOrder, validateIndicators, buildDecision, isRejectionCandle, clamp } from '../utils.js';
 import {
-  runPreFlight, logPreFlight, isValidNumber, isValidStoch,
+  runPreFlight, logPreFlight, createPreflightRejection, isValidNumber, isValidStoch,
   isTrendAligned, getTrendConfidenceAdjustment,
 } from '../SignalQualityGate.js';
 
@@ -50,7 +50,7 @@ export class StochasticOversold implements IStrategy {
     
     if (!preflight.passed) {
       logPreFlight(symbol, this.meta.id, preflight);
-      return null;
+      return createPreflightRejection(symbol, this.meta, preflight);
     }
     
     if (!validateIndicators(data as Record<string, unknown>, ['bars', 'stoch', 'atr', 'ema200'], 250)) return null;
