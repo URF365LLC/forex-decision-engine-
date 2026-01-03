@@ -6,7 +6,20 @@ A trading decision engine for Forex, Metals, and Cryptocurrency markets, designe
 ## User Preferences
 Preferred communication style: Simple, everyday language.
 
-## Recent Changes (2026-01-02)
+## Recent Changes (2026-01-03)
+**Multi-Strategy Caching Fix**
+- Fixed critical bug where multiple strategies' signals for same symbol were overwriting each other
+- Backend: Added `scanWithAllStrategies()` function for multi-strategy scanning
+- Backend: `/api/scan` now accepts `strategyId='all'` for scanning with all 9 strategies
+- Backend: Multi-strategy scan only returns actionable trade signals (filters no-trade)
+- Frontend: Cards now use compound key `data-key="${strategyId}:${symbol}"` for unique identification
+- Frontend: Added `findDecisionByKey()` helper parsing strategyId:symbol compound keys
+- Frontend: Updated copySignal, logTrade, fetchSentiment to use compound keys
+- Frontend: Added "All Strategies" option to strategy dropdown
+- Added cache key debug logging throughout scan pipeline
+- Extended UserSettings interface with drawdown guard properties
+
+## Previous Changes (2026-01-02)
 **V1.1 Emergency Patches - Three-Way Audit Fixes**
 - CRITICAL: Fixed crypto contract sizes preventing 100,000x position sizing error (BTCUSD: 1→2, ETHUSD: 1→20, XRPUSD: 1→100000)
 - Created `drawdownGuard.ts`: E8 Markets compliance (4% daily, 6% total limits) with persistent state
