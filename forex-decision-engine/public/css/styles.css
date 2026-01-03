@@ -701,6 +701,109 @@ body {
 }
 
 /* ═══════════════════════════════════════════════════════════════
+   TIERED EXITS (Exit Management)
+   ═══════════════════════════════════════════════════════════════ */
+
+.tiered-exits {
+  margin-top: var(--spacing-md);
+  padding: var(--spacing-md);
+  background: var(--bg-tertiary);
+  border-radius: var(--border-radius);
+  border-left: 3px solid var(--accent-green);
+}
+
+.tiered-exit-header {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--accent-green);
+  margin-bottom: var(--spacing-sm);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.tiered-exit-row {
+  display: grid;
+  grid-template-columns: 80px 1fr 1fr;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-xs) 0;
+  font-size: 0.8125rem;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.tiered-exit-row:last-child {
+  border-bottom: none;
+}
+
+.tiered-exit-row.trail {
+  color: var(--accent-amber);
+}
+
+.tiered-label {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.tiered-value {
+  font-family: var(--font-mono);
+  color: var(--accent-green);
+}
+
+.tiered-action {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+/* Trade value colors */
+.trade-value.loss {
+  color: var(--accent-red);
+}
+
+.trade-value.profit {
+  color: var(--accent-green);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   VALIDITY WINDOW & OPTIMAL ENTRY
+   ═══════════════════════════════════════════════════════════════ */
+
+.validity-active {
+  color: var(--accent-green);
+}
+
+.validity-expired {
+  color: var(--accent-red);
+  font-weight: 600;
+}
+
+.optimal-entry {
+  display: inline-block;
+  padding: var(--spacing-xs) var(--spacing-sm);
+  background: rgba(0, 200, 83, 0.15);
+  border: 1px solid var(--accent-green);
+  border-radius: var(--border-radius);
+  font-size: 0.75rem;
+  color: var(--accent-green);
+  margin-bottom: var(--spacing-sm);
+  animation: pulse-green 2s infinite;
+}
+
+@keyframes pulse-green {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+.signal-age {
+  display: inline-block;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  margin-bottom: var(--spacing-sm);
+}
+
+.signal-age.stale {
+  color: var(--accent-amber);
+}
+
+/* ═══════════════════════════════════════════════════════════════
    LOADING OVERLAY
    ═══════════════════════════════════════════════════════════════ */
 

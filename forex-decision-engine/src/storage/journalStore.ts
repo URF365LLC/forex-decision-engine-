@@ -251,11 +251,13 @@ class JournalStore {
 
   /**
    * Calculate P&L for an entry
-   * 
+   *
    * Forex: P&L = pips × pipValuePerLot × lots
-   *   - Standard lot = 100,000 units, pip value = $10 (or $1000 for JPY)
-   * Crypto: P&L = price_move × lots (direct units)
-   *   - Lots = actual units (e.g., 0.1 BTC)
+   *   - Standard lot = 100,000 units, pip value = $10 (or varies by quote currency)
+   * Crypto: P&L = price_move × lots × contractSize
+   *   - Must use contractSize from E8 specs (e.g., BTCUSD = 2, ADAUSD = 100000)
+   * Metals/Indices/Commodities: P&L = pips × pipValue × lots
+   *   - Use pipValue from E8 specs
    */
   calculatePnL(entry: TradeJournalEntry): { pnlPips: number; rMultiple: number; pnlDollars: number } | null {
     if (!entry.exitPrice || entry.status !== 'closed') return null;
@@ -272,7 +274,7 @@ class JournalStore {
     const riskDistance = Math.abs(entry.entryPrice - entry.stopLoss);
     const riskPips = riskDistance / pipSize;
     const rMultiple = riskPips > 0 ? pnlPips / riskPips : 0;
-    
+
     let pnlDollars: number;
     if (assetClass === 'crypto') {
       const contractSize = spec?.contractSize ?? 1;

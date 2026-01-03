@@ -162,12 +162,40 @@ const UI = {
     const noTradeReasonHTML = isNoTrade && decision.reason && decision.reason !== 'No trade setup found' ?
       `<div class="rejection-reason">🚫 ${decision.reason}</div>` : '';
 
-    // Build trade info section - handle NEXT_OPEN execution model
+    // Build trade info section - handle NEXT_OPEN execution model + tiered exits
     let tradeInfoHTML = '';
     if (!isNoTrade) {
-      const entryDisplay = decision.entryZone?.formatted || 
+      const entryDisplay = decision.entryZone?.formatted ||
         (decision.entry?.formatted ? `${decision.entry.formatted} (NEXT_OPEN)` : '—');
-      
+
+      // Tiered exit management display
+      const exitMgmt = decision.exitManagement;
+      const tp1 = exitMgmt?.tieredExits?.[0]; // TP1 at 1R
+      const tp2 = exitMgmt?.tieredExits?.[1]; // TP2 at 2R
+
+      const tieredExitsHTML = exitMgmt ? `
+        <div class="tiered-exits">
+          <div class="tiered-exit-header">📊 Exit Management (Tiered)</div>
+          <div class="tiered-exit-row">
+            <span class="tiered-label">TP1 (+1R)</span>
+            <span class="tiered-value">${tp1?.formatted || '—'}</span>
+            <span class="tiered-action">Close 50%, move SL to BE</span>
+          </div>
+          <div class="tiered-exit-row">
+            <span class="tiered-label">TP2 (+2R)</span>
+            <span class="tiered-value">${tp2?.formatted || '—'}</span>
+            <span class="tiered-action">Close remaining 50%</span>
+          </div>
+          ${exitMgmt.trailingStop ? `
+          <div class="tiered-exit-row trail">
+            <span class="tiered-label">Trail</span>
+            <span class="tiered-value">${exitMgmt.trailingStop.trailDistancePips} pips</span>
+            <span class="tiered-action">After TP1, trail stop behind price</span>
+          </div>
+          ` : ''}
+        </div>
+      ` : '';
+
       tradeInfoHTML = `
         <div class="card-trade-info">
           <div class="trade-item">
@@ -176,21 +204,22 @@ const UI = {
           </div>
           <div class="trade-item">
             <span class="trade-label">Stop Loss</span>
-            <span class="trade-value">${decision.stopLoss?.formatted || '—'}</span>
+            <span class="trade-value loss">${decision.stopLoss?.formatted || '—'}</span>
           </div>
           <div class="trade-item">
             <span class="trade-label">Take Profit</span>
-            <span class="trade-value">${decision.takeProfit?.formatted || '—'}</span>
+            <span class="trade-value profit">${decision.takeProfit?.formatted || '—'} (${decision.takeProfit?.rr || 2}R)</span>
           </div>
           <div class="trade-item">
             <span class="trade-label">Position</span>
             <span class="trade-value">${decision.position?.lots || '—'} lots</span>
           </div>
         </div>
+        ${tieredExitsHTML}
       `;
     }
 
-    // Format time
+    // Format time and validity window
     const timestamp = new Date(decision.timestamp).toLocaleString();
     const timing = decision.timing || {};
     const validUntil = new Date(timing.validUntil || decision.validUntil);
@@ -202,9 +231,9 @@ const UI = {
 
     // Signal freshness display
     const signalAgeDisplay = decision.timing?.signalAge?.display || '';
-    const isStale = decision.timing?.isStale || false;
+    const isStale = decision.timing?.isStale || isExpired;
     const staleClass = isStale ? 'stale-signal' : '';
-    const freshnessHTML = signalAgeDisplay ? 
+    const freshnessHTML = signalAgeDisplay ?
       `<span class="signal-age ${isStale ? 'stale' : ''}">🕐 Detected ${signalAgeDisplay}</span>` : '';
 
     // Sentiment display - no longer on decision object, fetched on-demand
@@ -227,6 +256,7 @@ const UI = {
           ${tradeInfoHTML}
           ${noTradeReasonHTML}
           ${warningsHTML}
+          ${optimalHTML}
           ${freshnessHTML}
           ${sentimentHTML}
           ${reasonCodesHTML}

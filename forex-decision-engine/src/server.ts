@@ -233,9 +233,9 @@ app.post('/api/analyze', async (req, res) => {
 app.post('/api/scan', async (req, res) => {
   const { symbols, settings, strategyId, force } = req.body;
   
-  // GATE 1: strategyId is REQUIRED (V1.1)
+  // GATE 1: strategyId is REQUIRED (V1.1) - Must be a specific strategy (no "all")
   const allStrategies = strategyRegistry.list().map(s => s.id);
-  
+
   if (!strategyId) {
     logger.warn('REJECTED: /api/scan called without strategyId');
     return res.status(400).json({
@@ -338,7 +338,7 @@ app.post('/api/scan', async (req, res) => {
         signalStore.saveSignal(decision as any);
       }
     }
-    
+
     // Sort by grade (A+ first), then by symbol for grouping
     const gradeOrder: Record<string, number> = { 'A+': 0, 'A': 1, 'B+': 2, 'B': 3, 'C': 4, 'no-trade': 5 };
     decisions.sort((a, b) => {
@@ -346,7 +346,7 @@ app.post('/api/scan', async (req, res) => {
       if (gradeCompare !== 0) return gradeCompare;
       return a.symbol.localeCompare(b.symbol);
     });
-    
+
     res.json({
       success: true,
       count: decisions.length,
@@ -685,15 +685,17 @@ app.get('/api/upgrades/recent', (req, res) => {
 
 app.post('/api/autoscan/start', (req, res) => {
   try {
-    const { minGrade = 'B', email, intervalMs = 5 * 60 * 1000 } = req.body;
+    const { minGrade = 'B', email, intervalMs = 5 * 60 * 1000, symbols, strategies } = req.body;
     
     autoScanService.start({
       minGrade,
       email,
       intervalMs,
+      symbols,
+      strategies,
       onNewSignal: (decision, isNew) => {
-        if (isNew && email) {
-          alertService.sendTradeAlert(decision, email).catch(err => {
+        if (email) {
+          alertService.sendTradeAlert(decision, email, { isNew }).catch(err => {
             logger.error(`Alert email failed: ${err}`);
           });
         }
