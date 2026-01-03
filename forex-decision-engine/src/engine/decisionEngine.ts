@@ -101,6 +101,13 @@ export interface UserSettings {
   riskPercent: number;
   style: TradingStyle;
   timezone?: string;
+  paperTrading?: boolean;
+  equity?: number;
+  accountId?: string;
+  startOfDayEquity?: number;
+  peakEquity?: number;
+  dailyLossLimitPct?: number;
+  maxDrawdownPct?: number;
 }
 
 // ═══════════════════════════════════════════════════════════════

@@ -446,3 +446,56 @@ export function clearStrategyCache(strategyId?: string): number {
   }
   return cache.deletePattern('decision:*');
 }
+
+/**
+ * Scan symbols with ALL strategies
+ * Returns ONLY actionable trade signals (filters out no-trade)
+ * Each decision includes strategyId for unique identification
+ */
+export async function scanWithAllStrategies(
+  symbols: string[],
+  settings: UserSettings,
+  onProgress?: (current: number, total: number, symbol: string) => void
+): Promise<StrategyDecision[]> {
+  const allStrategies = strategyRegistry.list();
+  const results: StrategyDecision[] = [];
+  
+  const totalOperations = symbols.length * allStrategies.length;
+  let currentOp = 0;
+  
+  logger.info(`Starting multi-strategy scan: ${symbols.length} symbols × ${allStrategies.length} strategies = ${totalOperations} operations`);
+  
+  for (const symbol of symbols) {
+    for (const strategyMeta of allStrategies) {
+      currentOp++;
+      
+      if (onProgress) {
+        onProgress(currentOp, totalOperations, `${symbol} (${strategyMeta.name})`);
+      }
+      
+      const cacheKey = makeDecisionCacheKey(symbol, strategyMeta.id);
+      logger.debug(`[CACHE] Checking key: ${cacheKey}`);
+      
+      const result = await analyzeWithStrategy(symbol, strategyMeta.id, settings);
+      
+      if (result.decision && result.decision.grade !== 'no-trade') {
+        logger.debug(`[CACHE] Trade signal: ${cacheKey} → grade=${result.decision.grade}`);
+        results.push(result.decision);
+      } else {
+        logger.debug(`[CACHE] No trade: ${cacheKey} (filtered from multi-strategy results)`);
+      }
+    }
+  }
+  
+  const tradeCount = results.length;
+  logger.info(`Multi-strategy scan complete: ${tradeCount} trade signals found across ${totalOperations} analyses`);
+  
+  return results;
+}
+
+/**
+ * Helper to create unique decision key for frontend
+ */
+export function makeDecisionKey(decision: StrategyDecision): string {
+  return `${decision.strategyId}:${decision.symbol}:${decision.timestamp}`;
+}

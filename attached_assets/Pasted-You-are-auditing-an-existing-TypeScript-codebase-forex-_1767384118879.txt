@@ -1,0 +1,39 @@
+You are auditing an existing TypeScript codebase: forex-decision-engine.
+Goal: Compare implemented strategies vs PROP-GRADE-STRATEGY-STANDARD.md and STRATEGY-AUDIT.md and report compliance, bugs, and exact patch diffs.
+
+SCOPE:
+- Strategies folder: all strategy files (9 total)
+- Shared utilities: validateIndicators, validateOrder, atIndex, buildDecision, position sizing
+- Any modules referenced by strategies: trendBarsH4, ema200H4, adxH4, session filter, volatility gate
+
+TASKS (DO NOT SUMMARIZE — SHOW CODE):
+1) For EACH strategy:
+   A) List meta.requiredIndicators and meta.timeframes (if missing, flag)
+   B) Identify trend filter source:
+      - Is trend H4 EMA200 + ADX per standard? If not, flag as non-compliant.
+   C) Verify minBars:
+      - If strategy uses EMA200 or H4 trend, require minBars >= 250. If lower, flag.
+   D) Verify entry model:
+      - Show signalIdx and entryIdx logic and whether it uses CLOSED bar for signal and a deterministic entry.
+   E) Verify SL/TP math:
+      - Show SL formula and TP formula.
+      - Compute theoretical RR = |TP-entry| / |entry-SL| and confirm >= strategy minimum.
+      - If any conditional caps modify TP (ex: BB middle cap), re-check RR after the cap.
+   F) Verify counter-trend handling:
+      - Must apply standard penalty (-30) or reject per strategy type.
+   G) Output: verdict per strategy: PASS / FAIL, with exact file+line+code blocks.
+
+2) Cross-strategy consistency checks:
+   - All strategies must use same trend framework definition.
+   - Confidence scoring must use the same point constants.
+   - Session filter + volatility gate must exist and be applied consistently (or explain why not).
+
+3) Produce:
+   - A compliance matrix table:
+     Strategy | H4 Trend | Session Gate | Volatility Gate | minBars>=250 | RR enforced | Counter-trend rule | timeframes meta | Verdict
+   - A patch plan ordered by severity (critical -> high -> medium)
+   - For each critical fix: provide a ready-to-paste code diff.
+
+CONSTRAINTS:
+- No assumptions. If a requirement is not implemented, mark FAIL.
+- If behavior depends on data ordering (oldest/newest), locate where bars are sorted/reversed and cite the exact lines.

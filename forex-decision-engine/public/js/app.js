@@ -127,9 +127,10 @@ const App = {
       const strategies = await response.json();
       this.strategies = strategies;
       
-      dropdown.innerHTML = strategies.map(s => 
-        `<option value="${s.id}">${s.name} (${s.winRate}% WR)</option>`
-      ).join('');
+      dropdown.innerHTML = `<option value="all">All Strategies</option>` +
+        strategies.map(s => 
+          `<option value="${s.id}">${s.name} (${s.winRate}% WR)</option>`
+        ).join('');
       
       // Restore saved selection or use first option
       const saved = localStorage.getItem('selectedStrategy');
@@ -443,9 +444,10 @@ const App = {
 
   /**
    * Copy signal to clipboard
+   * @param {string} decisionKey - format: strategyId:symbol
    */
-  async copySignal(symbol) {
-    const decision = this.results.find(d => d.symbol === symbol);
+  async copySignal(decisionKey) {
+    const decision = this.findDecisionByKey(decisionKey);
     if (!decision) return;
 
     const text = this.formatSignalText(decision);
@@ -456,6 +458,14 @@ const App = {
     } catch {
       UI.toast('Failed to copy', 'error');
     }
+  },
+
+  /**
+   * Find decision by compound key (strategyId:symbol)
+   */
+  findDecisionByKey(decisionKey) {
+    const [strategyId, symbol] = decisionKey.split(':');
+    return this.results.find(d => d.strategyId === strategyId && d.symbol === symbol);
   },
 
   /**
@@ -530,8 +540,8 @@ const App = {
 
   sentimentCache: {},
 
-  async fetchSentiment(symbol) {
-    const container = document.getElementById(`sentiment-${symbol}`);
+  async fetchSentiment(symbol, containerId) {
+    const container = document.getElementById(containerId);
     if (!container) return;
 
     if (this.sentimentCache[symbol]) {
@@ -572,9 +582,10 @@ const App = {
 
   /**
    * Log trade from signal card
+   * @param {string} decisionKey - format: strategyId:symbol
    */
-  logTrade(symbol, action) {
-    const decision = this.results.find(d => d.symbol === symbol);
+  logTrade(decisionKey, action) {
+    const decision = this.findDecisionByKey(decisionKey);
     if (!decision) {
       UI.toast('Signal not found', 'error');
       return;
