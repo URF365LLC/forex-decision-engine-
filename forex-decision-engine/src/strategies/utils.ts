@@ -23,6 +23,8 @@ import { createLogger } from '../services/logger.js';
 import { getCryptoContractSize, DEFAULTS } from '../config/defaults.js';
 import { trackSignal } from '../storage/signalFreshnessTracker.js';
 import { formatSignalAge, isStale, formatEntryPrice } from '../utils/timeUtils.js';
+import { getInstrumentSpec } from '../config/e8InstrumentSpecs.js';
+import { getCurrentSession, TradingSession } from '../utils/timezone.js';
 
 const logger = createLogger('StrategyUtils');
 
@@ -156,6 +158,7 @@ export function calculatePositionSize(
 ): PositionSizeResult {
   const warnings: string[] = [];
   let isValid = true;
+  let contractSize: number | null = null;
   
   if (!accountSize || accountSize <= 0 || !isFinite(accountSize)) {
     logger.warn('Invalid account size for position sizing', { symbol, accountSize });
@@ -176,7 +179,11 @@ export function calculatePositionSize(
   let marginLimited = false;
   
   if (isCrypto) {
-    const contractSize = getCryptoContractSize(symbol);
+    contractSize = getCryptoContractSize(symbol);
+    if (!contractSize) {
+      warnings.push('Unknown crypto contract size - sizing halted');
+      return { lots: 0, units: 0, riskAmount: 0, isApproximate: false, isValid: false, warnings };
+    }
     const stopDistance = stopLossPrice 
       ? Math.abs(entryPrice - stopLossPrice)
       : stopLossPips;
@@ -258,7 +265,7 @@ export function calculatePositionSize(
   }
   
   lots = Math.round(lots * 100) / 100;
-  const units = isCrypto ? lots * getCryptoContractSize(symbol) : Math.round(lots * 100000);
+  const units = isCrypto && contractSize ? lots * contractSize : Math.round(lots * 100000);
   
   return { 
     lots, 
@@ -267,6 +274,196 @@ export function calculatePositionSize(
     isApproximate,
     isValid,
     warnings
+  };
+}
+
+type AssetClass = 'forex' | 'metal' | 'crypto' | 'index' | 'commodity';
+
+export interface SessionTpProfile {
+  enabled?: boolean;
+  offPeakSessions?: TradingSession[];
+  reductionPct?: number;
+  assetClassOverrides?: Partial<Record<AssetClass, { reductionPct?: number; sessions?: TradingSession[] }>>;
+}
+
+export const DEFAULT_SESSION_TP_PROFILE: SessionTpProfile = {
+  enabled: true,
+  offPeakSessions: ['sydney', 'tokyo'],
+  reductionPct: 0.2,
+  assetClassOverrides: {
+    crypto: { reductionPct: 0, sessions: [] },      // 24/7 liquidity - no reduction
+    metal: { reductionPct: 0.15, sessions: ['sydney', 'tokyo'] },
+    index: { reductionPct: 0.25, sessions: ['sydney', 'tokyo'] },
+  },
+};
+
+export interface AdaptiveTakeProfitConfig {
+  preferStructure?: boolean;
+  structureLookback?: number;
+  rrTarget?: number;
+  atrMultiplier?: number;
+  allowAtrFallback?: boolean;
+  sessionProfile?: SessionTpProfile;
+}
+
+interface ResolveTpInput {
+  symbol: string;
+  direction: SignalDirection;
+  entryPrice: number;
+  stopLoss: number;
+  desiredTakeProfit: number;
+  bars?: Bar[];
+  atr?: number | null;
+  config?: AdaptiveTakeProfitConfig;
+}
+
+interface ResolveTpResult {
+  price: number;
+  pips: number;
+  rr: number;
+  source: 'rr' | 'structure' | 'atr' | 'session-adjusted';
+  notes: string[];
+}
+
+function findStructureTarget(
+  bars: Bar[] | undefined,
+  direction: SignalDirection,
+  entryPrice: number,
+  lookback: number
+): number | null {
+  if (!bars || bars.length < 5) return null;
+  
+  const pivot = 2;
+  const slice = bars.slice(-Math.max(lookback, pivot * 2 + 1));
+  const candidates: number[] = [];
+  
+  for (let i = pivot; i < slice.length - pivot; i++) {
+    const window = slice.slice(i - pivot, i + pivot + 1);
+    const high = Math.max(...window.map(b => b.high));
+    const low = Math.min(...window.map(b => b.low));
+    const bar = slice[i];
+    
+    if (direction === 'long' && bar.high === high && bar.high > entryPrice) {
+      candidates.push(bar.high);
+    }
+    if (direction === 'short' && bar.low === low && bar.low < entryPrice) {
+      candidates.push(bar.low);
+    }
+  }
+  
+  if (candidates.length === 0) return null;
+  
+  if (direction === 'long') {
+    const nearest = candidates.reduce((best, price) => 
+      price >= entryPrice && price < best ? price : best
+    , Infinity);
+    return Number.isFinite(nearest) && nearest !== Infinity ? nearest : Math.max(...candidates);
+  }
+  
+  const nearestShort = candidates.reduce((best, price) => 
+    price <= entryPrice && price > best ? price : best
+  , -Infinity);
+  return Number.isFinite(nearestShort) && nearestShort !== -Infinity ? nearestShort : Math.min(...candidates);
+}
+
+function applySessionTpAdjustment(params: {
+  symbol: string;
+  entryPrice: number;
+  targetPrice: number;
+  direction: SignalDirection;
+  profile: SessionTpProfile;
+}): { price: number; note: string } | null {
+  const { symbol, entryPrice, targetPrice, direction, profile } = params;
+  if (!profile?.enabled) return null;
+  
+  const assetClass = (getInstrumentSpec(symbol)?.type || 'forex') as AssetClass;
+  const session = getCurrentSession();
+  const baseReduction = profile.reductionPct ?? 0;
+  const baseSessions = profile.offPeakSessions ?? [];
+  const override = profile.assetClassOverrides?.[assetClass];
+  const reduction = override?.reductionPct ?? baseReduction;
+  const sessions = override?.sessions ?? baseSessions;
+  
+  if (!reduction || reduction <= 0 || sessions.length === 0) return null;
+  if (!sessions.includes(session)) return null;
+  
+  const distance = Math.abs(targetPrice - entryPrice);
+  const adjustedDistance = distance * (1 - reduction);
+  const price = direction === 'long'
+    ? entryPrice + adjustedDistance
+    : entryPrice - adjustedDistance;
+  
+  return {
+    price,
+    note: `Session ${session} adjustment: TP reduced by ${(reduction * 100).toFixed(0)}% for ${assetClass}`,
+  };
+}
+
+function resolveTakeProfit(input: ResolveTpInput): ResolveTpResult {
+  const { symbol, direction, entryPrice, stopLoss, desiredTakeProfit, bars, atr, config } = input;
+  const { pipSize } = getPipInfo(symbol);
+  const riskPips = Math.abs(entryPrice - stopLoss) / pipSize;
+  const baseTpPips = Math.abs(desiredTakeProfit - entryPrice) / pipSize;
+  const baseRr = safeDiv(baseTpPips, riskPips, 0);
+  
+  const preferStructure = config?.preferStructure ?? false;
+  const structureLookback = config?.structureLookback ?? 60;
+  const rrTarget = config?.rrTarget ?? (baseRr || 2);
+  const atrMultiplier = config?.atrMultiplier ?? rrTarget;
+  const allowAtrFallback = config?.allowAtrFallback ?? true;
+  
+  let targetPrice = desiredTakeProfit;
+  let source: ResolveTpResult['source'] = 'rr';
+  const notes: string[] = [];
+  
+  if (preferStructure) {
+    const structureTarget = findStructureTarget(bars, direction, entryPrice, structureLookback);
+    if (structureTarget !== null) {
+      const structurePips = Math.abs(structureTarget - entryPrice) / pipSize;
+      const structureRr = safeDiv(structurePips, riskPips, 0);
+      if (structureRr >= 1 || structureRr >= rrTarget * 0.65) {
+        targetPrice = structureTarget;
+        source = 'structure';
+        notes.push(`Structure TP from recent swing (${structureRr.toFixed(2)}R)`);
+      } else {
+        notes.push(`Structure TP rejected: only ${structureRr.toFixed(2)}R`);
+      }
+    }
+  }
+  
+  if (source === 'rr' && allowAtrFallback && atr && atr > 0) {
+    const atrDistance = atr * atrMultiplier;
+    targetPrice = direction === 'long'
+      ? entryPrice + atrDistance
+      : entryPrice - atrDistance;
+    source = 'atr';
+    const atrRr = safeDiv((atrDistance / pipSize), riskPips, rrTarget);
+    notes.push(`ATR fallback (${atrMultiplier.toFixed(2)}x ATR ≈ ${atrRr.toFixed(2)}R)`);
+  }
+  
+  const sessionAdjustment = applySessionTpAdjustment({
+    symbol,
+    entryPrice,
+    targetPrice,
+    direction,
+    profile: config?.sessionProfile ?? DEFAULT_SESSION_TP_PROFILE,
+  });
+  
+  if (sessionAdjustment) {
+    targetPrice = sessionAdjustment.price;
+    source = 'session-adjusted';
+    notes.push(sessionAdjustment.note);
+  }
+  
+  const tpPips = Math.abs(targetPrice - entryPrice) / pipSize;
+  const rr = safeDiv(tpPips, riskPips, 0);
+  
+  return {
+    price: targetPrice,
+    pips: Math.round(tpPips * 10) / 10,
+    rr: Math.round(rr * 10) / 10,
+    source,
+    notes,
   };
 }
 
@@ -283,6 +480,9 @@ export interface DecisionParams {
   reasonCodes: ReasonCode[];
   settings: UserSettings;
   timeframes?: { trend: string; entry: string };
+  bars?: Bar[];
+  atr?: number | null;
+  takeProfitConfig?: AdaptiveTakeProfitConfig;
 }
 
 const STYLE_TIMEFRAMES: Record<TradingStyle, { trend: string; entry: string }> = {
@@ -315,14 +515,40 @@ export function buildDecision(params: DecisionParams): Decision {
     reasonCodes,
     settings,
     timeframes: strategyTimeframes,
+    bars,
+    atr,
+    takeProfitConfig,
   } = params;
 
   const grade = calculateGrade(confidence);
   const { pipSize, digits } = getPipInfo(symbol);
   
   const stopLossPips = Math.abs(entryPrice - stopLoss) / pipSize;
-  const takeProfitPips = Math.abs(takeProfit - entryPrice) / pipSize;
-  const rr = safeDiv(takeProfitPips, stopLossPips, 0);
+  const baseTpPips = Math.abs(takeProfit - entryPrice) / pipSize;
+  const baseRr = safeDiv(baseTpPips, stopLossPips, 0);
+  
+  const adaptiveTp = takeProfitConfig
+    ? resolveTakeProfit({
+        symbol,
+        direction,
+        entryPrice,
+        stopLoss,
+        desiredTakeProfit: takeProfit,
+        bars,
+        atr,
+        config: takeProfitConfig,
+      })
+    : {
+        price: takeProfit,
+        pips: Math.round(baseTpPips * 10) / 10,
+        rr: Math.round(baseRr * 10) / 10,
+        source: 'rr' as const,
+        notes: [] as string[],
+      };
+  
+  const takeProfitPrice = adaptiveTp.price;
+  const takeProfitPips = adaptiveTp.pips;
+  const rr = adaptiveTp.rr;
   
   const position = calculatePositionSize(
     symbol,
@@ -364,11 +590,13 @@ export function buildDecision(params: DecisionParams): Decision {
       formatted: formatPrice(stopLoss, symbol),
     },
     takeProfit: {
-      price: takeProfit,
+      price: takeProfitPrice,
       pips: Math.round(takeProfitPips * 10) / 10,
       rr: Math.round(rr * 10) / 10,
-      formatted: formatPrice(takeProfit, symbol),
+      formatted: formatPrice(takeProfitPrice, symbol),
     },
+    takeProfitSource: adaptiveTp.source,
+    takeProfitNotes: adaptiveTp.notes,
     position,
     reason: triggers.join('. '),
     triggers,

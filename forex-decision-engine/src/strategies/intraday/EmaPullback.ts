@@ -7,7 +7,7 @@
  */
 
 import { IStrategy, StrategyMeta, Decision, IndicatorData, UserSettings, ReasonCode } from '../types.js';
-import { atIndex, validateOrder, validateIndicators, buildDecision, normalizedSlope, clamp } from '../utils.js';
+import { atIndex, validateOrder, validateIndicators, buildDecision, normalizedSlope, clamp, DEFAULT_SESSION_TP_PROFILE } from '../utils.js';
 import {
   runPreFlight, logPreFlight, allValidNumbers, isTrendAligned, getTrendConfidenceAdjustment,
 } from '../SignalQualityGate.js';
@@ -128,6 +128,15 @@ export class EmaPullback implements IStrategy {
       symbol, strategyId: this.meta.id, strategyName: this.meta.name,
       direction, confidence, entryPrice, stopLoss: stopLossPrice, takeProfit: takeProfitPrice,
       triggers, reasonCodes, settings, timeframes: this.meta.timeframes,
+      bars,
+      atr: atrSignal ?? null,
+      takeProfitConfig: {
+        preferStructure: true,
+        structureLookback: 60,
+        rrTarget: 2,
+        atrMultiplier: 2,
+        sessionProfile: DEFAULT_SESSION_TP_PROFILE,
+      },
     });
   }
 }

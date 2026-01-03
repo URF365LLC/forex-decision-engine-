@@ -13,6 +13,8 @@ const logger = createLogger('SignalStore');
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const MAX_SIGNAL_ENTRIES = 5000;
+const SIGNAL_ARCHIVE_DIR = path.join(__dirname, '../../data/archive');
 
 // ═══════════════════════════════════════════════════════════════
 // TYPES
@@ -52,6 +54,30 @@ class SignalStore {
     this.filePath = filePath || path.join(__dirname, '../../data/signals.json');
     this.load();
   }
+  
+  private archiveOverflow(): void {
+    if (this.signals.length <= MAX_SIGNAL_ENTRIES) return;
+    
+    const overflow = this.signals.length - MAX_SIGNAL_ENTRIES;
+    const archiveSignals = this.signals.slice(0, overflow);
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const archiveFile = path.join(SIGNAL_ARCHIVE_DIR, `signals-archive-${timestamp}.json`);
+    
+    try {
+      if (!fs.existsSync(SIGNAL_ARCHIVE_DIR)) {
+        fs.mkdirSync(SIGNAL_ARCHIVE_DIR, { recursive: true });
+      }
+      fs.writeFileSync(archiveFile, JSON.stringify({
+        archivedAt: new Date().toISOString(),
+        count: archiveSignals.length,
+        signals: archiveSignals,
+      }, null, 2));
+      this.signals = this.signals.slice(overflow);
+      logger.warn(`Archived ${archiveSignals.length} signals to control storage growth (${archiveFile})`);
+    } catch (error) {
+      logger.error('Failed to archive old signals', { error });
+    }
+  }
 
   private load(): void {
     try {
@@ -59,6 +85,7 @@ class SignalStore {
         const data = JSON.parse(fs.readFileSync(this.filePath, 'utf-8'));
         this.signals = data.signals || [];
         this.nextId = data.nextId || 1;
+        this.archiveOverflow();
         logger.info(`Loaded ${this.signals.length} signals from file`);
       }
     } catch (e) {
@@ -71,6 +98,7 @@ class SignalStore {
   private persist(): void {
     const tempPath = `${this.filePath}.tmp`;
     try {
+      this.archiveOverflow();
       const dir = path.dirname(this.filePath);
       if (!fs.existsSync(dir)) {
         fs.mkdirSync(dir, { recursive: true });

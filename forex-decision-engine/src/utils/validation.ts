@@ -263,6 +263,45 @@ export function validateJournalUpdate(data: Record<string, unknown>): JournalVal
     }
   }
   
+  if (data.mfePrice !== undefined) {
+    const mfe = Number(data.mfePrice);
+    if (isNaN(mfe) || mfe <= 0 || !isFinite(mfe)) {
+      errors.push({ field: 'mfePrice', message: 'MFE price must be a positive number', value: data.mfePrice });
+    }
+  }
+  
+  if (data.maePrice !== undefined) {
+    const mae = Number(data.maePrice);
+    if (isNaN(mae) || mae <= 0 || !isFinite(mae)) {
+      errors.push({ field: 'maePrice', message: 'MAE price must be a positive number', value: data.maePrice });
+    }
+  }
+  
+  if (data.mfeTimestamp !== undefined && typeof data.mfeTimestamp !== 'string') {
+    errors.push({ field: 'mfeTimestamp', message: 'MFE timestamp must be an ISO string', value: data.mfeTimestamp });
+  }
+  
+  if (data.mfePips !== undefined) {
+    const mfePips = Number(data.mfePips);
+    if (isNaN(mfePips) || !isFinite(mfePips)) {
+      errors.push({ field: 'mfePips', message: 'MFE pips must be a number', value: data.mfePips });
+    }
+  }
+  
+  if (data.maePips !== undefined) {
+    const maePips = Number(data.maePips);
+    if (isNaN(maePips) || !isFinite(maePips)) {
+      errors.push({ field: 'maePips', message: 'MAE pips must be a number', value: data.maePips });
+    }
+  }
+  
+  if (data.distanceToTpAtMfe !== undefined) {
+    const distance = Number(data.distanceToTpAtMfe);
+    if (isNaN(distance) || distance < 0 || !isFinite(distance)) {
+      errors.push({ field: 'distanceToTpAtMfe', message: 'Distance to TP at MFE must be zero or a positive number', value: data.distanceToTpAtMfe });
+    }
+  }
+  
   if (data.lots !== undefined) {
     const lots = Number(data.lots);
     if (isNaN(lots) || lots <= 0 || !isFinite(lots)) {

@@ -11,7 +11,7 @@
  */
 
 import { IStrategy, StrategyMeta, Decision, IndicatorData, UserSettings, ReasonCode } from '../types.js';
-import { atIndex, validateOrder, validateIndicators, buildDecision, isRejectionCandle, clamp } from '../utils.js';
+import { atIndex, validateOrder, validateIndicators, buildDecision, isRejectionCandle, clamp, DEFAULT_SESSION_TP_PROFILE } from '../utils.js';
 import {
   runPreFlight, logPreFlight, isValidBBand, allValidNumbers,
   isTrendAligned, getTrendConfidenceAdjustment,
@@ -116,6 +116,15 @@ export class BollingerMR implements IStrategy {
       symbol, strategyId: this.meta.id, strategyName: this.meta.name,
       direction, confidence, entryPrice, stopLoss: stopLossPrice, takeProfit: takeProfitPrice,
       triggers, reasonCodes, settings, timeframes: this.meta.timeframes,
+      bars,
+      atr: atrSignal ?? null,
+      takeProfitConfig: {
+        preferStructure: true,
+        structureLookback: 80,
+        rrTarget: 1.5,
+        atrMultiplier: 1.5,
+        sessionProfile: DEFAULT_SESSION_TP_PROFILE,
+      },
     });
   }
 }

@@ -15,6 +15,9 @@ const logger = createLogger('JournalStore');
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+const MAX_JOURNAL_ENTRIES = 3000;
+const JOURNAL_ARCHIVE_DIR = path.join(__dirname, '../../data/archive');
+
 // ═══════════════════════════════════════════════════════════════
 // TYPES
 // ═══════════════════════════════════════════════════════════════
@@ -53,6 +56,14 @@ export interface TradeJournalEntry {
   stopLoss: number;
   takeProfit: number;
   lots: number;
+  
+  // Trade performance metrics
+  mfePrice?: number;
+  maePrice?: number;
+  mfePips?: number;
+  maePips?: number;
+  mfeTimestamp?: string;
+  distanceToTpAtMfe?: number;
   
   status: TradeStatus;
   action: TradeAction;
@@ -93,6 +104,9 @@ export interface JournalStats {
   totalPnlPips: number;
   totalPnlDollars: number;
   byType: Record<string, { taken: number; wins: number; winRate: number }>;
+  avgMfePips: number;
+  avgMaePips: number;
+  avgDistanceToTpAtMfe: number;
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -107,12 +121,83 @@ class JournalStore {
     this.filePath = filePath || path.join(__dirname, '../../data/journal.json');
     this.load();
   }
+  
+  private getPipSize(symbol: string): number {
+    const spec = getInstrumentSpec(symbol);
+    const decimals = spec?.digits ?? 4;
+    return Math.pow(10, -decimals);
+  }
+  
+  private recalcExcursions(entry: TradeJournalEntry): TradeJournalEntry {
+    const pipSize = this.getPipSize(entry.symbol);
+    const directionFactor = entry.direction === 'long' ? 1 : -1;
+    const entryPrice = entry.entryPrice;
+    const hasTakeProfit = typeof entry.takeProfit === 'number' && Number.isFinite(entry.takeProfit);
+    const updatedEntry = { ...entry };
+    
+    if (typeof entry.mfePrice === 'number' && Number.isFinite(entry.mfePrice)) {
+      const mfePips = ((entry.mfePrice - entryPrice) * directionFactor) / pipSize;
+      updatedEntry.mfePips = Math.round(mfePips * 10) / 10;
+      if (hasTakeProfit) {
+        const distance = (((entry.takeProfit as number) - entry.mfePrice) * directionFactor) / pipSize;
+        updatedEntry.distanceToTpAtMfe = Math.round(Math.max(0, distance) * 10) / 10;
+      }
+    }
+    
+    if (typeof entry.maePrice === 'number' && Number.isFinite(entry.maePrice)) {
+      const maePips = ((entry.maePrice - entryPrice) * directionFactor) / pipSize;
+      updatedEntry.maePips = Math.round(maePips * 10) / 10;
+    }
+    
+    return updatedEntry;
+  }
+  
+  private mergeAndNormalize(entry: TradeJournalEntry, updates: Partial<TradeJournalEntry>): TradeJournalEntry {
+    const merged: TradeJournalEntry = {
+      ...entry,
+      ...updates,
+      id: entry.id,
+      createdAt: entry.createdAt,
+      updatedAt: new Date().toISOString(),
+    };
+    
+    if (updates.status === 'closed' && !entry.closedAt) {
+      merged.closedAt = new Date().toISOString();
+    }
+    
+    return this.recalcExcursions(merged);
+  }
+  
+  private archiveOverflow(): void {
+    if (this.entries.length <= MAX_JOURNAL_ENTRIES) return;
+    
+    const overflow = this.entries.length - MAX_JOURNAL_ENTRIES;
+    const archiveEntries = this.entries.slice(0, overflow);
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const archiveFile = path.join(JOURNAL_ARCHIVE_DIR, `journal-archive-${timestamp}.json`);
+    
+    try {
+      if (!fs.existsSync(JOURNAL_ARCHIVE_DIR)) {
+        fs.mkdirSync(JOURNAL_ARCHIVE_DIR, { recursive: true });
+      }
+      fs.writeFileSync(archiveFile, JSON.stringify({
+        archivedAt: new Date().toISOString(),
+        count: archiveEntries.length,
+        entries: archiveEntries,
+      }, null, 2));
+      this.entries = this.entries.slice(overflow);
+      logger.warn(`Archived ${archiveEntries.length} journal entries to cap file growth (${archiveFile})`);
+    } catch (error) {
+      logger.error('Failed to archive old journal entries', { error });
+    }
+  }
 
   private load(): void {
     try {
       if (fs.existsSync(this.filePath)) {
         const data = JSON.parse(fs.readFileSync(this.filePath, 'utf-8'));
-        this.entries = data.entries || [];
+        this.entries = (data.entries || []).map((entry: TradeJournalEntry) => this.recalcExcursions(entry));
+        this.archiveOverflow();
         logger.info(`Loaded ${this.entries.length} journal entries from file`);
       }
     } catch (e) {
@@ -124,6 +209,7 @@ class JournalStore {
   private persist(): void {
     const tempPath = `${this.filePath}.tmp`;
     try {
+      this.archiveOverflow();
       const dir = path.dirname(this.filePath);
       if (!fs.existsSync(dir)) {
         fs.mkdirSync(dir, { recursive: true });
@@ -156,11 +242,12 @@ class JournalStore {
       updatedAt: now,
     };
 
-    this.entries.push(newEntry);
+    const normalized = this.recalcExcursions(newEntry);
+    this.entries.push(normalized);
     this.persist();
 
-    logger.info(`Added journal entry ${newEntry.id} for ${entry.symbol} (${entry.action})`);
-    return newEntry;
+    logger.info(`Added journal entry ${normalized.id} for ${entry.symbol} (${entry.action})`);
+    return normalized;
   }
 
   /**
@@ -171,18 +258,7 @@ class JournalStore {
     if (index === -1) return null;
 
     const entry = this.entries[index];
-    
-    const updatedEntry: TradeJournalEntry = {
-      ...entry,
-      ...updates,
-      id: entry.id,
-      createdAt: entry.createdAt,
-      updatedAt: new Date().toISOString(),
-    };
-
-    if (updates.status === 'closed' && !entry.closedAt) {
-      updatedEntry.closedAt = new Date().toISOString();
-    }
+    const updatedEntry = this.mergeAndNormalize(entry, updates);
 
     this.entries[index] = updatedEntry;
     this.persist();
@@ -325,6 +401,20 @@ class JournalStore {
 
     const totalPnlPips = closed.reduce((sum, e) => sum + (e.pnlPips || 0), 0);
     const totalPnlDollars = closed.reduce((sum, e) => sum + (e.pnlDollars || 0), 0);
+    
+    const mfeSamples = closed.filter(e => typeof e.mfePips === 'number');
+    const maeSamples = closed.filter(e => typeof e.maePips === 'number');
+    const distanceSamples = closed.filter(e => typeof e.distanceToTpAtMfe === 'number');
+    
+    const avgMfePips = mfeSamples.length > 0
+      ? mfeSamples.reduce((sum, e) => sum + (e.mfePips || 0), 0) / mfeSamples.length
+      : 0;
+    const avgMaePips = maeSamples.length > 0
+      ? maeSamples.reduce((sum, e) => sum + (e.maePips || 0), 0) / maeSamples.length
+      : 0;
+    const avgDistanceToTpAtMfe = distanceSamples.length > 0
+      ? distanceSamples.reduce((sum, e) => sum + (e.distanceToTpAtMfe || 0), 0) / distanceSamples.length
+      : 0;
 
     const byType: Record<string, { taken: number; wins: number; winRate: number }> = {};
     const types: TradeType[] = ['pullback', 'counter-trend', 'liquidity-grab', 'exhaustion', 'other'];
@@ -358,6 +448,9 @@ class JournalStore {
       totalPnlPips: Math.round(totalPnlPips * 10) / 10,
       totalPnlDollars: Math.round(totalPnlDollars * 100) / 100,
       byType,
+      avgMfePips: Math.round(avgMfePips * 10) / 10,
+      avgMaePips: Math.round(avgMaePips * 10) / 10,
+      avgDistanceToTpAtMfe: Math.round(avgDistanceToTpAtMfe * 10) / 10,
     };
   }
 
@@ -384,6 +477,10 @@ class JournalStore {
       'PnL Pips',
       'PnL $',
       'R-Multiple',
+      'MFE (pips)',
+      'MAE (pips)',
+      'MFE Time',
+      'Dist to TP @ MFE',
       'Notes',
     ];
 
@@ -404,6 +501,10 @@ class JournalStore {
       e.pnlPips || '',
       e.pnlDollars || '',
       e.rMultiple || '',
+      e.mfePips || '',
+      e.maePips || '',
+      e.mfeTimestamp || '',
+      e.distanceToTpAtMfe || '',
       `"${(e.notes || '').replace(/"/g, '""')}"`,
     ]);
 

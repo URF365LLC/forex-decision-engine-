@@ -7,7 +7,7 @@
  */
 
 import type { IStrategy, StrategyMeta, Decision, IndicatorData, UserSettings, ReasonCode, SignalDirection, Bar } from '../types.js';
-import { atIndex, validateOrder, buildDecision, clamp } from '../utils.js';
+import { atIndex, validateOrder, buildDecision, clamp, DEFAULT_SESSION_TP_PROFILE } from '../utils.js';
 import { runPreFlight, logPreFlight, isValidNumber } from '../SignalQualityGate.js';
 
 const MIN_RSI_LOOKBACK = 3;
@@ -188,6 +188,15 @@ export class RsiOversold implements IStrategy {
       symbol, strategyId: this.meta.id, strategyName: this.meta.name,
       direction, confidence, entryPrice, stopLoss: stopLossPrice, takeProfit: takeProfitPrice,
       triggers, reasonCodes, settings, timeframes: this.meta.timeframes,
+      bars,
+      atr: atrSignal ?? null,
+      takeProfitConfig: {
+        preferStructure: true,
+        structureLookback: 70,
+        rrTarget: MIN_RR,
+        atrMultiplier: MIN_RR,
+        sessionProfile: DEFAULT_SESSION_TP_PROFILE,
+      },
     });
   }
 }

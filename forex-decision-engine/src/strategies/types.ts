@@ -190,6 +190,8 @@ export interface Decision {
   entryZone: null;
   stopLoss: { price: number; pips: number; formatted: string } | null;
   takeProfit: { price: number; pips: number; rr: number; formatted: string } | null;
+  takeProfitSource?: 'rr' | 'structure' | 'atr' | 'manual' | 'session-adjusted';
+  takeProfitNotes?: string[];
   position: { 
     lots: number; 
     units: number; 

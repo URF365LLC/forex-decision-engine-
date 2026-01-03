@@ -11,7 +11,7 @@
  */
 
 import { IStrategy, StrategyMeta, Decision, IndicatorData, UserSettings, ReasonCode, Bar } from '../types.js';
-import { atIndex, validateOrder, buildDecision, clamp } from '../utils.js';
+import { atIndex, validateOrder, buildDecision, clamp, DEFAULT_SESSION_TP_PROFILE } from '../utils.js';
 import {
   runPreFlight, logPreFlight, isValidNumber, allValidNumbers,
   isTrendAligned, getTrendConfidenceAdjustment,
@@ -313,6 +313,15 @@ export class BreakRetest implements IStrategy {
       reasonCodes,
       settings,
       timeframes: this.meta.timeframes,
+      bars,
+      atr: atrSignal ?? null,
+      takeProfitConfig: {
+        preferStructure: true,
+        structureLookback: 100,
+        rrTarget: 2,
+        atrMultiplier: 2,
+        sessionProfile: DEFAULT_SESSION_TP_PROFILE,
+      },
     });
   }
 }

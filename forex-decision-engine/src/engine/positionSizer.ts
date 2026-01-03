@@ -65,6 +65,10 @@ export function calculatePositionSize(input: SizingInput): PositionSize | null {
   
   if (assetClass === 'crypto') {
     const contractSize = getCryptoContractSize(symbol);
+    if (!contractSize) {
+      logger.error(`Unknown crypto contract size for ${symbol}`);
+      return null;
+    }
     
     maxLotsByMargin = (accountSize * leverage) / (entryPrice * contractSize);
     
