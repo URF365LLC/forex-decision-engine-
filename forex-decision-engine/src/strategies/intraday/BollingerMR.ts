@@ -1,60 +1,44 @@
 /**
- * Bollinger Mean Reversion Strategy - PROP-GRADE V2
+ * Bollinger Mean Reversion Strategy
  * Win Rate: 65% | Avg RR: 1.5
  * 
- * V2 FIXES:
- * - CRITICAL: Fixed TP calculation (was same for long AND short!)
- * - Added H4 trend framework
- * - Fixed falsy checks with isValidBBand, isValidNumber
- * - minBars increased to 250
+ * Logic: Mean reversion from Bollinger Band touches with rejection candle
  */
 
 import { IStrategy, StrategyMeta, Decision, IndicatorData, UserSettings, ReasonCode } from '../types.js';
 import { atIndex, validateOrder, validateIndicators, buildDecision, isRejectionCandle, clamp } from '../utils.js';
-import {
-  runPreFlight, logPreFlight, isValidBBand, allValidNumbers,
-  isTrendAligned, getTrendConfidenceAdjustment,
-} from '../SignalQualityGate.js';
 
 export class BollingerMR implements IStrategy {
   meta: StrategyMeta = {
     id: 'bollinger-mr',
     name: 'Bollinger Mean Reversion',
-    description: 'Mean reversion from Bollinger Band touches with rejection candle and H4 trend',
+    description: 'Mean reversion from Bollinger Band touches with rejection candle',
     style: 'intraday',
-    timeframes: { trend: 'H4', entry: 'H1' },
     winRate: 65,
     avgRR: 1.5,
     signalsPerWeek: '15-20',
     requiredIndicators: ['bars', 'bbands', 'rsi', 'atr', 'ema200'],
-    version: '2026-01-03',
+    timeframes: { trend: 'H4', entry: 'H1' },
+    version: '2025-12-29',
   };
 
   async analyze(data: IndicatorData, settings: UserSettings): Promise<Decision | null> {
-    const { symbol, bars, bbands, rsi, atr, ema200, trendBarsH4, ema200H4, adxH4 } = data;
+    const { symbol, bars, bbands, rsi, atr, ema200 } = data;
     
-    const atrVal = bars && bars.length > 2 ? atIndex(atr, bars.length - 2) : null;
-    const preflight = runPreFlight({
-      symbol, bars: bars || [], interval: 'H1', atr: atrVal,
-      strategyType: 'mean-reversion', minBars: 250,
-      trendBarsH4, ema200H4, adxH4,
-    });
-    if (!preflight.passed) { logPreFlight(symbol, this.meta.id, preflight); return null; }
+    if (!bars || bars.length < 250) return null;
+    if (!validateIndicators(data as unknown as Record<string, unknown>, this.meta.requiredIndicators, 250)) return null;
     
-    if (!validateIndicators(data as Record<string, unknown>, ['bars', 'bbands', 'rsi', 'atr', 'ema200'], 250)) return null;
-    
-    const entryIdx = bars!.length - 1;
-    const signalIdx = bars!.length - 2;
-    const entryBar = bars![entryIdx];
-    const signalBar = bars![signalIdx];
+    const entryIdx = bars.length - 1;
+    const signalIdx = bars.length - 2;
+    const entryBar = bars[entryIdx];
+    const signalBar = bars[signalIdx];
     
     const bbSignal = atIndex(bbands, signalIdx);
     const rsiSignal = atIndex(rsi, signalIdx);
     const atrSignal = atIndex(atr, signalIdx);
     const emaSignal = atIndex(ema200, signalIdx);
     
-    if (!isValidBBand(bbSignal)) return null;
-    if (!allValidNumbers(rsiSignal, atrSignal, emaSignal)) return null;
+    if (!bbSignal || !rsiSignal || !atrSignal || !emaSignal) return null;
     
     const triggers: string[] = [];
     const reasonCodes: ReasonCode[] = [];
@@ -66,54 +50,89 @@ export class BollingerMR implements IStrategy {
       confidence += 25;
       triggers.push(`Price touched lower BB at ${bbSignal.lower.toFixed(5)}`);
       reasonCodes.push('BB_TOUCH_LOWER');
+      
       const rejection = isRejectionCandle(signalBar, 'long');
-      if (rejection.ok) { confidence += 20; triggers.push(`Bullish rejection`); reasonCodes.push('REJECTION_CONFIRMED'); }
-      if (rsiSignal! < 35) { confidence += 15; triggers.push(`RSI oversold at ${rsiSignal!.toFixed(1)}`); reasonCodes.push('RSI_OVERSOLD'); }
+      if (rejection.ok) {
+        confidence += 20;
+        triggers.push(`Bullish rejection candle (${(rejection.wickRatio * 100).toFixed(0)}% lower wick)`);
+        reasonCodes.push('REJECTION_CONFIRMED');
+      }
+      
+      if (rsiSignal < 35) {
+        confidence += 15;
+        triggers.push(`RSI oversold at ${rsiSignal.toFixed(1)}`);
+        reasonCodes.push('RSI_OVERSOLD');
+      }
+      
+      if (signalBar.close > emaSignal) {
+        confidence += 10;
+        triggers.push('Price above EMA200');
+        reasonCodes.push('TREND_ALIGNED');
+      }
+      
     } else if (signalBar.high >= bbSignal.upper) {
       direction = 'short';
       confidence += 25;
       triggers.push(`Price touched upper BB at ${bbSignal.upper.toFixed(5)}`);
       reasonCodes.push('BB_TOUCH_UPPER');
+      
       const rejection = isRejectionCandle(signalBar, 'short');
-      if (rejection.ok) { confidence += 20; triggers.push(`Bearish rejection`); reasonCodes.push('REJECTION_CONFIRMED'); }
-      if (rsiSignal! > 65) { confidence += 15; triggers.push(`RSI overbought at ${rsiSignal!.toFixed(1)}`); reasonCodes.push('RSI_OVERBOUGHT'); }
+      if (rejection.ok) {
+        confidence += 20;
+        triggers.push(`Bearish rejection candle (${(rejection.wickRatio * 100).toFixed(0)}% upper wick)`);
+        reasonCodes.push('REJECTION_CONFIRMED');
+      }
+      
+      if (rsiSignal > 65) {
+        confidence += 15;
+        triggers.push(`RSI overbought at ${rsiSignal.toFixed(1)}`);
+        reasonCodes.push('RSI_OVERBOUGHT');
+      }
+      
+      if (signalBar.close < emaSignal) {
+        confidence += 10;
+        triggers.push('Price below EMA200');
+        reasonCodes.push('TREND_ALIGNED');
+      }
     }
     
     if (!direction) return null;
     
-    if (preflight.h4Trend) {
-      const trendAdj = getTrendConfidenceAdjustment(preflight.h4Trend, direction);
-      confidence += trendAdj;
-      if (isTrendAligned(preflight.h4Trend, direction)) {
-        triggers.push(`H4 trend aligned`);
-        reasonCodes.push('TREND_ALIGNED');
-      } else {
-        triggers.push(`Counter-trend`);
-        reasonCodes.push('TREND_COUNTER');
-        if (preflight.h4Trend.strength === 'strong') return null;
-      }
-    }
-    confidence += preflight.confidenceAdjustments;
-    
     const entryPrice = entryBar.open;
-    const stopLossPrice = direction === 'long' ? entryPrice - (atrSignal! * 1.5) : entryPrice + (atrSignal! * 1.5);
+    const atrValue = atrSignal;
     
-    const riskDistance = Math.abs(entryPrice - stopLossPrice);
+    const stopLossPrice = direction === 'long' 
+      ? entryPrice - (atrValue * 1.5)
+      : entryPrice + (atrValue * 1.5);
+    
     const takeProfitPrice = direction === 'long'
-      ? entryPrice + (riskDistance * 1.5)
-      : entryPrice - (riskDistance * 1.5);
+      ? bbSignal.middle
+      : bbSignal.middle;
     
-    if (!validateOrder(direction, entryPrice, stopLossPrice, takeProfitPrice)) return null;
+    if (!validateOrder(direction, entryPrice, stopLossPrice, takeProfitPrice)) {
+      return null;
+    }
     
-    confidence += 10;
-    reasonCodes.push('RR_FAVORABLE');
+    const rr = Math.abs(takeProfitPrice - entryPrice) / Math.abs(entryPrice - stopLossPrice);
+    if (rr >= 1.5) {
+      confidence += 10;
+      reasonCodes.push('RR_FAVORABLE');
+    }
+    
     confidence = clamp(confidence, 0, 100);
-    if (confidence < 50) return null;
     
     return buildDecision({
-      symbol, strategyId: this.meta.id, strategyName: this.meta.name,
-      direction, confidence, entryPrice, stopLoss: stopLossPrice, takeProfit: takeProfitPrice,
-      triggers, reasonCodes, settings, timeframes: this.meta.timeframes,
+      symbol,
+      strategyId: this.meta.id,
+      strategyName: this.meta.name,
+      direction,
+      confidence,
+      entryPrice,
+      stopLoss: stopLossPrice,
+      takeProfit: takeProfitPrice,
+      triggers,
+      reasonCodes,
+      settings,
     });
   }
 }
