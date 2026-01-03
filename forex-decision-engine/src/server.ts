@@ -26,7 +26,7 @@ import { STYLE_PRESETS } from './config/strategy.js';
 // LEGACY ENGINE DISABLED (V1.1 - 2026-01-02) - Three-way audit finding
 // import { analyzeSymbol, scanSymbols } from './engine/decisionEngine.js';
 import { UserSettings } from './engine/decisionEngine.js';
-import { scanWithStrategy, scanWithAllStrategies, clearStrategyCache } from './engine/strategyAnalyzer.js';
+import { scanWithStrategy, clearStrategyCache } from './engine/strategyAnalyzer.js';
 import { strategyRegistry } from './strategies/index.js';
 import { Decision as StrategyDecision, Decision } from './strategies/types.js';
 import { checkDrawdownLimits } from './services/drawdownGuard.js';
@@ -233,23 +233,32 @@ app.post('/api/analyze', async (req, res) => {
 app.post('/api/scan', async (req, res) => {
   const { symbols, settings, strategyId, force } = req.body;
   
-  // GATE 1: strategyId is REQUIRED (V1.1)
+  // GATE 1: strategyId is REQUIRED (V1.1) - Must be a specific strategy (no "all")
   const allStrategies = strategyRegistry.list().map(s => s.id);
-  
+
   if (!strategyId) {
     logger.warn('REJECTED: /api/scan called without strategyId');
     return res.status(400).json({
       error: 'strategy_required',
-      message: 'strategyId is required. Use GET /api/strategies to see available options, or use "all" for multi-strategy scan.',
-      availableStrategies: [...allStrategies, 'all'],
+      message: 'strategyId is required. Use GET /api/strategies to see available options.',
+      availableStrategies: allStrategies,
     });
   }
-  
-  if (strategyId !== 'all' && !strategyRegistry.get(strategyId)) {
+
+  // "all" strategy scanning is disabled - use strategy-by-strategy for cleaner results
+  if (strategyId === 'all') {
+    return res.status(400).json({
+      error: 'all_strategies_disabled',
+      message: 'Multi-strategy scanning is disabled. Select a specific strategy for cleaner, more efficient results.',
+      availableStrategies: allStrategies,
+    });
+  }
+
+  if (!strategyRegistry.get(strategyId)) {
     return res.status(400).json({
       error: 'invalid_strategy',
-      message: `Unknown strategy: ${strategyId}. Use "all" for multi-strategy scan.`,
-      availableStrategies: [...allStrategies, 'all'],
+      message: `Unknown strategy: ${strategyId}`,
+      availableStrategies: allStrategies,
     });
   }
   
@@ -325,29 +334,21 @@ app.post('/api/scan', async (req, res) => {
   }
   
   try {
-    const isAllStrategies = strategyId === 'all';
-    
-    logger.info(`Scanning with strategy: ${strategyId}`, { 
-      symbols: sanitizedSymbols.length, 
+    logger.info(`Scanning with strategy: ${strategyId}`, {
+      symbols: sanitizedSymbols.length,
       paperTrading: isPaperTrading,
-      multiStrategy: isAllStrategies,
     });
-    
-    let decisions: StrategyDecision[];
-    
-    if (isAllStrategies) {
-      decisions = await scanWithAllStrategies(sanitizedSymbols, userSettings);
-    } else {
-      decisions = await scanWithStrategy(sanitizedSymbols, strategyId, userSettings);
-    }
-    
+
+    // Single strategy scan only (cleaner, more efficient)
+    const decisions = await scanWithStrategy(sanitizedSymbols, strategyId, userSettings);
+
     // Save trade signals
     for (const decision of decisions) {
       if (decision.grade !== 'no-trade') {
         signalStore.saveSignal(decision as any);
       }
     }
-    
+
     // Sort by grade (A+ first), then by symbol for grouping
     const gradeOrder: Record<string, number> = { 'A+': 0, 'A': 1, 'B+': 2, 'B': 3, 'C': 4, 'no-trade': 5 };
     decisions.sort((a, b) => {
@@ -355,12 +356,12 @@ app.post('/api/scan', async (req, res) => {
       if (gradeCompare !== 0) return gradeCompare;
       return a.symbol.localeCompare(b.symbol);
     });
-    
+
     res.json({
       success: true,
       count: decisions.length,
       trades: decisions.filter(d => d.grade !== 'no-trade').length,
-      multiStrategy: isAllStrategies,
+      strategyId,
       decisions,
     });
   } catch (error) {
