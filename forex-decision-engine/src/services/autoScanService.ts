@@ -2,6 +2,7 @@
  * Auto-Scan Service
  * Background scanner that runs every 5 minutes using batch API
  * Detects NEW signals and triggers alerts
+ * Persists config to data/autoScanConfig.json for auto-start on server reboot
  */
 
 import { createLogger } from './logger.js';
@@ -11,8 +12,20 @@ import { isNewSignal, trackSignal } from '../storage/signalFreshnessTracker.js';
 import { strategyRegistry } from '../strategies/registry.js';
 import { gradeTracker } from './gradeTracker.js';
 import { UserSettings, Decision, SignalGrade } from '../strategies/types.js';
+import * as fs from 'fs';
+import * as path from 'path';
 
 const logger = createLogger('AutoScanService');
+const CONFIG_FILE = path.join(process.cwd(), 'data', 'autoScanConfig.json');
+
+interface PersistedConfig {
+  enabled: boolean;
+  intervalMs: number;
+  symbols: string[];
+  strategies: StrategyScheduleConfig[];
+  minGrade: SignalGrade;
+  email?: string;
+}
 
 export interface StrategyScheduleConfig {
   strategyId: string;
@@ -134,6 +147,7 @@ class AutoScanService {
     
     this.scheduleStrategyRuns();
     this.updateNextScanTime();
+    this.saveConfig();
   }
   
   stop(): void {
@@ -154,6 +168,7 @@ class AutoScanService {
     };
     
     logger.info('AUTO_SCAN: Stopped');
+    this.saveConfig();
   }
   
   getStatus(): AutoScanStatus {
@@ -395,6 +410,56 @@ class AutoScanService {
       adxH4: data.adxH4,
       trendBarsH4: data.trendBarsH4,
     };
+  }
+
+  private saveConfig(): void {
+    try {
+      const dir = path.dirname(CONFIG_FILE);
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+      
+      const persistedConfig: PersistedConfig = {
+        enabled: this.config.enabled,
+        intervalMs: this.config.intervalMs,
+        symbols: this.config.symbols,
+        strategies: this.config.strategies,
+        minGrade: this.config.minGrade,
+        email: this.config.email,
+      };
+      
+      fs.writeFileSync(CONFIG_FILE, JSON.stringify(persistedConfig, null, 2), 'utf-8');
+      logger.debug(`AUTO_SCAN: Config saved to ${CONFIG_FILE}`);
+    } catch (error) {
+      logger.error('AUTO_SCAN: Failed to save config', { error: error instanceof Error ? error.message : 'Unknown error' });
+    }
+  }
+
+  private loadConfig(): PersistedConfig | null {
+    try {
+      if (!fs.existsSync(CONFIG_FILE)) {
+        logger.debug('AUTO_SCAN: No saved config found');
+        return null;
+      }
+      
+      const content = fs.readFileSync(CONFIG_FILE, 'utf-8');
+      const config = JSON.parse(content) as PersistedConfig;
+      logger.info('AUTO_SCAN: Loaded saved config', { enabled: config.enabled, strategies: config.strategies.length });
+      return config;
+    } catch (error) {
+      logger.error('AUTO_SCAN: Failed to load config', { error: error instanceof Error ? error.message : 'Unknown error' });
+      return null;
+    }
+  }
+
+  autoStartIfEnabled(): void {
+    const savedConfig = this.loadConfig();
+    if (savedConfig && savedConfig.enabled) {
+      logger.info('AUTO_SCAN: Auto-starting from saved config');
+      this.start(savedConfig);
+    } else {
+      logger.debug('AUTO_SCAN: No enabled config to auto-start');
+    }
   }
 }
 

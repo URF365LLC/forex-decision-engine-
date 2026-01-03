@@ -297,7 +297,7 @@ export function getPipInfo(symbol: string): { pipSize: number; pipValue: number;
   const isJpy = normalized.includes('JPY');
   const isCrypto = ['BTC', 'ETH', 'SOL', 'XRP', 'ADA', 'BNB', 'BCH', 'LTC'].some(c => normalized.includes(c));
   if (isCrypto) return { pipSize: 1, pipValue: 1, digits: 2 };
-  if (isJpy) return { pipSize: 0.01, pipValue: 8.5, digits: 3 };
+  if (isJpy) return { pipSize: 0.01, pipValue: 6.41, digits: 3 };
   return { pipSize: 0.0001, pipValue: 10, digits: 5 };
 }
 

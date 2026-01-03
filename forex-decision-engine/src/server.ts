@@ -864,6 +864,8 @@ app.listen(PORT, () => {
   logger.info(`📡 Server running on port ${PORT}`);
   logger.info(`🔑 API Key: ${process.env.TWELVE_DATA_API_KEY ? 'Configured' : 'NOT CONFIGURED'}`);
   logger.info(`📊 Instruments: ${FOREX_SPECS.length} forex, ${METAL_SPECS.length} metals, ${CRYPTO_SPECS.length} crypto, ${INDEX_SPECS.length} indices, ${COMMODITY_SPECS.length} commodities (${ALL_INSTRUMENTS.length} total)`);
+  
+  autoScanService.autoStartIfEnabled();
 });
 
 // Graceful shutdown
