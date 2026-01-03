@@ -9,15 +9,21 @@ import { fetchAllSymbolData, BatchIndicatorData, validateBatchResults } from './
 import { ALL_INSTRUMENTS } from '../config/e8InstrumentSpecs.js';
 import { isNewSignal, trackSignal } from '../storage/signalFreshnessTracker.js';
 import { strategyRegistry } from '../strategies/registry.js';
+import { gradeTracker } from './gradeTracker.js';
 import { UserSettings, Decision, SignalGrade } from '../strategies/types.js';
 
 const logger = createLogger('AutoScanService');
+
+export interface StrategyScheduleConfig {
+  strategyId: string;
+  intervalMs: number;
+}
 
 export interface AutoScanConfig {
   enabled: boolean;
   intervalMs: number;
   symbols: string[];
-  strategies: string[];
+  strategies: StrategyScheduleConfig[];
   minGrade: SignalGrade;
   email?: string;
   onNewSignal?: (decision: Decision, isNew: boolean) => void;
@@ -27,6 +33,7 @@ export interface AutoScanStatus {
   isRunning: boolean;
   lastScanAt: string | null;
   nextScanAt: string | null;
+  strategyRuns: StrategyRunStatus[];
   lastScanResults: {
     symbolsScanned: number;
     signalsFound: number;
@@ -44,6 +51,20 @@ const DEFAULT_SETTINGS: UserSettings = {
 
 const GRADE_ORDER: SignalGrade[] = ['A+', 'A', 'B+', 'B', 'C', 'no-trade'];
 
+interface StrategyRunStatus {
+  strategyId: string;
+  intervalMs: number;
+  lastRunAt: string | null;
+  nextRunAt: string | null;
+  lastResults: {
+    symbolsScanned: number;
+    signalsFound: number;
+    newSignals: number;
+    errors: number;
+    durationMs: number;
+  } | null;
+}
+
 function meetsMinGrade(grade: SignalGrade, minGrade: SignalGrade): boolean {
   const gradeIndex = GRADE_ORDER.indexOf(grade);
   const minIndex = GRADE_ORDER.indexOf(minGrade);
@@ -51,17 +72,19 @@ function meetsMinGrade(grade: SignalGrade, minGrade: SignalGrade): boolean {
 }
 
 class AutoScanService {
-  private interval: NodeJS.Timeout | null = null;
+  private timers: Map<string, NodeJS.Timeout> = new Map();
   private isRunning: boolean = false;
   private config: AutoScanConfig;
   private status: AutoScanStatus;
+  private startedAt: string | null = null;
+  private strategyStatus: Map<string, StrategyRunStatus> = new Map();
   
   constructor() {
     this.config = {
       enabled: false,
       intervalMs: 5 * 60 * 1000,
       symbols: ALL_INSTRUMENTS.map(i => i.symbol),
-      strategies: [],
+      strategies: this.buildDefaultSchedules(5 * 60 * 1000),
       minGrade: 'B',
     };
     
@@ -69,6 +92,7 @@ class AutoScanService {
       isRunning: false,
       lastScanAt: null,
       nextScanAt: null,
+      strategyRuns: [],
       lastScanResults: null,
       config: {},
     };
@@ -80,34 +104,43 @@ class AutoScanService {
       this.stop();
     }
     
-    this.config = { ...this.config, ...config, enabled: true };
+    this.config = { 
+      ...this.config, 
+      ...config, 
+      strategies: this.normalizeStrategies(config.strategies),
+      intervalMs: config.intervalMs ?? this.config.intervalMs,
+      symbols: config.symbols ?? this.config.symbols,
+      minGrade: config.minGrade ?? this.config.minGrade,
+      enabled: true 
+    };
     this.isRunning = true;
+    this.startedAt = new Date().toISOString();
+    this.strategyStatus.clear();
     
     this.status = {
       ...this.status,
       isRunning: true,
+      strategyRuns: this.getStrategyRuns(),
       config: {
         intervalMs: this.config.intervalMs,
         minGrade: this.config.minGrade,
         email: this.config.email,
+        symbols: this.config.symbols,
+        strategies: this.config.strategies,
       },
     };
     
-    logger.info(`AUTO_SCAN: Starting with ${this.config.symbols.length} symbols, interval ${this.config.intervalMs / 1000}s`);
+    logger.info(`AUTO_SCAN: Starting with ${this.config.symbols.length} symbols, strategy schedules ${this.config.strategies.length}`);
     
-    this.runScan();
-    
-    this.interval = setInterval(() => {
-      this.runScan();
-    }, this.config.intervalMs);
-    
+    this.scheduleStrategyRuns();
     this.updateNextScanTime();
   }
   
   stop(): void {
-    if (this.interval) {
-      clearInterval(this.interval);
-      this.interval = null;
+    this.timers.forEach(timer => clearTimeout(timer));
+    this.timers.clear();
+    for (const [key, run] of this.strategyStatus.entries()) {
+      this.strategyStatus.set(key, { ...run, nextRunAt: null });
     }
     
     this.isRunning = false;
@@ -117,6 +150,7 @@ class AutoScanService {
       ...this.status,
       isRunning: false,
       nextScanAt: null,
+      strategyRuns: this.getStrategyRuns(),
     };
     
     logger.info('AUTO_SCAN: Stopped');
@@ -133,7 +167,14 @@ class AutoScanService {
       this.stop();
     }
     
-    this.config = { ...this.config, ...config };
+    this.config = { 
+      ...this.config, 
+      ...config,
+      strategies: this.normalizeStrategies(config.strategies),
+      intervalMs: config.intervalMs ?? this.config.intervalMs,
+      symbols: config.symbols ?? this.config.symbols,
+      minGrade: config.minGrade ?? this.config.minGrade,
+    };
     
     if (wasRunning && this.config.enabled) {
       this.start(this.config);
@@ -141,15 +182,100 @@ class AutoScanService {
   }
   
   private updateNextScanTime(): void {
-    if (this.isRunning) {
-      const nextScan = new Date(Date.now() + this.config.intervalMs);
-      this.status.nextScanAt = nextScan.toISOString();
+    if (!this.isRunning) return;
+    const nextTimes = this.getStrategyRuns()
+      .map(r => r.nextRunAt)
+      .filter((v): v is string => !!v)
+      .map(v => new Date(v).getTime());
+    
+    if (nextTimes.length > 0) {
+      const next = Math.min(...nextTimes);
+      this.status.nextScanAt = new Date(next).toISOString();
+    } else {
+      this.status.nextScanAt = null;
     }
   }
+
+  private getStrategyRuns(): StrategyRunStatus[] {
+    return Array.from(this.strategyStatus.values()).sort((a, b) => a.strategyId.localeCompare(b.strategyId));
+  }
+
+  private buildDefaultSchedules(intervalMs: number): StrategyScheduleConfig[] {
+    return strategyRegistry.list().map((s: { id: string }) => ({
+      strategyId: s.id,
+      intervalMs,
+    }));
+  }
+
+  private normalizeStrategies(strategies?: StrategyScheduleConfig[] | string[]): StrategyScheduleConfig[] {
+    const provided = Array.isArray(strategies) && strategies.length > 0
+      ? strategies
+      : this.config?.strategies || this.buildDefaultSchedules(this.config.intervalMs);
+    
+    const normalized: StrategyScheduleConfig[] = [];
+    const seen = new Set<string>();
+    const defaultInterval = this.config.intervalMs || 5 * 60 * 1000;
+
+    for (const item of provided) {
+      if (typeof item === 'string') {
+        if (!strategyRegistry.get(item)) continue;
+        if (seen.has(item)) continue;
+        seen.add(item);
+        normalized.push({ strategyId: item, intervalMs: defaultInterval });
+        continue;
+      }
+
+      if (!item.strategyId) continue;
+      if (!strategyRegistry.get(item.strategyId)) continue;
+      if (seen.has(item.strategyId)) continue;
+      seen.add(item.strategyId);
+
+      normalized.push({
+        strategyId: item.strategyId,
+        intervalMs: item.intervalMs || defaultInterval,
+      });
+    }
+
+    return normalized.length > 0 ? normalized : this.buildDefaultSchedules(defaultInterval);
+  }
+
+  private scheduleStrategyRuns(): void {
+    const schedules = this.normalizeStrategies(this.config.strategies);
+    const staggerMs = Math.min(15000, Math.floor((this.config.intervalMs || 1000) / Math.max(1, schedules.length)));
+
+    schedules.forEach((schedule, index) => {
+      const initialDelay = staggerMs * index;
+      this.scheduleNextRun(schedule, initialDelay);
+    });
+
+    this.status.strategyRuns = this.getStrategyRuns();
+  }
+
+  private scheduleNextRun(schedule: StrategyScheduleConfig, delayMs: number): void {
+    const now = Date.now();
+    const nextRunAt = new Date(now + delayMs).toISOString();
+
+    this.strategyStatus.set(schedule.strategyId, {
+      strategyId: schedule.strategyId,
+      intervalMs: schedule.intervalMs,
+      lastRunAt: this.strategyStatus.get(schedule.strategyId)?.lastRunAt || null,
+      nextRunAt,
+      lastResults: this.strategyStatus.get(schedule.strategyId)?.lastResults || null,
+    });
+
+    const timer = setTimeout(async () => {
+      this.timers.delete(schedule.strategyId);
+      await this.runScan(schedule);
+      this.scheduleNextRun(schedule, schedule.intervalMs);
+    }, delayMs);
+
+    this.timers.set(schedule.strategyId, timer);
+    this.status.strategyRuns = this.getStrategyRuns();
+  }
   
-  private async runScan(): Promise<void> {
+  private async runScan(schedule: StrategyScheduleConfig): Promise<void> {
     const startTime = Date.now();
-    logger.info(`AUTO_SCAN: Starting scan of ${this.config.symbols.length} symbols`);
+    logger.info(`AUTO_SCAN: Starting ${schedule.strategyId} scan of ${this.config.symbols.length} symbols`);
     
     let symbolsScanned = 0;
     let signalsFound = 0;
@@ -163,52 +289,61 @@ class AutoScanService {
       symbolsScanned = valid.length;
       errors = incomplete.length;
       
-      const strategies = this.config.strategies.length > 0
-        ? this.config.strategies
-        : strategyRegistry.list().map((s: { id: string }) => s.id);
-      
       for (const symbol of valid) {
         const data = batchData.get(symbol);
         if (!data) continue;
         
-        for (const strategyId of strategies) {
-          try {
-            const strategy = strategyRegistry.get(strategyId);
-            if (!strategy) continue;
+        try {
+          const strategy = strategyRegistry.get(schedule.strategyId);
+          if (!strategy) continue;
+          
+          const indicatorData = this.convertToIndicatorData(symbol, data);
+          const decision = await strategy.analyze(indicatorData, DEFAULT_SETTINGS);
+          
+          if (decision && meetsMinGrade(decision.grade, this.config.minGrade)) {
+            signalsFound++;
             
-            const indicatorData = this.convertToIndicatorData(symbol, data);
-            const decision = await strategy.analyze(indicatorData, DEFAULT_SETTINGS);
+            const upgrade = gradeTracker.updateGrade(
+              symbol,
+              schedule.strategyId,
+              decision.strategyName,
+              decision.grade,
+              decision.direction
+            );
             
-            if (decision && meetsMinGrade(decision.grade, this.config.minGrade)) {
-              signalsFound++;
-              
-              const isNew = isNewSignal(symbol, strategyId, decision.direction);
-              
-              if (isNew) {
-                newSignals++;
-                
-                trackSignal(symbol, strategyId, decision.direction);
-                
-                logger.info(`AUTO_SCAN: NEW SIGNAL - ${symbol} ${decision.direction} ${decision.grade} (${strategyId})`);
-                
-                if (this.config.onNewSignal) {
-                  this.config.onNewSignal(decision, true);
-                }
-              }
+            if (upgrade) {
+              decision.upgrade = upgrade;
             }
-          } catch (strategyError) {
-            logger.debug(`AUTO_SCAN: Strategy error ${strategyId} on ${symbol}: ${strategyError}`);
+            
+            const isNew = isNewSignal(symbol, schedule.strategyId, decision.direction);
+            
+            if (isNew) {
+              newSignals++;
+              trackSignal(symbol, schedule.strategyId, decision.direction);
+            }
+
+            if (this.config.onNewSignal && this.shouldNotify(decision, isNew)) {
+              this.config.onNewSignal(decision, isNew);
+            }
+            
+            if (isNew) {
+              logger.info(`AUTO_SCAN: NEW SIGNAL - ${symbol} ${decision.direction} ${decision.grade} (${schedule.strategyId})`);
+            }
           }
+        } catch (strategyError) {
+          errors++;
+          logger.debug(`AUTO_SCAN: Strategy error ${schedule.strategyId} on ${symbol}: ${strategyError}`);
         }
       }
     } catch (error) {
-      logger.error(`AUTO_SCAN: Scan failed - ${error}`);
+      logger.error(`AUTO_SCAN: Scan failed for ${schedule.strategyId} - ${error}`);
       errors++;
     }
     
     const elapsed = Date.now() - startTime;
-    
-    this.status.lastScanAt = new Date().toISOString();
+
+    const lastRunAt = new Date().toISOString();
+    this.status.lastScanAt = lastRunAt;
     this.status.lastScanResults = {
       symbolsScanned,
       signalsFound,
@@ -216,9 +351,30 @@ class AutoScanService {
       errors,
     };
     
+    this.strategyStatus.set(schedule.strategyId, {
+      strategyId: schedule.strategyId,
+      intervalMs: schedule.intervalMs,
+      lastRunAt,
+      nextRunAt: new Date(Date.now() + schedule.intervalMs).toISOString(),
+      lastResults: {
+        symbolsScanned,
+        signalsFound,
+        newSignals,
+        errors,
+        durationMs: elapsed,
+      },
+    });
+
+    this.status.strategyRuns = this.getStrategyRuns();
     this.updateNextScanTime();
     
-    logger.info(`AUTO_SCAN: Complete in ${elapsed}ms - ${symbolsScanned} symbols, ${signalsFound} signals (${newSignals} new), ${errors} errors`);
+    logger.info(`AUTO_SCAN: ${schedule.strategyId} complete in ${elapsed}ms - ${symbolsScanned} symbols, ${signalsFound} signals (${newSignals} new), ${errors} errors`);
+  }
+
+  private shouldNotify(decision: Decision, isNew: boolean): boolean {
+    const highGrade = decision.grade === 'A+' || decision.grade === 'A';
+    const upgradeTypes = decision.upgrade?.upgradeType === 'new-signal' || decision.upgrade?.upgradeType === 'grade-improvement';
+    return highGrade && (isNew || upgradeTypes);
   }
   
   private convertToIndicatorData(symbol: string, data: BatchIndicatorData): any {
