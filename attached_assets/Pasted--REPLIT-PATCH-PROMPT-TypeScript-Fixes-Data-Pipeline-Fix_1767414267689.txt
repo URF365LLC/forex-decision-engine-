@@ -1,0 +1,155 @@
+# REPLIT PATCH PROMPT: TypeScript Fixes + Data Pipeline Fixes
+
+Copy and paste this into Replit:
+
+---
+
+```
+Execute these fixes in order. Show me the BEFORE and AFTER for each change.
+
+## FIX B1: contractSize Null Safety (positionSizer)
+
+Find the file with `contractSize` that has TypeScript null safety warnings.
+
+The fix pattern:
+```typescript
+// BEFORE (unsafe):
+const size = contractSize * something;
+
+// AFTER (safe):
+const size = (contractSize ?? 1) * something;
+```
+
+Or if it's a function parameter:
+```typescript
+// BEFORE:
+function calculate(contractSize: number | undefined) {
+  return contractSize * value;
+}
+
+// AFTER:
+function calculate(contractSize: number | undefined) {
+  if (contractSize === undefined || contractSize === null) {
+    contractSize = 1; // default
+  }
+  return contractSize * value;
+}
+```
+
+Find ALL instances of `contractSize` causing TS errors and fix them.
+Show me: file, line, before, after.
+
+---
+
+## FIX C1: outputsize 100 → 300
+
+Find `twelveDataClient.ts` (or wherever Twelve Data API calls are made).
+
+Search for `outputsize` and change:
+```typescript
+// BEFORE:
+outputsize: '100'
+// or
+outputsize: 100
+
+// AFTER:
+outputsize: '300'
+```
+
+This must be changed in BOTH:
+- OHLCV/bars fetch
+- Indicator fetch
+
+Show me: file, line, before, after.
+
+---
+
+## FIX C2: Decision Keying (symbol → symbol::strategyId)
+
+Find where decisions/signals are stored or keyed. Likely in:
+- `signalStore.ts`
+- `app.js`
+- Any file with `decisions.find(d => d.symbol ===` or similar
+
+Change from:
+```typescript
+// BEFORE (collision risk):
+const key = symbol;
+// or
+decisions.find(d => d.symbol === symbol)
+// or
+signalStore[symbol] = decision;
+
+// AFTER (unique per strategy):
+const key = `${symbol}::${strategyId}`;
+// or
+decisions.find(d => d.symbol === symbol && d.strategyId === strategyId)
+// or
+signalStore[`${symbol}::${strategyId}`] = decision;
+```
+
+This affects:
+1. Storage/cache keys
+2. Lookup/find operations
+3. UI rendering (if keyed by symbol)
+
+Show me: ALL locations found, file, line, before, after.
+
+---
+
+## FIX C3: Interval Normalization BEFORE Cache Key
+
+Find `twelveDataClient.ts` and locate:
+1. Where cache keys are built
+2. Where interval mapping happens (e.g., `60min` → `1h`)
+
+The fix:
+```typescript
+// Add this function if it doesn't exist:
+function normalizeInterval(interval: string): string {
+  const map: Record<string, string> = {
+    '60min': '1h',
+    '240min': '4h',
+    '1day': '1d',
+    '1week': '1w',
+    '1month': '1mo',
+  };
+  return map[interval] || interval;
+}
+
+// Then use it BEFORE building cache key:
+// BEFORE:
+const cacheKey = `${symbol}_${interval}_${indicator}`;
+
+// AFTER:
+const normalizedInterval = normalizeInterval(interval);
+const cacheKey = `${symbol}_${normalizedInterval}_${indicator}`;
+```
+
+Show me: file, line, before, after for cache key generation.
+
+---
+
+## VERIFICATION
+
+After all fixes, run:
+```bash
+npx tsc --noEmit
+```
+
+Expected: 0 errors (or fewer than before if some remain unrelated).
+
+Then show me a summary:
+
+| Fix | File | Lines Changed | Status |
+|-----|------|---------------|--------|
+| B1: contractSize null | ? | ? | ✅/❌ |
+| C1: outputsize 300 | ? | ? | ✅/❌ |
+| C2: decision keying | ? | ? | ✅/❌ |
+| C3: interval normalize | ? | ? | ✅/❌ |
+| tsc --noEmit | - | - | ✅/❌ |
+
+---
+
+EXECUTE NOW. Show before/after for each fix.
+```

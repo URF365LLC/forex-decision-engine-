@@ -8,7 +8,7 @@
 
 import type { IStrategy, StrategyMeta, Decision, IndicatorData, UserSettings, ReasonCode, SignalDirection, Bar } from '../types.js';
 import { atIndex, validateOrder, buildDecision, clamp } from '../utils.js';
-import { runPreFlight, logPreFlight, createPreflightRejection, isValidNumber } from '../SignalQualityGate.js';
+import { runPreFlight, logPreFlight, isValidNumber } from '../SignalQualityGate.js';
 
 const MIN_RSI_LOOKBACK = 3;
 const SWING_LOOKBACK = 10;
@@ -55,7 +55,7 @@ export class RsiOversold implements IStrategy {
       strategyType: 'trend-continuation', minBars: 250,
       trendBarsH4, ema200H4, adxH4,
     });
-    if (!preflight.passed) { logPreFlight(symbol, this.meta.id, preflight); return createPreflightRejection(symbol, this.meta, preflight); }
+    if (!preflight.passed) { logPreFlight(symbol, this.meta.id, preflight); return null; }
     
     // SEATBELT: H4 trend data check (kept from original - best practice)
     if (!trendBarsH4 || trendBarsH4.length < 50) return null;

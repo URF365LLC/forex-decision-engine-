@@ -1,0 +1,231 @@
+Execute these fixes in order. Show BEFORE and AFTER for each change.
+
+## FIX 1: autoScanService.ts - Missing trendBarsH4
+
+File: `src/services/autoScanService.ts` (or wherever autoScanService.ts is)
+
+Find the `convertToIndicatorData` method (around line 207-222).
+
+BEFORE:
+```typescript
+private convertToIndicatorData(symbol: string, data: BatchIndicatorData): any {
+  return {
+    symbol,
+    bars: data.bars,
+    ema20: data.ema20,
+    ema50: data.ema50,
+    ema200: data.ema200,
+    rsi: data.rsi,
+    atr: data.atr,
+    adx: data.adx,
+    stoch: data.stoch,
+    cci: data.cci,
+    bbands: data.bbands,
+    willr: data.willr,
+    ema200H4: data.ema200H4,
+    adxH4: data.adxH4,
+  };
+}
+```
+
+AFTER:
+```typescript
+private convertToIndicatorData(symbol: string, data: BatchIndicatorData): any {
+  return {
+    symbol,
+    bars: data.bars,
+    ema20: data.ema20,
+    ema50: data.ema50,
+    ema200: data.ema200,
+    rsi: data.rsi,
+    atr: data.atr,
+    adx: data.adx,
+    stoch: data.stoch,
+    cci: data.cci,
+    bbands: data.bbands,
+    willr: data.willr,
+    // V2 REQUIRED: H4 trend data for SignalQualityGate
+    trendBarsH4: data.trendBarsH4 || data.barsH4 || [],
+    ema200H4: data.ema200H4 || [],
+    adxH4: data.adxH4 || [],
+  };
+}
+```
+
+CRITICAL: V2 strategies REQUIRE `trendBarsH4` for the preflight gate. Without it, all strategies will reject with "H4 trend data unavailable".
+
+---
+
+## FIX 2: batchDataService.ts - Add trendBarsH4 to BatchIndicatorData
+
+Find `batchDataService.ts` and locate the `BatchIndicatorData` interface.
+
+Add `trendBarsH4` if missing:
+```typescript
+export interface BatchIndicatorData {
+  bars: Bar[];
+  ema20: number[];
+  ema50: number[];
+  ema200: number[];
+  rsi: number[];
+  atr: number[];
+  adx: number[];
+  stoch: StochData[];
+  cci: number[];
+  bbands: BBandData[];
+  willr: number[];
+  // V2 REQUIRED: H4 trend data
+  trendBarsH4?: Bar[];    // ADD THIS
+  barsH4?: Bar[];         // ADD THIS (alias)
+  ema200H4?: number[];
+  adxH4?: number[];
+}
+```
+
+Then find where H4 data is fetched and ensure `trendBarsH4` is populated.
+
+---
+
+## FIX 3: contractSize Null Safety
+
+Find files with TypeScript errors about `contractSize`. Likely in:
+- `positionSizer.ts`
+- `utils.ts` (in strategies or services folder)
+
+Pattern to fix:
+```typescript
+// BEFORE (unsafe):
+const lots = riskAmount / (stopPips * pipValue * contractSize);
+
+// AFTER (safe):
+const safeContractSize = contractSize ?? 1;
+const lots = riskAmount / (stopPips * pipValue * safeContractSize);
+```
+
+Or at function level:
+```typescript
+// BEFORE:
+export function calculateLots(contractSize?: number) {
+  return something * contractSize; // TS error: possibly undefined
+}
+
+// AFTER:
+export function calculateLots(contractSize: number = 1) {
+  return something * contractSize; // Safe with default
+}
+```
+
+Find and fix ALL instances.
+
+---
+
+## FIX 4: outputsize 100 → 300
+
+Find where Twelve Data API calls are made. Search for `outputsize`.
+```typescript
+// BEFORE:
+outputsize: '100'
+
+// AFTER:
+outputsize: '300'
+```
+
+Change in ALL locations (OHLCV fetch AND indicator fetch).
+
+WHY: V2 strategies require minBars of 250. With outputsize=100, strategies will reject due to insufficient data.
+
+---
+
+## FIX 5: Decision Keying (symbol → symbol::strategyId)
+
+Search for places where decisions are stored/retrieved by symbol only.
+
+Common patterns to fix:
+```typescript
+// BEFORE (collision between strategies):
+const cached = signalCache.get(symbol);
+signalCache.set(symbol, decision);
+
+// AFTER (unique per strategy):
+const cacheKey = `${symbol}::${decision.strategyId}`;
+const cached = signalCache.get(cacheKey);
+signalCache.set(cacheKey, decision);
+```
+
+Also fix lookups:
+```typescript
+// BEFORE:
+decisions.find(d => d.symbol === symbol)
+
+// AFTER:
+decisions.find(d => d.symbol === symbol && d.strategyId === strategyId)
+```
+
+Check these files:
+- signalStore.ts
+- signalFreshnessTracker.ts
+- app.js (frontend)
+- Any cache/storage layer
+
+---
+
+## FIX 6: Interval Normalization Before Cache Key
+
+Find where cache keys are built in the data client.
+```typescript
+// ADD this helper:
+function normalizeInterval(interval: string): string {
+  const map: Record<string, string> = {
+    '60min': '1h',
+    '240min': '4h', 
+    '1440min': '1day',
+    '1day': '1d',
+    '1week': '1w',
+  };
+  return map[interval] || interval;
+}
+
+// THEN use it BEFORE cache key:
+// BEFORE:
+const cacheKey = `${symbol}_${interval}_bars`;
+
+// AFTER:
+const normalizedInterval = normalizeInterval(interval);
+const cacheKey = `${symbol}_${normalizedInterval}_bars`;
+```
+
+---
+
+## VERIFICATION
+
+After all fixes:
+```bash
+npx tsc --noEmit
+```
+
+Then test a scan:
+```bash
+curl http://localhost:5000/api/scan/EURUSD
+```
+
+Check that the response includes H4 trend data and doesn't say "H4 trend data unavailable".
+
+---
+
+## SUMMARY TABLE
+
+After completing, provide:
+
+| Fix | File(s) | Status |
+|-----|---------|--------|
+| 1. trendBarsH4 in autoScanService | autoScanService.ts | ✅/❌ |
+| 2. BatchIndicatorData interface | batchDataService.ts | ✅/❌ |
+| 3. contractSize null safety | positionSizer/utils | ✅/❌ |
+| 4. outputsize 300 | twelveDataClient.ts | ✅/❌ |
+| 5. decision keying | signalStore/cache | ✅/❌ |
+| 6. interval normalization | data client | ✅/❌ |
+| tsc --noEmit | - | ✅/❌ errors |
+
+---
+
+EXECUTE NOW. Start with Fix 1 (most critical for V2 strategies to work).

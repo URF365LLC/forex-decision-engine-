@@ -13,7 +13,7 @@
 import { IStrategy, StrategyMeta, Decision, IndicatorData, UserSettings, ReasonCode, Bar } from '../types.js';
 import { atIndex, validateOrder, buildDecision, clamp } from '../utils.js';
 import {
-  runPreFlight, logPreFlight, createPreflightRejection, isValidNumber, allValidNumbers,
+  runPreFlight, logPreFlight, isValidNumber, allValidNumbers,
   isTrendAligned, getTrendConfidenceAdjustment,
 } from '../SignalQualityGate.js';
 
@@ -159,7 +159,7 @@ export class BreakRetest implements IStrategy {
     
     if (!preflight.passed) {
       logPreFlight(symbol, this.meta.id, preflight);
-      return createPreflightRejection(symbol, this.meta, preflight);
+      return null;
     }
     
     if (!bars || bars.length < 100) return null;

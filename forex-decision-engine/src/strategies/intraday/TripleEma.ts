@@ -13,7 +13,7 @@
 import { IStrategy, StrategyMeta, Decision, IndicatorData, UserSettings, ReasonCode, Bar } from '../types.js';
 import { atIndex, validateOrder, buildDecision, clamp, normalizedSlope } from '../utils.js';
 import {
-  runPreFlight, logPreFlight, createPreflightRejection, isValidNumber, allValidNumbers,
+  runPreFlight, logPreFlight, isValidNumber, allValidNumbers,
   isTrendAligned, getTrendConfidenceAdjustment,
 } from '../SignalQualityGate.js';
 
@@ -61,7 +61,7 @@ export class TripleEma implements IStrategy {
       strategyType: 'trend-continuation', minBars: 100,
       trendBarsH4, ema200H4, adxH4,
     });
-    if (!preflight.passed) { logPreFlight(symbol, this.meta.id, preflight); return createPreflightRejection(symbol, this.meta, preflight); }
+    if (!preflight.passed) { logPreFlight(symbol, this.meta.id, preflight); return null; }
     
     if (!bars || bars.length < 100) return null;
     if (!atr || atr.length < 100) return null;
