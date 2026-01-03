@@ -3,9 +3,10 @@
  * Win Rate: 55% | Avg RR: 2.0
  * 
  * V2 FIXES:
- * - CRITICAL: Fixed falsy check (CCI=0 was killing signals!)
+ * 🔴 CRITICAL: Fixed falsy check (CCI=0 was killing signals!)
  * - Added H4 trend framework
  * - minBars increased to 250
+ * - Added meta.timeframes
  */
 
 import { IStrategy, StrategyMeta, Decision, IndicatorData, UserSettings, ReasonCode } from '../types.js';
@@ -25,8 +26,8 @@ export class CciZeroLine implements IStrategy {
     winRate: 55,
     avgRR: 2.0,
     signalsPerWeek: '10-15',
-    requiredIndicators: ['bars', 'cci', 'ema200', 'atr'],
-    version: '2026-01-03',
+    requiredIndicators: ['bars', 'cci', 'ema200', 'atr', 'trendBarsH4', 'ema200H4', 'adxH4'],
+    version: '2026-01-02',
   };
 
   async analyze(data: IndicatorData, settings: UserSettings): Promise<Decision | null> {
@@ -55,6 +56,8 @@ export class CciZeroLine implements IStrategy {
     const emaSignal = atIndex(ema200, signalIdx);
     const atrSignal = atIndex(atr, signalIdx);
     
+    // V2 CRITICAL FIX: Use allValidNumbers instead of falsy check
+    // BEFORE: if (!cciSignal || !cciPrev || ...) - killed signals when CCI = 0!
     if (!allValidNumbers(cciSignal, cciPrev, cciPrev2, emaSignal, atrSignal)) return null;
     
     const triggers: string[] = [];
@@ -65,6 +68,7 @@ export class CciZeroLine implements IStrategy {
     const wasExtremeLow = cciPrev2! < -100 || cciPrev! < -100;
     const wasExtremeHigh = cciPrev2! > 100 || cciPrev! > 100;
     
+    // V2 FIX: Use >= and <= for zero crossing (0 is valid!)
     if (wasExtremeLow && cciPrev! <= 0 && cciSignal! >= 0 && cciSignal! !== cciPrev!) {
       direction = 'long';
       confidence += 30;

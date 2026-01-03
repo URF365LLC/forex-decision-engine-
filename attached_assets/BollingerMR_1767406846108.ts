@@ -3,10 +3,11 @@
  * Win Rate: 65% | Avg RR: 1.5
  * 
  * V2 FIXES:
- * - CRITICAL: Fixed TP calculation (was same for long AND short!)
+ * 🔴 CRITICAL: Fixed TP calculation (was same for long AND short!)
  * - Added H4 trend framework
- * - Fixed falsy checks with isValidBBand, isValidNumber
+ * - Fixed falsy checks → isValidBBand, isValidNumber
  * - minBars increased to 250
+ * - Added meta.timeframes
  */
 
 import { IStrategy, StrategyMeta, Decision, IndicatorData, UserSettings, ReasonCode } from '../types.js';
@@ -26,8 +27,8 @@ export class BollingerMR implements IStrategy {
     winRate: 65,
     avgRR: 1.5,
     signalsPerWeek: '15-20',
-    requiredIndicators: ['bars', 'bbands', 'rsi', 'atr', 'ema200'],
-    version: '2026-01-03',
+    requiredIndicators: ['bars', 'bbands', 'rsi', 'atr', 'ema200', 'trendBarsH4', 'ema200H4', 'adxH4'],
+    version: '2026-01-02',
   };
 
   async analyze(data: IndicatorData, settings: UserSettings): Promise<Decision | null> {
@@ -98,10 +99,11 @@ export class BollingerMR implements IStrategy {
     const entryPrice = entryBar.open;
     const stopLossPrice = direction === 'long' ? entryPrice - (atrSignal! * 1.5) : entryPrice + (atrSignal! * 1.5);
     
+    // V2 CRITICAL FIX: TP was same for long AND short!
     const riskDistance = Math.abs(entryPrice - stopLossPrice);
     const takeProfitPrice = direction === 'long'
       ? entryPrice + (riskDistance * 1.5)
-      : entryPrice - (riskDistance * 1.5);
+      : entryPrice - (riskDistance * 1.5);  // NOW CORRECT!
     
     if (!validateOrder(direction, entryPrice, stopLossPrice, takeProfitPrice)) return null;
     
