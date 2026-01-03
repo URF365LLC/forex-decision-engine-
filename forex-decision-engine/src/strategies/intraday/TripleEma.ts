@@ -11,7 +11,7 @@
  */
 
 import { IStrategy, StrategyMeta, Decision, IndicatorData, UserSettings, ReasonCode, Bar } from '../types.js';
-import { atIndex, validateOrder, buildDecision, clamp, normalizedSlope } from '../utils.js';
+import { atIndex, validateOrder, buildDecision, clamp, normalizedSlope, DEFAULT_SESSION_TP_PROFILE } from '../utils.js';
 import {
   runPreFlight, logPreFlight, isValidNumber, allValidNumbers,
   isTrendAligned, getTrendConfidenceAdjustment,
@@ -150,6 +150,15 @@ export class TripleEma implements IStrategy {
       symbol, strategyId: this.meta.id, strategyName: this.meta.name,
       direction, confidence, entryPrice, stopLoss: stopLossPrice, takeProfit: takeProfitPrice,
       triggers, reasonCodes, settings, timeframes: this.meta.timeframes,
+      bars,
+      atr: atrSignal ?? null,
+      takeProfitConfig: {
+        preferStructure: true,
+        structureLookback: 60,
+        rrTarget: 2,
+        atrMultiplier: 2,
+        sessionProfile: DEFAULT_SESSION_TP_PROFILE,
+      },
     });
   }
 }

@@ -253,12 +253,12 @@ export interface Decision {
   entryZone: null;
   stopLoss: { price: number; pips: number; formatted: string } | null;
   takeProfit: { price: number; pips: number; rr: number; formatted: string } | null;
-  // NEW: Tiered exit management (TP1/TP2/Trail)
-  exitManagement?: ExitManagement;
-  position: {
-    lots: number;
-    units: number;
-    riskAmount: number;
+  takeProfitSource?: 'rr' | 'structure' | 'atr' | 'manual' | 'session-adjusted';
+  takeProfitNotes?: string[];
+  position: { 
+    lots: number; 
+    units: number; 
+    riskAmount: number; 
     isApproximate: boolean;
   } | null;
   reason: string;
