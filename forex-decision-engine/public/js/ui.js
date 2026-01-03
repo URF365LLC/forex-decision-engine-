@@ -194,8 +194,11 @@ const UI = {
     // Sentiment display - no longer on decision object, fetched on-demand
     const sentimentHTML = '';
 
+    const decisionKey = `${decision.strategyId}:${decision.symbol}`;
+    const sentimentId = `sentiment-${decision.strategyId}-${decision.symbol}`.replace(/[^a-zA-Z0-9-]/g, '-');
+
     return `
-      <div class="decision-card ${gradeClass} ${staleClass}" data-symbol="${decision.symbol}" data-grade="${decision.grade}">
+      <div class="decision-card ${gradeClass} ${staleClass}" data-key="${decisionKey}" data-symbol="${decision.symbol}" data-strategy="${decision.strategyId}" data-grade="${decision.grade}">
         <div class="card-header">
           <div>
             <span class="card-symbol">${decision.displayName}</span>
@@ -214,17 +217,17 @@ const UI = {
         <div class="card-footer">
           <span>${decision.timeframes?.trend || 'H4'}/${decision.timeframes?.entry || 'H1'} | ${validText}</span>
           <div class="card-actions">
-            ${!isNoTrade ? `<button class="btn btn-small" onclick="App.copySignal('${decision.symbol}')">📋 Copy</button>` : ''}
+            ${!isNoTrade ? `<button class="btn btn-small" onclick="App.copySignal('${decisionKey}')">📋 Copy</button>` : ''}
           </div>
         </div>
         ${!isNoTrade ? `
         <div class="card-journal-actions">
-          <button class="btn btn-journal btn-taken" onclick="App.logTrade('${decision.symbol}', 'taken')">✓ Took Trade</button>
-          <button class="btn btn-journal btn-skipped" onclick="App.logTrade('${decision.symbol}', 'skipped')">✗ Skipped</button>
-          <button class="btn btn-journal btn-missed" onclick="App.logTrade('${decision.symbol}', 'missed')">⏰ Missed</button>
+          <button class="btn btn-journal btn-taken" onclick="App.logTrade('${decisionKey}', 'taken')">✓ Took Trade</button>
+          <button class="btn btn-journal btn-skipped" onclick="App.logTrade('${decisionKey}', 'skipped')">✗ Skipped</button>
+          <button class="btn btn-journal btn-missed" onclick="App.logTrade('${decisionKey}', 'missed')">⏰ Missed</button>
         </div>
-        <div class="sentiment-container" id="sentiment-${decision.symbol}">
-          <button class="btn btn-sentiment" onclick="App.fetchSentiment('${decision.symbol}')">🧠 Get Sentiment</button>
+        <div class="sentiment-container" id="${sentimentId}">
+          <button class="btn btn-sentiment" onclick="App.fetchSentiment('${decision.symbol}', '${sentimentId}')">🧠 Get Sentiment</button>
         </div>
         ` : ''}
       </div>

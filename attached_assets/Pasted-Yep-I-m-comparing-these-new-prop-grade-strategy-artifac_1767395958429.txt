@@ -1,0 +1,197 @@
+Yep — I’m comparing these new “prop-grade” strategy artifacts against the codebase/files you uploaded earlier (engine, utils, registry/types, TwelveData client patterns, etc.). Here’s the **audit** of the three new files:
+
+* `SignalQualityGate.ts`
+* `BollingerMR (1).ts`
+* `strategyContracts.test.ts`
+
+---
+
+## 1) SignalQualityGate.ts — Audit (logic, math, safety)
+
+### ✅ What’s genuinely strong
+
+* **Type guards are correct**: `isValidNumber`, `allValidNumbers`, `isValidBBand`, `isValidStoch` prevent the classic “0 is falsy” bug.
+* **Interval mapping is sane**: `getIntervalMs()` covers H1/H4 and common minute intervals.
+* **Volatility gate is structurally sound**: ATR% thresholds per asset class + confidence adjustments.
+* **Regime analysis is directionally reasonable**: ADX overrides ATR regime and sets `allowMeanReversion/allowTrendFollowing` flags.
+* **Trend scoring is aligned with your “prop-grade” spec**: +25/+20/+10 and -40/-30/-20 is the right kind of hammer.
+
+### 🔴 Critical gap: “Closed-bar enforcement” is **not enforcement**
+
+You have `checkBarClosure()` that correctly detects if the **signal bar** is closed.
+
+But in `runPreFlight()` you do this:
+
+* If `!barClosure.signalBarClosed` → you only **warn**, you do **not reject**.
+
+That means your system can still compute a “signal” off an **unclosed** signal bar (data can change), which reopens the whole “NEXT_OPEN ambiguity” debate.
+
+**Fix (prop-safe default)**
+If your design goal is “signal based on last CLOSED bar,” then this should be a hard reject:
+
+```ts
+// runPreFlight()
+const barClosure = checkBarClosure(bars, interval);
+if (!barClosure.signalBarClosed) {
+  return createFailedResult(barClosure.warningMessage || 'Signal bar not closed');
+}
+```
+
+If you *intentionally* want to allow it, then don’t call it “closed-bar enforcement.” Call it “bar-closure warning.”
+
+### 🟠 Medium risk: “Entry bar” semantics aren’t enforced here
+
+`checkBarClosure()` also calculates whether the “entry bar” is closed and time remaining — good.
+
+But there’s **no policy** that says:
+
+* “Only trade within X seconds of entry bar open”
+* or “Only if entry bar just opened”
+* or “Reject if we’re 37 minutes into H1”
+
+Right now, you can generate an “entryBar.open” entry price any time during the bar… which might be *hours stale* on H4/H1.
+
+**Suggested gate** (practical):
+
+* For H1 strategies: only allow signals if entry bar started within e.g. last 2–3 minutes (or configurable).
+
+### 🟠 R:R helpers exist but aren’t wired into preflight
+
+`validateRR()` and `calculateEffectiveRR()` are good utilities, but `runPreFlight()` doesn’t apply them. That’s fine if strategies enforce R:R themselves — but don’t assume preflight covers it.
+
+---
+
+## 2) BollingerMR (1).ts — Audit (logic, math, “edge”)
+
+### ✅ Fixes applied correctly
+
+* **TP bug is fixed**: shorts now TP **below** entry using RR math, not BB middle for both directions.
+* **Hard requirement for H4 trend**: if `preflight.h4Trend` is missing you return `null` — good “fail-closed.”
+* **Min bars raised to 250**: consistent with the EMA200 stability requirement.
+
+### ⚠️ Logical consistency concerns (mean reversion + trend framework)
+
+This strategy is “mean reversion,” but:
+
+* You require H4 trend and then heavily score trend alignment.
+* You also reject **strong** counter-trend outright (good), but still allow moderate counter-trend with penalties.
+
+That’s not “wrong,” but it’s a strategic choice:
+
+* Mean reversion edges often improve in **ranging** conditions.
+* Your regime filter blocks mean reversion in **trending-strong** (ADX > 35), which is good.
+* But the **trend alignment scoring** may still bias you into “reversion only when trend agrees,” which can reduce the true mean-reversion edge.
+
+If you want a cleaner prop model:
+
+* In `ranging` regime → allow mean reversion even if trend neutral/counter (but cap confidence).
+* In `trending` regime → require alignment or reject counter-trend.
+
+### 🟠 “ema200” is required/validated but not actually used as a filter
+
+You fetch `emaSignal = atIndex(ema200, signalIdx)` and only use it in `allValidNumbers()`.
+If the strategy doesn’t use H1 EMA200, drop it from `requiredIndicators` and validation — or actually use it (e.g., “don’t short above ema200” type rule).
+
+### ✅ Entry/exit math is clean
+
+* Entry = `entryBar.open`
+* SL = `1.5 * ATR`
+* TP = `1.5R`
+
+That guarantees consistent R:R and fixes the inverted short TP issue.
+
+---
+
+## 3) strategyContracts.test.ts — Audit (does it really prove safety?)
+
+### ✅ Good intent, but it’s not yet a “contract test suite”
+
+The structure is solid: registry loop + meta checks + minBars checks + H4 trend checks + RR integrity checks.
+
+### 🔴 Big problem: tests can “pass” without actually testing
+
+In `testRRIntegrity()`:
+
+* If no short signal is produced, it marks key checks as **pass** with “N/A”.
+
+So a strategy with a short-side TP inversion could slip through if the mock conditions don’t trigger that short.
+
+**Fix**: force each strategy into a deterministic state per-direction.
+
+* Don’t use random bars for contract tests.
+* Build deterministic bars + deterministic indicators to guarantee the signal path is executed.
+
+### 🟠 The “null check” test is basically a placeholder
+
+It literally logs:
+
+* `true` with “Manual verification required”
+
+That’s not a test — it’s a comment wearing a suit.
+
+If you want a real falsy-check test, you need to engineer the exact condition that would fail if they used `if (!cci)` etc., and assert the strategy does **not** exit early.
+
+### 🟠 Possible runtime issues with ts-node + ESM
+
+You’re importing `../registry.js` from a `.ts` runner via ts-node. Depending on your module setup, this may require:
+
+* `node --loader ts-node/esm ...`
+  or a different invocation.
+
+If Replit is already running TS as ESM, you might be fine — but don’t assume.
+
+---
+
+# Bottom line verdict on these patches
+
+### SignalQualityGate.ts
+
+* **Good framework** but currently **does not enforce closed-bar** despite claiming it does.
+* Needs 1–2 hard “fail-closed” rules to actually deliver prop-grade safety.
+
+### BollingerMR (1).ts
+
+* The **TP inversion is fixed** ✅
+* It’s now logically consistent with the new framework, but it’s still missing a clear policy about **entry timing** (freshness of entry open).
+
+### strategyContracts.test.ts
+
+* Nice start, but right now it can produce **false confidence**.
+* Needs deterministic fixtures and must fail if it can’t trigger required paths.
+
+---
+
+## What your strategies are still missing (system-wide “prop-grade”)
+
+If you want “best results” (not fantasy win-rate marketing), you still need:
+
+1. **Deterministic closed-bar policy**
+
+* Reject if signal bar isn’t closed (or explicitly allow with clear label).
+
+2. **Entry freshness policy**
+
+* Don’t allow “entryBar.open” as an entry price if you’re halfway into the candle.
+
+3. **Deterministic contract tests**
+
+* No random bars.
+* Force long + short triggers per strategy.
+* Remove “N/A == pass” for critical assertions.
+
+4. **Unified trend framework adoption**
+
+* BollingerMR now uses it correctly — 6–7 other strategies still need to be migrated if you want consistency.
+
+---
+
+If you want, I can do a **full spec “self-prompt strategy audit”** across *all* your implemented strategies next (the 9), using the same rubric:
+
+* indicator correctness & alignment
+* closed-bar and entry timing
+* trend/regime compatibility
+* RR math invariants (long + short)
+* confidence scoring normalization
+* expected failure modes (NaN, missing data, short arrays)
+
+Just say “run the full 9-strategy prop spec audit” and I’ll go straight through them.
