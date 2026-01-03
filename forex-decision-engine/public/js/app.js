@@ -173,13 +173,14 @@ const App = {
         commodities: data.commodities || [],
         crypto: data.crypto || [],
       };
+      this.metadata = data.metadata || {};
       
-      // Render symbol grids for all 5 asset classes
-      UI.renderSymbolGrid('forex-symbols', this.universe.forex, this.selectedSymbols);
-      UI.renderSymbolGrid('metals-symbols', this.universe.metals, this.selectedSymbols);
-      UI.renderSymbolGrid('indices-symbols', this.universe.indices, this.selectedSymbols);
-      UI.renderSymbolGrid('commodities-symbols', this.universe.commodities, this.selectedSymbols);
-      UI.renderSymbolGrid('crypto-symbols', this.universe.crypto, this.selectedSymbols);
+      // Render symbol grids for all 5 asset classes (with displayNames from metadata)
+      UI.renderSymbolGrid('forex-symbols', this.universe.forex, this.selectedSymbols, this.metadata);
+      UI.renderSymbolGrid('metals-symbols', this.universe.metals, this.selectedSymbols, this.metadata);
+      UI.renderSymbolGrid('indices-symbols', this.universe.indices, this.selectedSymbols, this.metadata);
+      UI.renderSymbolGrid('commodities-symbols', this.universe.commodities, this.selectedSymbols, this.metadata);
+      UI.renderSymbolGrid('crypto-symbols', this.universe.crypto, this.selectedSymbols, this.metadata);
     } catch (error) {
       console.error('Failed to load universe:', error);
       UI.toast('Failed to load symbols', 'error');

@@ -282,16 +282,17 @@ const UI = {
   },
 
   /**
-   * Render symbol grid
+   * Render symbol grid with displayName support
    */
-  renderSymbolGrid(containerId, symbols, selectedSymbols = []) {
+  renderSymbolGrid(containerId, symbols, selectedSymbols = [], metadata = {}) {
     const container = this.$(containerId);
     container.innerHTML = symbols.map(symbol => {
       const isSelected = selectedSymbols.includes(symbol);
+      const displayName = metadata[symbol]?.displayName || symbol;
       return `
         <label class="symbol-item ${isSelected ? 'selected' : ''}" data-symbol="${symbol}">
           <input type="checkbox" ${isSelected ? 'checked' : ''}>
-          ${symbol}
+          ${displayName}
         </label>
       `;
     }).join('');
