@@ -237,6 +237,7 @@ class AutoScanService {
       willr: data.willr,
       ema200H4: data.ema200H4,
       adxH4: data.adxH4,
+      trendBarsH4: data.trendBarsH4,
     };
   }
 }
