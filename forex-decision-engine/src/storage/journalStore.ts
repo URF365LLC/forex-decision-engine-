@@ -339,31 +339,24 @@ class JournalStore {
     if (!entry.exitPrice || entry.status !== 'closed') return null;
 
     const spec = getInstrumentSpec(entry.symbol);
-    if (!spec) {
-      logger.warn(`Unknown symbol for P&L calculation: ${entry.symbol}`);
-      return null;
-    }
-
-    const pipSize = spec.pipSize;
-    const assetClass = spec.type;
-
+    const pipValue = spec?.pipValue ?? 10;
+    const pipSize = spec?.pipSize ?? Math.pow(10, -((spec?.digits as number | undefined) ?? 4));
+    const assetClass = spec?.type || 'forex';
+    
     const directionMultiplier = entry.direction === 'long' ? 1 : -1;
     const priceMove = (entry.exitPrice - entry.entryPrice) * directionMultiplier;
     const pnlPips = priceMove / pipSize;
-
+    
     const riskDistance = Math.abs(entry.entryPrice - entry.stopLoss);
     const riskPips = riskDistance / pipSize;
     const rMultiple = riskPips > 0 ? pnlPips / riskPips : 0;
 
     let pnlDollars: number;
     if (assetClass === 'crypto') {
-      // Crypto: P&L = price_move × lots × contractSize
-      // E.g., ADAUSD: contractSize=100000, so 0.05 lots = 5000 ADA
-      pnlDollars = priceMove * entry.lots * spec.contractSize;
+      const contractSize = spec?.contractSize ?? 1;
+      pnlDollars = priceMove * contractSize * entry.lots;
     } else {
-      // Forex/Metals/Indices/Commodities: Use pipValue from spec
-      // pipValue is the USD value of 1 pip for 1 standard lot
-      pnlDollars = pnlPips * spec.pipValue * entry.lots;
+      pnlDollars = pnlPips * pipValue * entry.lots;
     }
 
     return {

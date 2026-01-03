@@ -17,10 +17,12 @@ import {
   TradingStyle,
   getPipInfo, 
   formatPrice, 
-  calculatePips 
+  calculatePips,
+  TieredExitPlan,
+  ExitTarget 
 } from './types.js';
 import { createLogger } from '../services/logger.js';
-import { getCryptoContractSize, DEFAULTS } from '../config/defaults.js';
+import { getCryptoContractSize, DEFAULTS, LOT_SIZES } from '../config/defaults.js';
 import { trackSignal } from '../storage/signalFreshnessTracker.js';
 import { formatSignalAge, isStale, formatEntryPrice } from '../utils/timeUtils.js';
 import { getInstrumentSpec } from '../config/e8InstrumentSpecs.js';
@@ -501,6 +503,72 @@ export function getStrategyTimeframes(
   return STYLE_TIMEFRAMES[style] || STYLE_TIMEFRAMES.intraday;
 }
 
+function getTimingWindows(entryTimeframe: string | undefined) {
+  const tf = (entryTimeframe || 'H1').toUpperCase();
+  if (tf === 'H4' || tf === '4H') {
+    return { optimalMinutes: 120, expiryMinutes: 240 };
+  }
+  if (tf === 'D1' || tf === '1D') {
+    return { optimalMinutes: 360, expiryMinutes: 720 };
+  }
+  return { optimalMinutes: 30, expiryMinutes: 60 };
+}
+
+function buildTieredExitPlan(
+  symbol: string,
+  direction: SignalDirection,
+  entryPrice: number,
+  stopLoss: number,
+  pipSize: number,
+  stopLossPips: number,
+  atrPips?: number
+): TieredExitPlan {
+  const tp1Rr = 1.0;
+  const tp2Rr = 2.0;
+  const tp1Price = direction === 'long'
+    ? entryPrice + stopLossPips * pipSize * tp1Rr
+    : entryPrice - stopLossPips * pipSize * tp1Rr;
+  const tp2Price = direction === 'long'
+    ? entryPrice + stopLossPips * pipSize * tp2Rr
+    : entryPrice - stopLossPips * pipSize * tp2Rr;
+
+  const tp1: ExitTarget = {
+    label: 'TP1',
+    price: tp1Price,
+    pips: Math.round(stopLossPips * tp1Rr * 10) / 10,
+    rr: Math.round(tp1Rr * 10) / 10,
+    percent: 50,
+    action: 'Close 50% and move SL to BE',
+    formatted: formatPrice(tp1Price, symbol),
+  };
+
+  const tp2: ExitTarget = {
+    label: 'TP2',
+    price: tp2Price,
+    pips: Math.round(stopLossPips * tp2Rr * 10) / 10,
+    rr: Math.round(tp2Rr * 10) / 10,
+    percent: 30,
+    action: 'Close 30% and trail remainder',
+    formatted: formatPrice(tp2Price, symbol),
+  };
+
+  const trailOffset = atrPips ? Math.round(atrPips * 10) / 10 : Math.round(stopLossPips * 0.5 * 10) / 10;
+
+  return {
+    tp1,
+    tp2,
+    runner: {
+      percent: 20,
+      trail: {
+        type: 'atr',
+        activateAtRr: 2,
+        offsetPips: trailOffset,
+        notes: 'Trail at 1x ATR after TP2; lock in profit as structure forms',
+      },
+    },
+  };
+}
+
 export function buildDecision(params: DecisionParams): Decision {
   const {
     symbol,
@@ -565,10 +633,18 @@ export function buildDecision(params: DecisionParams): Decision {
   }
 
   const now = new Date();
-  const validUntil = new Date(now.getTime() + 4 * 60 * 60 * 1000);
-
+  const resolvedTimeframes = getStrategyTimeframes(strategyTimeframes, settings.style, symbol);
   const trackedSignal = trackSignal(symbol, strategyId, direction);
   const signalAge = formatSignalAge(trackedSignal.firstDetected);
+  const timingWindows = getTimingWindows(resolvedTimeframes.entry);
+  const detectedAt = new Date(trackedSignal.firstDetected).getTime() || now.getTime();
+  const degradeAfter = new Date(detectedAt + timingWindows.optimalMinutes * 60 * 1000);
+  const validUntil = new Date(detectedAt + timingWindows.expiryMinutes * 60 * 1000);
+  const state = signalAge.ms >= timingWindows.expiryMinutes * 60 * 1000
+    ? 'expired'
+    : signalAge.ms >= timingWindows.optimalMinutes * 60 * 1000
+      ? 'degrading'
+      : 'optimal';
 
   return {
     symbol,
@@ -604,13 +680,17 @@ export function buildDecision(params: DecisionParams): Decision {
     warnings,
     style: settings.style,
     executionModel: 'NEXT_OPEN',
-    timeframes: getStrategyTimeframes(strategyTimeframes, settings.style, symbol),
+    timeframes: resolvedTimeframes,
     timestamp: now.toISOString(),
     validUntil: validUntil.toISOString(),
     timing: {
       firstDetected: trackedSignal.firstDetected,
       signalAge,
       validUntil: validUntil.toISOString(),
+      degradeAfter: degradeAfter.toISOString(),
+      optimalWindowMinutes: timingWindows.optimalMinutes,
+      expiryMinutes: timingWindows.expiryMinutes,
+      state,
       isStale: isStale(signalAge.ms),
     },
   };

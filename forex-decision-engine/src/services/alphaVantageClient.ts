@@ -17,6 +17,13 @@ const getAssetClass = (symbol: string): 'forex' | 'metals' | 'crypto' => {
   return 'forex';
 };
 
+function getAssetClass(symbol: string): 'forex' | 'crypto' | 'metals' {
+  const spec = getInstrumentSpec(symbol);
+  if (spec?.type === 'metal') return 'metals';
+  if (spec?.type === 'crypto') return 'crypto';
+  return 'forex';
+}
+
 // ═══════════════════════════════════════════════════════════════
 // TYPES
 // ═══════════════════════════════════════════════════════════════

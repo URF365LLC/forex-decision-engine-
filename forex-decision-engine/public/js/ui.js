@@ -221,21 +221,13 @@ const UI = {
 
     // Format time and validity window
     const timestamp = new Date(decision.timestamp).toLocaleString();
-    const validUntil = new Date(decision.validUntil);
+    const timing = decision.timing || {};
+    const validUntil = new Date(timing.validUntil || decision.validUntil);
+    const degradeAfter = timing.degradeAfter ? new Date(timing.degradeAfter) : null;
     const isExpired = validUntil < new Date();
-
-    // Clear validity window display (e.g., "Valid 9:00 AM - 1:00 PM EST")
-    const validWindowDisplay = decision.timing?.validWindow || `Valid until ${validUntil.toLocaleTimeString()}`;
-    const validText = isExpired ? '⚠️ EXPIRED' : validWindowDisplay;
-    const validClass = isExpired ? 'validity-expired' : 'validity-active';
-
-    // Optimal entry window (first 30 minutes)
-    const optimalWindow = decision.timing?.optimalEntryWindow || 30;
-    const detectedTime = decision.timing?.firstDetected ? new Date(decision.timing.firstDetected) : new Date(decision.timestamp);
-    const optimalUntil = new Date(detectedTime.getTime() + optimalWindow * 60 * 1000);
-    const inOptimalWindow = new Date() < optimalUntil;
-    const optimalHTML = !isNoTrade && inOptimalWindow ?
-      `<span class="optimal-entry">⚡ Optimal entry: next ${optimalWindow} min</span>` : '';
+    const timingState = timing.state || (isExpired ? 'expired' : 'optimal');
+    const validText = isExpired ? 'Expired' : `Valid until ${validUntil.toLocaleTimeString()}`;
+    const degradeText = degradeAfter ? `Degrades after ${degradeAfter.toLocaleTimeString()}` : '';
 
     // Signal freshness display
     const signalAgeDisplay = decision.timing?.signalAge?.display || '';
@@ -271,7 +263,9 @@ const UI = {
           ${!isNoTrade || !noTradeReasonHTML ? `<div class="card-reason">"${decision.reason}"</div>` : ''}
         </div>
         <div class="card-footer">
-          <span class="${validClass}">${decision.timeframes?.trend || 'H4'}/${decision.timeframes?.entry || 'H1'} | ${validText}</span>
+          <span class="timing ${timingState}">
+            ${decision.timeframes?.trend || 'H4'}/${decision.timeframes?.entry || 'H1'} | ${validText}${degradeText ? ` • ${degradeText}` : ''}
+          </span>
           <div class="card-actions">
             ${!isNoTrade ? `<button class="btn btn-small" onclick="App.copySignal('${decisionKey}')">📋 Copy</button>` : ''}
           </div>
