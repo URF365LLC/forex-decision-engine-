@@ -156,9 +156,18 @@ export function checkDrawdownLimits(params: DrawdownCheckParams): DrawdownCheckR
     startOfDayEquity = brokerStartOfDay;
     stateSource = 'broker';
   } else if (state && state.dayKey === today) {
-    startOfDayEquity = state.startOfDayEquity;
-    stateSource = 'calculated';
-    warnings.push('Using persisted startOfDayEquity');
+    // SANITY CHECK: If stored startOfDay is more than 50% different from current equity,
+    // it's likely the account size was changed. Reset to current equity.
+    const storedStart = state.startOfDayEquity;
+    if (storedStart > equity * 1.5 || storedStart < equity * 0.5) {
+      startOfDayEquity = equity;
+      stateSource = 'calculated';
+      warnings.push(`startOfDayEquity reset: stored ${storedStart} was unrealistic vs equity ${equity}`);
+    } else {
+      startOfDayEquity = storedStart;
+      stateSource = 'calculated';
+      warnings.push('Using persisted startOfDayEquity');
+    }
   } else {
     startOfDayEquity = equity;
     stateSource = 'calculated';
@@ -170,7 +179,16 @@ export function checkDrawdownLimits(params: DrawdownCheckParams): DrawdownCheckR
     peakEquity = Math.max(brokerPeak, equity);
     stateSource = 'broker';
   } else if (state && state.peakEquity > 0) {
-    peakEquity = Math.max(state.peakEquity, equity);
+    // SANITY CHECK: If stored peak is more than 50% higher than current equity,
+    // it's likely corrupted/stale data. Reset to current equity.
+    // (No real account grows 50%+ then stays at that peak)
+    const storedPeak = state.peakEquity;
+    if (storedPeak > equity * 1.5) {
+      peakEquity = equity;
+      warnings.push(`peakEquity reset: stored ${storedPeak} was unrealistic vs equity ${equity}`);
+    } else {
+      peakEquity = Math.max(storedPeak, equity);
+    }
   } else {
     peakEquity = equity;
     warnings.push('peakEquity initialized from current equity');
