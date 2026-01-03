@@ -1,0 +1,198 @@
+# REPLIT CROSS-VALIDATION EXECUTION PLAN PROMPT
+
+Copy and paste this into Replit:
+
+---
+
+```
+You have received V2 strategy files that I uploaded. Before we execute ANY changes, we need to align on the execution plan.
+
+## YOUR ROLE
+You are the implementation engineer. I am the architect providing V2 specifications.
+Before you write a single line of code, you must PROVE you understand the plan by answering verification questions.
+
+## DO NOT
+- Start coding immediately
+- Make assumptions about file locations
+- Skip verification steps
+- Modify files without explicit approval
+
+## DO
+- Read all V2 files I uploaded
+- Answer each verification question below
+- Present your execution plan for MY approval
+- Wait for my "APPROVED - PROCEED" before any changes
+
+---
+
+# PHASE 1: FILE INVENTORY
+
+List what you received. For each file, state:
+1. Filename
+2. What it contains (strategy name, gate, etc.)
+3. Target location in my codebase (where should it go?)
+
+Expected files:
+- SignalQualityGate.ts
+- BollingerMR.ts
+- BreakRetest.ts
+- CciZeroLine.ts
+- EmaPullback.ts
+- RsiBounce.ts
+- RsiOversold.ts
+- StochasticOversold.ts
+- TripleEma.ts
+- WilliamsEma.ts
+- PROOF-OF-FIXES.txt
+- README.md
+- V2-ENTERPRISE-AUDIT-REPORT.md
+
+Confirm: Did you receive all 13 files? YES/NO
+If NO, list what's missing.
+
+---
+
+# PHASE 2: CURRENT CODEBASE AUDIT
+
+Before replacing files, tell me:
+
+1. **Current strategy location**: Where are existing strategies stored?
+   - Expected: `src/strategies/intraday/*.ts`
+   - Actual: _______
+
+2. **Current SignalQualityGate location**: Does it exist? Where?
+   - Expected: `src/strategies/SignalQualityGate.ts`
+   - Actual: _______
+
+3. **Strategy index/registry**: Is there a file that imports all strategies?
+   - If yes, list the file and what it imports
+   - This will need updating after we deploy V2
+
+4. **Types file**: Where is `types.ts` with Bar, Decision, etc.?
+   - Verify it has `timestamp` field on Bar (not `time`)
+
+5. **Utils file**: Where is `utils.ts`?
+   - List the functions it exports
+   - V2 strategies expect: `atIndex`, `validateOrder`, `buildDecision`, `clamp`, `normalizedSlope`, `isRejectionCandle`
+
+---
+
+# PHASE 3: DEPENDENCY CHECK
+
+V2 strategies import from SignalQualityGate:
+```typescript
+import {
+  runPreFlight,
+  logPreFlight,
+  isValidNumber,
+  allValidNumbers,
+  isValidBBand,
+  isValidStoch,
+  isTrendAligned,
+  getTrendConfidenceAdjustment,
+} from '../SignalQualityGate.js';
+```
+
+Answer:
+1. Does the V2 SignalQualityGate.ts I provided export ALL these functions?
+2. Will the import path `../SignalQualityGate.js` resolve correctly from `src/strategies/intraday/`?
+3. If not, what path adjustment is needed?
+
+---
+
+# PHASE 4: DATA PIPELINE CHECK
+
+V2 strategies require these data fields in `IndicatorData`:
+```typescript
+{
+  symbol: string;
+  bars: Bar[];           // H1 OHLCV
+  trendBarsH4: Bar[];    // H4 OHLCV for trend
+  ema200H4: number[];    // H4 EMA200
+  adxH4: number[];       // H4 ADX
+  // ... plus strategy-specific indicators
+}
+```
+
+Answer:
+1. Does your current `IndicatorData` type include `trendBarsH4`, `ema200H4`, `adxH4`?
+2. If NO, we need to add them. Show me the current type definition.
+3. Does your indicator service FETCH H4 data? Find the code that does this.
+
+---
+
+# PHASE 5: EXECUTION PLAN
+
+Present your step-by-step plan in this format:
+
+## Step 1: Backup
+- [ ] Create backup of current strategies: `cp -r src/strategies src/strategies.backup.YYYYMMDD`
+
+## Step 2: Deploy SignalQualityGate
+- [ ] Copy V2 `SignalQualityGate.ts` to: _______
+- [ ] Verify exports match V2 requirements
+
+## Step 3: Deploy Strategies (one by one)
+For EACH strategy:
+- [ ] Copy V2 file to target location
+- [ ] Verify imports resolve
+- [ ] Run `tsc --noEmit` to check compilation
+
+Order of deployment:
+1. _______
+2. _______
+(list all 9)
+
+## Step 4: Update Strategy Registry
+- [ ] Update index file to import V2 strategies
+- [ ] Remove any duplicate/old strategy imports
+
+## Step 5: Type Updates (if needed)
+- [ ] Add `trendBarsH4`, `ema200H4`, `adxH4` to IndicatorData
+- [ ] Verify Bar type has `timestamp` field
+
+## Step 6: Verification
+- [ ] Run `tsc --noEmit` - must pass with 0 errors
+- [ ] Run existing tests (if any)
+- [ ] Manual smoke test: scan one symbol, verify decision structure
+
+---
+
+# PHASE 6: ROLLBACK PLAN
+
+If anything breaks:
+1. How do we rollback to backup?
+2. What's the command?
+
+---
+
+# VERIFICATION QUESTIONS (ANSWER ALL)
+
+Before I approve, confirm:
+
+| Question | Your Answer |
+|----------|-------------|
+| Did you receive all 13 V2 files? | YES / NO |
+| Do you know where strategies currently live? | path: _______ |
+| Do you know where SignalQualityGate should go? | path: _______ |
+| Does IndicatorData have H4 fields? | YES / NO / NEED TO ADD |
+| Does Bar type use `timestamp` (not `time`)? | YES / NO / NEED TO FIX |
+| Can you compile V2 files without errors? | YES / NO / UNTESTED |
+| Do you have a rollback plan? | YES / NO |
+
+---
+
+# APPROVAL GATE
+
+After you answer all questions and present your plan, I will respond with one of:
+
+- **APPROVED - PROCEED**: Execute the plan step by step, reporting after each step
+- **CLARIFICATION NEEDED**: I'll ask follow-up questions
+- **PLAN REJECTED**: I'll explain what needs to change
+
+DO NOT START CODING until you receive "APPROVED - PROCEED".
+
+---
+
+Now: Read the V2 files I uploaded and answer the questions above.
+```

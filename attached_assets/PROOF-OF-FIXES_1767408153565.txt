@@ -1,0 +1,51 @@
+PROP-GRADE V2 STRATEGIES - PROOF OF FIXES
+==========================================
+Generated: 2026-01-03
+Version: V2-GO
+
+CRITICAL FIX #1: BollingerMR TP Bug
+-----------------------------------
+File: BollingerMR.ts, Lines 103-106
+BEFORE (BROKEN):
+  const takeProfitPrice = direction === 'long'
+    ? bbSignal.middle
+    : bbSignal.middle;  // SAME VALUE FOR BOTH!
+
+AFTER (FIXED):
+  const riskDistance = Math.abs(entryPrice - stopLossPrice);
+  const takeProfitPrice = direction === 'long'
+    ? entryPrice + (riskDistance * 1.5)
+    : entryPrice - (riskDistance * 1.5);  // NOW CORRECT!
+
+CRITICAL FIX #2: SignalQualityGate timestamp field
+--------------------------------------------------
+File: SignalQualityGate.ts, Line 179
+BEFORE (BROKEN): signalBar.time (field doesn't exist)
+AFTER (FIXED):   signalBar.timestamp (correct field name)
+
+CRITICAL FIX #3: CciZeroLine falsy check
+----------------------------------------
+File: CciZeroLine.ts
+BEFORE: if (!cciSignal || !cciPrev...) // CCI=0 is valid but !0 = true
+AFTER:  if (!allValidNumbers(cciSignal, cciPrev...))
+
+CRITICAL FIX #4: TripleEma zero seeding
+---------------------------------------
+File: TripleEma.ts
+BEFORE: result.push(0) during warmup, then falsy check kills it
+AFTER:  result.push(null) during warmup
+
+CRITICAL FIX #5: All strategies - runPreFlight integration
+----------------------------------------------------------
+All 9 strategies now call runPreFlight() with:
+- Session gate (instrument-aware)
+- Regime gate (ADX + ATR%)
+- Closed-bar enforcement
+- H4 trend analysis
+
+TO VERIFY THESE FIXES:
+grep "riskDistance" BollingerMR.ts
+grep "signalBar.timestamp" SignalQualityGate.ts
+grep "allValidNumbers" CciZeroLine.ts
+grep "result.push(null)" TripleEma.ts
+grep "runPreFlight" EmaPullback.ts
