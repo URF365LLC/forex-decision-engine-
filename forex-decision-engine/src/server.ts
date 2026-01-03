@@ -23,12 +23,9 @@ import {
 } from './config/e8InstrumentSpecs.js';
 import { DEFAULTS, RISK_OPTIONS } from './config/defaults.js';
 import { STYLE_PRESETS } from './config/strategy.js';
-// LEGACY ENGINE DISABLED (V1.1 - 2026-01-02) - Three-way audit finding
-// import { analyzeSymbol, scanSymbols } from './engine/decisionEngine.js';
-import { UserSettings } from './engine/decisionEngine.js';
 import { scanWithStrategy, clearStrategyCache } from './engine/strategyAnalyzer.js';
 import { strategyRegistry } from './strategies/index.js';
-import { Decision as StrategyDecision, Decision } from './strategies/types.js';
+import { Decision as StrategyDecision, Decision, UserSettings } from './strategies/types.js';
 import { checkDrawdownLimits } from './services/drawdownGuard.js';
 import { validateSettings, validateSymbol, validateSymbols, validateJournalUpdate, sanitizeNotes } from './utils/validation.js';
 import { signalStore } from './storage/signalStore.js';
