@@ -163,7 +163,40 @@ export interface SignalTiming {
     display: string;
   };
   validUntil: string;
+  validFrom: string;
+  validWindow: string; // Human-readable: "Valid 9:00 AM - 1:00 PM EST"
   isStale: boolean;
+  optimalEntryWindow: number; // Minutes from detection for best entry (default: 30)
+}
+
+/**
+ * Tiered Exit Management
+ * Addresses the core problem: trades going up but missing TP, then reversing to hit SL
+ */
+export interface TieredExit {
+  level: 1 | 2 | 3;
+  price: number;
+  pips: number;
+  rr: number;
+  formatted: string;
+  action: 'close_50%' | 'close_25%' | 'close_remaining' | 'trail';
+  description: string;
+}
+
+export interface ExitManagement {
+  mode: 'tiered' | 'fixed' | 'trailing';
+  tieredExits: TieredExit[];
+  breakEvenTrigger: {
+    afterTP: 1 | 2; // Move SL to BE after TP1 or TP2 hit
+    price: number;
+    formatted: string;
+  };
+  trailingStop?: {
+    activateAfterR: number; // Activate trailing after +1R
+    trailDistance: number; // Trail X pips behind price
+    trailDistancePips: number;
+  };
+  instructions: string[]; // Human-readable exit instructions
 }
 
 export interface SentimentData {
@@ -190,10 +223,12 @@ export interface Decision {
   entryZone: null;
   stopLoss: { price: number; pips: number; formatted: string } | null;
   takeProfit: { price: number; pips: number; rr: number; formatted: string } | null;
-  position: { 
-    lots: number; 
-    units: number; 
-    riskAmount: number; 
+  // NEW: Tiered exit management (TP1/TP2/Trail)
+  exitManagement?: ExitManagement;
+  position: {
+    lots: number;
+    units: number;
+    riskAmount: number;
     isApproximate: boolean;
   } | null;
   reason: string;
@@ -232,4 +267,149 @@ export function formatPrice(price: number, symbol: string): string {
 export function calculatePips(price1: number, price2: number, symbol: string): number {
   const { pipSize } = getPipInfo(symbol);
   return Math.abs(price1 - price2) / pipSize;
+}
+
+/**
+ * Calculate tiered exit management for a trade
+ *
+ * Default tiered exit strategy:
+ * - TP1: 1.0R (close 50%, move SL to breakeven)
+ * - TP2: 2.0R (close remaining 50%)
+ * - Optional: Trail after TP1
+ *
+ * This addresses the core problem: trades going up but missing TP, then reversing to hit SL
+ */
+export function calculateTieredExits(
+  symbol: string,
+  direction: SignalDirection,
+  entryPrice: number,
+  stopLossPrice: number,
+  atr?: number
+): ExitManagement {
+  const { pipSize, digits } = getPipInfo(symbol);
+
+  // Calculate risk distance (1R)
+  const riskDistance = Math.abs(entryPrice - stopLossPrice);
+  const riskPips = riskDistance / pipSize;
+
+  // Direction multiplier
+  const mult = direction === 'long' ? 1 : -1;
+
+  // Calculate TP levels
+  const tp1Price = entryPrice + (riskDistance * 1.0 * mult); // 1R
+  const tp2Price = entryPrice + (riskDistance * 2.0 * mult); // 2R
+  const tp3Price = entryPrice + (riskDistance * 3.0 * mult); // 3R (trail target)
+
+  const tp1Pips = riskPips * 1.0;
+  const tp2Pips = riskPips * 2.0;
+  const tp3Pips = riskPips * 3.0;
+
+  // Trail distance (0.5R behind price)
+  const trailDistancePips = riskPips * 0.5;
+  const trailDistance = riskDistance * 0.5;
+
+  const tieredExits: TieredExit[] = [
+    {
+      level: 1,
+      price: tp1Price,
+      pips: Math.round(tp1Pips * 10) / 10,
+      rr: 1.0,
+      formatted: tp1Price.toFixed(digits),
+      action: 'close_50%',
+      description: 'TP1: Close 50% at +1R, move SL to breakeven',
+    },
+    {
+      level: 2,
+      price: tp2Price,
+      pips: Math.round(tp2Pips * 10) / 10,
+      rr: 2.0,
+      formatted: tp2Price.toFixed(digits),
+      action: 'close_remaining',
+      description: 'TP2: Close remaining 50% at +2R',
+    },
+    {
+      level: 3,
+      price: tp3Price,
+      pips: Math.round(tp3Pips * 10) / 10,
+      rr: 3.0,
+      formatted: tp3Price.toFixed(digits),
+      action: 'trail',
+      description: 'TP3: Optional extended target if trailing',
+    },
+  ];
+
+  const instructions = [
+    `1. Enter at ${entryPrice.toFixed(digits)}`,
+    `2. Set SL at ${stopLossPrice.toFixed(digits)} (${Math.round(riskPips)} pips risk)`,
+    `3. When price hits TP1 (${tp1Price.toFixed(digits)}): Close 50%, move SL to breakeven`,
+    `4. When price hits TP2 (${tp2Price.toFixed(digits)}): Close remaining position`,
+    `5. If trailing: After TP1, trail stop ${Math.round(trailDistancePips)} pips behind price`,
+  ];
+
+  return {
+    mode: 'tiered',
+    tieredExits,
+    breakEvenTrigger: {
+      afterTP: 1,
+      price: entryPrice,
+      formatted: entryPrice.toFixed(digits),
+    },
+    trailingStop: {
+      activateAfterR: 1.0,
+      trailDistance,
+      trailDistancePips: Math.round(trailDistancePips * 10) / 10,
+    },
+    instructions,
+  };
+}
+
+/**
+ * Calculate validity window for a signal
+ *
+ * Intraday (H1 entry): Valid for ~1 hour from detection (next bar)
+ * Swing (H4 entry): Valid for ~4 hours from detection
+ *
+ * Optimal entry: First 30 minutes after detection for best pricing
+ */
+export function calculateValidityWindow(
+  style: TradingStyle,
+  detectionTime: Date,
+  timezone: string = 'America/New_York'
+): SignalTiming {
+  const now = detectionTime;
+  const optimalWindowMinutes = 30;
+
+  // Validity duration based on style and timeframe
+  const validityMinutes = style === 'swing' ? 240 : 60; // 4 hours for swing, 1 hour for intraday
+
+  const validUntil = new Date(now.getTime() + validityMinutes * 60 * 1000);
+
+  // Format times for display
+  const formatTime = (date: Date): string => {
+    return date.toLocaleTimeString('en-US', {
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+      timeZone: timezone,
+    });
+  };
+
+  const tzAbbrev = timezone === 'America/New_York' ? 'EST' :
+                   timezone === 'America/Chicago' ? 'CST' :
+                   timezone === 'Europe/London' ? 'GMT' : 'UTC';
+
+  const validWindow = `Valid ${formatTime(now)} - ${formatTime(validUntil)} ${tzAbbrev}`;
+
+  return {
+    firstDetected: now.toISOString(),
+    signalAge: {
+      ms: 0,
+      display: 'Just detected',
+    },
+    validUntil: validUntil.toISOString(),
+    validFrom: now.toISOString(),
+    validWindow,
+    isStale: false,
+    optimalEntryWindow: optimalWindowMinutes,
+  };
 }

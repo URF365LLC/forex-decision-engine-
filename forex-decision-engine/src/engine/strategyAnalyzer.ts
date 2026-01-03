@@ -11,13 +11,15 @@
 import { getIndicators, AnyIndicatorData } from './indicatorFactory.js';
 import { IndicatorData as OldIndicatorData, getLatestValue } from './indicatorService.js';
 import { strategyRegistry } from '../strategies/index.js';
-import { 
-  IndicatorData as StrategyIndicatorData, 
+import {
+  IndicatorData as StrategyIndicatorData,
   Decision as StrategyDecision,
   UserSettings,
   Bar,
   GatingInfo,
-  VolatilityLevel
+  VolatilityLevel,
+  calculateTieredExits,
+  calculateValidityWindow
 } from '../strategies/types.js';
 import { getInstrumentSpec } from '../config/e8InstrumentSpecs.js';
 import { cache, CACHE_TTL } from '../services/cache.js';
@@ -255,12 +257,46 @@ export async function analyzeWithStrategy(
   
   if (decision) {
     decision.displayName = getInstrumentSpec(symbol)?.displayName || symbol;
-    
+
     const meta = strategyRegistry.getMeta(strategyId);
     if (meta?.timeframes) {
       decision.timeframes = meta.timeframes;
     }
-    
+
+    // ════════════════════════════════════════════════════════════════════════════
+    // TIERED EXIT MANAGEMENT (Critical: addresses TP miss problem)
+    // ════════════════════════════════════════════════════════════════════════════
+
+    if (decision.grade !== 'no-trade' && decision.stopLoss && decision.entry) {
+      // Calculate tiered exits: TP1 at 1R (close 50%), TP2 at 2R (close rest)
+      decision.exitManagement = calculateTieredExits(
+        symbol,
+        decision.direction,
+        decision.entry.price,
+        decision.stopLoss.price
+      );
+
+      // Update the main takeProfit to be TP2 (the full target)
+      // Keep original TP as TP2, but now user knows to take partials at TP1
+      if (decision.exitManagement.tieredExits.length >= 2) {
+        const tp2 = decision.exitManagement.tieredExits[1]; // TP2 = 2R
+        decision.takeProfit = {
+          price: tp2.price,
+          pips: tp2.pips,
+          rr: tp2.rr,
+          formatted: tp2.formatted,
+        };
+      }
+    }
+
+    // ════════════════════════════════════════════════════════════════════════════
+    // VALIDITY WINDOW (Clear "Valid 9:00 AM - 1:00 PM EST" display)
+    // ════════════════════════════════════════════════════════════════════════════
+
+    const timezone = settings.timezone || 'America/New_York';
+    decision.timing = calculateValidityWindow(settings.style, new Date(), timezone);
+    decision.validUntil = decision.timing.validUntil;
+
     // ════════════════════════════════════════════════════════════════════════════
     // SAFETY GATE CHECKS
     // ════════════════════════════════════════════════════════════════════════════
