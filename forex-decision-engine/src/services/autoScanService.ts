@@ -91,6 +91,7 @@ class AutoScanService {
   private status: AutoScanStatus;
   private startedAt: string | null = null;
   private strategyStatus: Map<string, StrategyRunStatus> = new Map();
+  private alertCallback: ((decision: Decision, isNew: boolean) => void) | null = null;
   
   constructor() {
     this.config = {
@@ -111,6 +112,15 @@ class AutoScanService {
     };
   }
   
+  setAlertCallback(callback: (decision: Decision, isNew: boolean) => void): void {
+    this.alertCallback = callback;
+    logger.info('AUTO_SCAN: Alert callback registered');
+  }
+  
+  hasAlertCallback(): boolean {
+    return this.alertCallback !== null;
+  }
+  
   start(config: Partial<AutoScanConfig> = {}): { success: boolean; error?: string } {
     if (this.isRunning) {
       logger.warn('AUTO_SCAN: Already running, stopping first');
@@ -121,6 +131,11 @@ class AutoScanService {
     if (!email || !email.includes('@')) {
       logger.warn('AUTO_SCAN: Cannot start without valid email for alerts');
       return { success: false, error: 'Valid email address required for alerts' };
+    }
+    
+    if (!this.alertCallback) {
+      logger.error('AUTO_SCAN: Cannot start - alert callback not registered. Call setAlertCallback() first.');
+      return { success: false, error: 'Alert system not initialized - please restart the server' };
     }
     
     this.config = { 
@@ -351,8 +366,12 @@ class AutoScanService {
               trackSignal(symbol, schedule.strategyId, decision.direction);
             }
 
-            if (this.config.onNewSignal && this.shouldNotify(decision, isNew)) {
-              this.config.onNewSignal(decision, isNew);
+            if (this.shouldNotify(decision, isNew)) {
+              if (this.alertCallback) {
+                this.alertCallback(decision, isNew);
+              } else {
+                logger.warn(`AUTO_SCAN: Qualifying ${decision.grade} signal found but NO ALERT CALLBACK configured - email will not be sent!`);
+              }
             }
             
             if (isNew) {
@@ -467,6 +486,11 @@ class AutoScanService {
   }
 
   autoStartIfEnabled(): void {
+    if (!this.alertCallback) {
+      logger.error('AUTO_SCAN: Cannot auto-start - alert callback not registered. Call setAlertCallback() first.');
+      return;
+    }
+    
     const savedConfig = this.loadConfig();
     if (savedConfig && savedConfig.enabled) {
       if (!savedConfig.email || !savedConfig.email.includes('@')) {

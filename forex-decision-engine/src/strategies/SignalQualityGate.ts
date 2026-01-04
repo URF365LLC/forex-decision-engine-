@@ -260,9 +260,12 @@ export type InstrumentClass = 'fx' | 'crypto' | 'indices' | 'stocks';
 
 function getInstrumentClass(symbol: string): InstrumentClass {
   const upper = symbol.toUpperCase();
-  // Crypto detection
-  if (upper.includes('BTC') || upper.includes('ETH') || upper.includes('USDT') || 
-      upper.includes('SOL') || upper.includes('XRP') || upper.includes('DOGE')) {
+  // Crypto detection - all major cryptos including those in E8 specs
+  const cryptoPatterns = [
+    'BTC', 'ETH', 'USDT', 'SOL', 'XRP', 'DOGE',
+    'ADA', 'BNB', 'BCH', 'LTC', 'AVAX', 'DOT', 'MATIC', 'LINK', 'UNI', 'ATOM'
+  ];
+  if (cryptoPatterns.some(c => upper.includes(c))) {
     return 'crypto';
   }
   // Index detection

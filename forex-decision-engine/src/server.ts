@@ -880,6 +880,17 @@ app.listen(PORT, () => {
   logger.info(`🔑 API Key: ${process.env.TWELVE_DATA_API_KEY ? 'Configured' : 'NOT CONFIGURED'}`);
   logger.info(`📊 Instruments: ${FOREX_SPECS.length} forex, ${METAL_SPECS.length} metals, ${CRYPTO_SPECS.length} crypto, ${INDEX_SPECS.length} indices, ${COMMODITY_SPECS.length} commodities (${ALL_INSTRUMENTS.length} total)`);
   
+  // Register alert callback BEFORE auto-starting - ensures alerts work after server restart
+  autoScanService.setAlertCallback((decision, isNew) => {
+    const email = autoScanService.getStatus().config.email;
+    if (email) {
+      alertService.sendTradeAlert(decision, email, { isNew }).catch(err => {
+        logger.error(`Alert email failed: ${err}`);
+      });
+    }
+    broadcastUpgrade({ type: 'new_signal', decision, isNew });
+  });
+  
   autoScanService.autoStartIfEnabled();
 });
 
