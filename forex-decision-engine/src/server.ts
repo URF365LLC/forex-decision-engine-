@@ -691,27 +691,53 @@ app.get('/api/upgrades/recent', (req, res) => {
 });
 
 // ═══════════════════════════════════════════════════════════════
-// AUTO-SCAN ENDPOINTS
+// AUTO-SCAN ENDPOINTS (v2.0 - Optimized)
 // ═══════════════════════════════════════════════════════════════
 
+/**
+ * Start auto-scan with optimized configuration
+ *
+ * Body params:
+ * - minGrade: 'A+' | 'A' | 'B+' | 'B' | 'C' (default: 'B')
+ * - email: string (optional, for email alerts)
+ * - intervalMs: number (default: 300000 = 5 min)
+ * - watchlistPreset: 'majors' | 'minors' | 'crypto' | 'metals' | 'indices' | 'all' | 'custom'
+ * - customSymbols: string[] (only used if watchlistPreset = 'custom')
+ * - strategies: string[] (optional, defaults to all)
+ * - respectMarketHours: boolean (default: true - skip forex on weekends)
+ */
 app.post('/api/autoscan/start', (req, res) => {
   try {
-    const { minGrade = 'B', email, intervalMs = 5 * 60 * 1000 } = req.body;
-    
+    const {
+      minGrade = 'B',
+      email,
+      intervalMs = 5 * 60 * 1000,
+      watchlistPreset = 'majors',
+      customSymbols = [],
+      strategies = [],
+      respectMarketHours = true,
+    } = req.body;
+
     autoScanService.start({
       minGrade,
       email,
       intervalMs,
+      watchlistPreset,
+      customSymbols,
+      strategies,
+      respectMarketHours,
       onNewSignal: (decision, isNew) => {
-        if (isNew && email) {
+        // Send email for A/A+ signals
+        if (email && (decision.grade === 'A+' || decision.grade === 'A')) {
           alertService.sendTradeAlert(decision, email).catch(err => {
             logger.error(`Alert email failed: ${err}`);
           });
         }
+        // Broadcast to SSE clients
         broadcastUpgrade({ type: 'new_signal', decision, isNew });
       }
     });
-    
+
     res.json({
       success: true,
       message: 'Auto-scan started',
@@ -736,18 +762,38 @@ app.get('/api/autoscan/status', (req, res) => {
   res.json(autoScanService.getStatus());
 });
 
+/**
+ * Get available watchlist presets
+ */
+app.get('/api/autoscan/presets', (req, res) => {
+  res.json({
+    presets: autoScanService.getAvailablePresets(),
+    marketHours: autoScanService.getMarketHoursInfo(),
+  });
+});
+
 app.put('/api/autoscan/config', (req, res) => {
   try {
-    const { minGrade, email, intervalMs, symbols, strategies } = req.body;
-    
+    const {
+      minGrade,
+      email,
+      intervalMs,
+      watchlistPreset,
+      customSymbols,
+      strategies,
+      respectMarketHours,
+    } = req.body;
+
     autoScanService.updateConfig({
       minGrade,
       email,
       intervalMs,
-      symbols,
-      strategies
+      watchlistPreset,
+      customSymbols,
+      strategies,
+      respectMarketHours,
     });
-    
+
     res.json({
       success: true,
       message: 'Config updated',
