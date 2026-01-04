@@ -1,5 +1,5 @@
 {
-  "enabled": false,
+  "enabled": true,
   "intervalMs": 300000,
   "symbols": [
     "EURUSD",
@@ -87,6 +87,6 @@
       "intervalMs": 300000
     }
   ],
-  "minGrade": "B+",
-  "email": ""
+  "minGrade": "A",
+  "email": "urfreight365@gmail.com"
 }
