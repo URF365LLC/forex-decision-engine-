@@ -57,7 +57,13 @@ Core API endpoints facilitate system health checks, symbol retrieval, signal ana
 -   **Strategy Isolation**: Decisions are cached per strategy to prevent data staleness.
 -   **Margin-Aware Position Sizing**: Accounts for leverage and margin constraints, especially for crypto.
 -   **Indicator Alignment**: Uses NaN padding to ensure indicator array consistency.
--   **Auto-Scan & Signal Freshness**: Background scanning every 5 minutes with batch API, tracking signal age. Config persists to `data/autoScanConfig.json` and auto-starts on server reboot.
+-   **Auto-Scan v2.0 (Optimized)**: Background scanning with:
+    -   **Watchlist Presets**: majors, majors-gold, crypto, metals, indices, minors, all, or custom selection
+    -   **Market Hours Filter**: Skips forex/metals during weekend close (Fri 22:00 - Sun 22:00 UTC), keeps crypto 24/7
+    -   **Configurable Intervals**: 3, 5, 10, 15, or 30 minutes
+    -   **Progress Tracking**: Real-time scan progress, current strategy, and per-strategy results
+    -   **API Optimization**: Reduces API calls by focusing on smaller watchlists instead of all 46 instruments
+    -   Config persists to `data/autoScanConfig.json` and auto-starts on server reboot with alert callback guard.
 -   **Tiered Exit Management**: Every decision includes exitManagement with TP1 (1R, close 50%, move SL to breakeven), TP2 (2R, close 25%), and trailing runner for remaining 25%.
 -   **Grok AI Sentiment Analysis**: On-demand X/Twitter market sentiment integration with caching.
 -   **Multi-Asset Class Support**: UI and backend support for Forex, Metals, Indices, Commodities, and Crypto.

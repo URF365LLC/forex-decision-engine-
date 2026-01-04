@@ -680,9 +680,30 @@ app.get('/api/upgrades/recent', (req, res) => {
 // AUTO-SCAN ENDPOINTS
 // ═══════════════════════════════════════════════════════════════
 
+app.get('/api/autoscan/presets', (req, res) => {
+  const presets = autoScanService.getWatchlistPresets();
+  res.json({
+    presets: Object.entries(presets).map(([id, data]) => ({
+      id,
+      symbols: data.symbols,
+      description: data.description,
+      count: data.symbols.length,
+    })),
+  });
+});
+
 app.post('/api/autoscan/start', (req, res) => {
   try {
-    const { minGrade = 'B', email, intervalMs = 5 * 60 * 1000, symbols, strategies } = req.body;
+    const { 
+      minGrade = 'B', 
+      email, 
+      intervalMs = 5 * 60 * 1000, 
+      symbols, 
+      strategies,
+      watchlistPreset,
+      customSymbols,
+      respectMarketHours = true
+    } = req.body;
     
     const result = autoScanService.start({
       minGrade,
@@ -690,6 +711,9 @@ app.post('/api/autoscan/start', (req, res) => {
       intervalMs,
       symbols,
       strategies,
+      watchlistPreset,
+      customSymbols,
+      respectMarketHours,
       onNewSignal: (decision, isNew) => {
         if (email) {
           alertService.sendTradeAlert(decision, email, { isNew }).catch(err => {
@@ -735,14 +759,17 @@ app.get('/api/autoscan/status', (req, res) => {
 
 app.put('/api/autoscan/config', (req, res) => {
   try {
-    const { minGrade, email, intervalMs, symbols, strategies } = req.body;
+    const { minGrade, email, intervalMs, symbols, strategies, watchlistPreset, customSymbols, respectMarketHours } = req.body;
     
     const result = autoScanService.updateConfig({
       minGrade,
       email,
       intervalMs,
       symbols,
-      strategies
+      strategies,
+      watchlistPreset,
+      customSymbols,
+      respectMarketHours,
     });
     
     if (!result.success) {

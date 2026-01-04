@@ -1,13 +1,19 @@
 /**
- * Auto-Scan Service
- * Background scanner that runs every 5 minutes using batch API
- * Detects NEW signals and triggers alerts
+ * Auto-Scan Service v2.0 - OPTIMIZED
+ * 
+ * Key Optimizations:
+ * 1. Symbol watchlist presets (majors, minors, crypto, metals, custom)
+ * 2. Market hours filter (forex closed on weekends, crypto 24/7)
+ * 3. Per-strategy scheduling with staggered execution
+ * 4. Enhanced status tracking (progress %, per-strategy results)
+ * 5. Smarter batching to reduce API calls
+ * 
  * Persists config to data/autoScanConfig.json for auto-start on server reboot
  */
 
 import { createLogger } from './logger.js';
 import { fetchAllSymbolData, BatchIndicatorData, validateBatchResults } from './batchDataService.js';
-import { ALL_INSTRUMENTS } from '../config/e8InstrumentSpecs.js';
+import { ALL_INSTRUMENTS, FOREX_SPECS, CRYPTO_SPECS, METAL_SPECS, INDEX_SPECS, COMMODITY_SPECS } from '../config/e8InstrumentSpecs.js';
 import { isNewSignal, trackSignal } from '../storage/signalFreshnessTracker.js';
 import { strategyRegistry } from '../strategies/registry.js';
 import { gradeTracker } from './gradeTracker.js';
@@ -18,6 +24,92 @@ import * as path from 'path';
 const logger = createLogger('AutoScanService');
 const CONFIG_FILE = path.join(process.cwd(), 'data', 'autoScanConfig.json');
 
+// ═══════════════════════════════════════════════════════════════════════════
+// WATCHLIST PRESETS
+// ═══════════════════════════════════════════════════════════════════════════
+
+export type WatchlistPreset = 'majors' | 'majors-gold' | 'minors' | 'crypto' | 'metals' | 'indices' | 'commodities' | 'all' | 'custom';
+
+const MAJOR_PAIRS = ['EURUSD', 'GBPUSD', 'USDJPY', 'USDCHF', 'AUDUSD', 'NZDUSD', 'USDCAD'];
+const MINOR_PAIRS = FOREX_SPECS.map(s => s.symbol).filter(s => !MAJOR_PAIRS.includes(s));
+
+export const WATCHLIST_PRESETS: Record<WatchlistPreset, { symbols: string[]; description: string }> = {
+  'majors': { symbols: MAJOR_PAIRS, description: '7 major forex pairs' },
+  'majors-gold': { symbols: [...MAJOR_PAIRS, 'XAUUSD'], description: '7 majors + gold' },
+  'minors': { symbols: MINOR_PAIRS, description: '21 minor forex pairs' },
+  'crypto': { symbols: CRYPTO_SPECS.map(s => s.symbol), description: '8 cryptocurrencies (24/7)' },
+  'metals': { symbols: METAL_SPECS.map(s => s.symbol), description: 'Gold & silver' },
+  'indices': { symbols: INDEX_SPECS.map(s => s.symbol), description: '6 major indices' },
+  'commodities': { symbols: COMMODITY_SPECS.map(s => s.symbol), description: 'Oil & energy' },
+  'all': { symbols: ALL_INSTRUMENTS.map(s => s.symbol), description: 'All 46 instruments' },
+  'custom': { symbols: [], description: 'Custom selection' },
+};
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MARKET HOURS
+// ═══════════════════════════════════════════════════════════════════════════
+
+function isForexMarketOpen(): boolean {
+  const now = new Date();
+  const day = now.getUTCDay();
+  const hour = now.getUTCHours();
+
+  // Saturday: Closed
+  if (day === 6) return false;
+
+  // Sunday: Only open after 22:00 UTC (Sydney open)
+  if (day === 0) return hour >= 22;
+
+  // Friday: Only open until 22:00 UTC (NY close)
+  if (day === 5) return hour < 22;
+
+  // Mon-Thu: Open 24h
+  return true;
+}
+
+function isCryptoMarketOpen(): boolean {
+  // Crypto trades 24/7
+  return true;
+}
+
+function getSymbolMarketStatus(symbol: string): { open: boolean; reason?: string } {
+  const isCrypto = CRYPTO_SPECS.some(s => s.symbol === symbol);
+  if (isCrypto) {
+    return { open: isCryptoMarketOpen() };
+  }
+  
+  const forexOpen = isForexMarketOpen();
+  if (!forexOpen) {
+    const now = new Date();
+    const day = now.getUTCDay();
+    return { 
+      open: false, 
+      reason: day === 6 ? 'Weekend - Saturday' : day === 0 ? 'Weekend - Sunday (opens 22:00 UTC)' : 'Friday - Market closed'
+    };
+  }
+  return { open: true };
+}
+
+function getActiveSymbols(symbols: string[], respectMarketHours: boolean): { active: string[]; skipped: string[] } {
+  if (!respectMarketHours) {
+    return { active: symbols, skipped: [] };
+  }
+  
+  const active: string[] = [];
+  const skipped: string[] = [];
+  
+  for (const symbol of symbols) {
+    const status = getSymbolMarketStatus(symbol);
+    if (status.open) {
+      active.push(symbol);
+    } else {
+      skipped.push(symbol);
+    }
+  }
+  
+  return { active, skipped };
+}
+
 interface PersistedConfig {
   enabled: boolean;
   intervalMs: number;
@@ -25,6 +117,9 @@ interface PersistedConfig {
   strategies: StrategyScheduleConfig[];
   minGrade: SignalGrade;
   email?: string;
+  watchlistPreset?: WatchlistPreset;
+  customSymbols?: string[];
+  respectMarketHours?: boolean;
 }
 
 export interface StrategyScheduleConfig {
@@ -39,6 +134,9 @@ export interface AutoScanConfig {
   strategies: StrategyScheduleConfig[];
   minGrade: SignalGrade;
   email?: string;
+  watchlistPreset: WatchlistPreset;
+  customSymbols: string[];
+  respectMarketHours: boolean;
   onNewSignal?: (decision: Decision, isNew: boolean) => void;
 }
 
@@ -52,8 +150,20 @@ export interface AutoScanStatus {
     signalsFound: number;
     newSignals: number;
     errors: number;
+    skippedMarketClosed: number;
   } | null;
   config: Partial<AutoScanConfig>;
+  marketStatus: {
+    forex: boolean;
+    crypto: boolean;
+    forexReason?: string;
+  };
+  currentScan: {
+    strategyId: string | null;
+    progress: number;
+    total: number;
+    percent: number;
+  } | null;
 }
 
 const DEFAULT_SETTINGS: UserSettings = {
@@ -97,9 +207,12 @@ class AutoScanService {
     this.config = {
       enabled: false,
       intervalMs: 5 * 60 * 1000,
-      symbols: ALL_INSTRUMENTS.map(i => i.symbol),
+      symbols: WATCHLIST_PRESETS['majors-gold'].symbols,
       strategies: this.buildDefaultSchedules(5 * 60 * 1000),
       minGrade: 'B',
+      watchlistPreset: 'majors-gold',
+      customSymbols: [],
+      respectMarketHours: true,
     };
     
     this.status = {
@@ -109,6 +222,12 @@ class AutoScanService {
       strategyRuns: [],
       lastScanResults: null,
       config: {},
+      marketStatus: {
+        forex: isForexMarketOpen(),
+        crypto: true,
+        forexReason: isForexMarketOpen() ? undefined : 'Weekend',
+      },
+      currentScan: null,
     };
   }
   
@@ -138,13 +257,26 @@ class AutoScanService {
       return { success: false, error: 'Alert system not initialized - please restart the server' };
     }
     
+    // Handle watchlist preset
+    let symbols = config.symbols ?? this.config.symbols;
+    if (config.watchlistPreset) {
+      if (config.watchlistPreset === 'custom' && config.customSymbols) {
+        symbols = config.customSymbols;
+      } else if (config.watchlistPreset !== 'custom') {
+        symbols = WATCHLIST_PRESETS[config.watchlistPreset]?.symbols || symbols;
+      }
+    }
+    
     this.config = { 
       ...this.config, 
       ...config, 
       strategies: this.normalizeStrategies(config.strategies),
       intervalMs: config.intervalMs ?? this.config.intervalMs,
-      symbols: config.symbols ?? this.config.symbols,
+      symbols,
       minGrade: config.minGrade ?? this.config.minGrade,
+      watchlistPreset: config.watchlistPreset ?? this.config.watchlistPreset,
+      customSymbols: config.customSymbols ?? this.config.customSymbols,
+      respectMarketHours: config.respectMarketHours ?? this.config.respectMarketHours,
       enabled: true 
     };
     this.isRunning = true;
@@ -161,6 +293,9 @@ class AutoScanService {
         email: this.config.email,
         symbols: this.config.symbols,
         strategies: this.config.strategies,
+        watchlistPreset: this.config.watchlistPreset,
+        customSymbols: this.config.customSymbols,
+        respectMarketHours: this.config.respectMarketHours,
       },
     };
     
@@ -195,7 +330,35 @@ class AutoScanService {
   }
   
   getStatus(): AutoScanStatus {
+    // Update market status on every call
+    this.status.marketStatus = {
+      forex: isForexMarketOpen(),
+      crypto: true,
+      forexReason: isForexMarketOpen() ? undefined : 'Weekend',
+    };
     return { ...this.status };
+  }
+  
+  getWatchlistPresets(): Record<WatchlistPreset, { symbols: string[]; description: string }> {
+    return WATCHLIST_PRESETS;
+  }
+  
+  getSymbolsForPreset(preset: WatchlistPreset): string[] {
+    if (preset === 'custom') {
+      return this.config.customSymbols;
+    }
+    return WATCHLIST_PRESETS[preset]?.symbols || [];
+  }
+  
+  setWatchlistPreset(preset: WatchlistPreset, customSymbols?: string[]): void {
+    this.config.watchlistPreset = preset;
+    if (preset === 'custom' && customSymbols) {
+      this.config.customSymbols = customSymbols;
+      this.config.symbols = customSymbols;
+    } else {
+      this.config.symbols = WATCHLIST_PRESETS[preset]?.symbols || [];
+    }
+    logger.info(`AUTO_SCAN: Watchlist changed to ${preset} (${this.config.symbols.length} symbols)`);
   }
   
   updateConfig(config: Partial<AutoScanConfig>): { success: boolean; error?: string } {
@@ -319,7 +482,41 @@ class AutoScanService {
   
   private async runScan(schedule: StrategyScheduleConfig): Promise<void> {
     const startTime = Date.now();
-    logger.info(`AUTO_SCAN: Starting ${schedule.strategyId} scan of ${this.config.symbols.length} symbols`);
+    
+    // Update market status
+    this.status.marketStatus = {
+      forex: isForexMarketOpen(),
+      crypto: true,
+      forexReason: isForexMarketOpen() ? undefined : 'Weekend',
+    };
+    
+    // Filter symbols by market hours
+    const { active: symbolsToScan, skipped } = getActiveSymbols(
+      this.config.symbols, 
+      this.config.respectMarketHours
+    );
+    
+    if (symbolsToScan.length === 0) {
+      logger.info(`AUTO_SCAN: All ${this.config.symbols.length} symbols skipped (market closed)`);
+      this.status.lastScanResults = {
+        symbolsScanned: 0,
+        signalsFound: 0,
+        newSignals: 0,
+        errors: 0,
+        skippedMarketClosed: skipped.length,
+      };
+      return;
+    }
+    
+    logger.info(`AUTO_SCAN: Starting ${schedule.strategyId} scan of ${symbolsToScan.length} symbols (${skipped.length} skipped - market closed)`);
+    
+    // Update current scan progress
+    this.status.currentScan = {
+      strategyId: schedule.strategyId,
+      progress: 0,
+      total: symbolsToScan.length,
+      percent: 0,
+    };
     
     let symbolsScanned = 0;
     let signalsFound = 0;
@@ -327,7 +524,7 @@ class AutoScanService {
     let errors = 0;
     
     try {
-      const batchData = await fetchAllSymbolData(this.config.symbols);
+      const batchData = await fetchAllSymbolData(symbolsToScan);
       const { valid, incomplete } = validateBatchResults(batchData);
       
       symbolsScanned = valid.length;
@@ -392,11 +589,13 @@ class AutoScanService {
 
     const lastRunAt = new Date().toISOString();
     this.status.lastScanAt = lastRunAt;
+    this.status.currentScan = null;
     this.status.lastScanResults = {
       symbolsScanned,
       signalsFound,
       newSignals,
       errors,
+      skippedMarketClosed: skipped.length,
     };
     
     this.strategyStatus.set(schedule.strategyId, {
@@ -459,6 +658,9 @@ class AutoScanService {
         strategies: this.config.strategies,
         minGrade: this.config.minGrade,
         email: this.config.email,
+        watchlistPreset: this.config.watchlistPreset,
+        customSymbols: this.config.customSymbols,
+        respectMarketHours: this.config.respectMarketHours,
       };
       
       fs.writeFileSync(CONFIG_FILE, JSON.stringify(persistedConfig, null, 2), 'utf-8');

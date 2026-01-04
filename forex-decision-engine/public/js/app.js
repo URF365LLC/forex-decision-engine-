@@ -1093,6 +1093,9 @@ const App = {
   async startAutoScan() {
     const email = UI.$('autoscan-email')?.value?.trim() || '';
     const minGrade = UI.$('autoscan-grade')?.value || 'B';
+    const watchlistPreset = UI.$('autoscan-preset')?.value || 'majors-gold';
+    const intervalMs = parseInt(UI.$('autoscan-interval')?.value) || 300000;
+    const respectMarketHours = UI.$('autoscan-market-hours')?.checked !== false;
     
     if (!email || !email.includes('@')) {
       UI.$('autoscan-toggle').checked = false;
@@ -1105,7 +1108,7 @@ const App = {
       const response = await fetch('/api/autoscan/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, minGrade }),
+        body: JSON.stringify({ email, minGrade, watchlistPreset, intervalMs, respectMarketHours }),
       });
       
       const data = await response.json();
@@ -1153,6 +1156,12 @@ const App = {
     const lastEl = UI.$('autoscan-last');
     const nextEl = UI.$('autoscan-next');
     const signalsEl = UI.$('autoscan-signals');
+    const scannedEl = UI.$('autoscan-scanned');
+    const forexEl = UI.$('market-forex');
+    const cryptoEl = UI.$('market-crypto');
+    const progressEl = UI.$('scan-progress');
+    const progressFillEl = UI.$('scan-progress-fill');
+    const progressTextEl = UI.$('scan-progress-text');
     
     if (runningEl) {
       runningEl.textContent = status.isRunning ? 'Running' : 'Stopped';
@@ -1175,8 +1184,48 @@ const App = {
       signalsEl.textContent = status.lastScanResults.newSignals;
     }
     
+    if (scannedEl && status.lastScanResults) {
+      const skipped = status.lastScanResults.skippedMarketClosed || 0;
+      scannedEl.textContent = `${status.lastScanResults.symbolsScanned}${skipped > 0 ? ` (${skipped} skipped)` : ''}`;
+    }
+    
+    if (forexEl && status.marketStatus) {
+      forexEl.className = 'market-indicator forex ' + (status.marketStatus.forex ? 'active' : 'closed');
+      forexEl.title = status.marketStatus.forex ? 'Forex: Open' : (status.marketStatus.forexReason || 'Forex: Closed');
+    }
+    
+    if (cryptoEl && status.marketStatus) {
+      cryptoEl.className = 'market-indicator crypto active';
+    }
+    
+    if (progressEl && status.currentScan) {
+      UI.show('scan-progress');
+      const percent = Math.round((status.currentScan.progress / status.currentScan.total) * 100);
+      if (progressFillEl) progressFillEl.style.width = `${percent}%`;
+      if (progressTextEl) progressTextEl.textContent = `Scanning ${status.currentScan.strategyId}... ${percent}%`;
+    } else if (progressEl) {
+      UI.hide('scan-progress');
+    }
+    
     if (status.isRunning) {
       UI.show('autoscan-config');
+    }
+    
+    if (status.config?.email) {
+      const emailEl = UI.$('autoscan-email');
+      if (emailEl && !emailEl.value) emailEl.value = status.config.email;
+    }
+    if (status.config?.watchlistPreset) {
+      const presetEl = UI.$('autoscan-preset');
+      if (presetEl) presetEl.value = status.config.watchlistPreset;
+    }
+    if (status.config?.intervalMs) {
+      const intervalEl = UI.$('autoscan-interval');
+      if (intervalEl) intervalEl.value = status.config.intervalMs.toString();
+    }
+    if (typeof status.config?.respectMarketHours !== 'undefined') {
+      const marketHoursEl = UI.$('autoscan-market-hours');
+      if (marketHoursEl) marketHoursEl.checked = status.config.respectMarketHours;
     }
   },
 };

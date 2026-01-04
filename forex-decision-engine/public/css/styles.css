@@ -1160,6 +1160,77 @@ input:checked + .toggle-slider:before {
   color: var(--accent-amber);
 }
 
+.status-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.market-status {
+  display: flex;
+  gap: var(--spacing-xs);
+}
+
+.market-indicator {
+  font-size: 0.7rem;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--bg-secondary);
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.market-indicator.active {
+  background: var(--accent-success);
+  color: var(--bg-primary);
+}
+
+.market-indicator.closed {
+  background: var(--accent-danger);
+  color: white;
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  cursor: pointer;
+}
+
+.checkbox-label input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent-primary);
+}
+
+.scan-progress {
+  margin-top: var(--spacing-sm);
+  padding: var(--spacing-xs) 0;
+}
+
+.progress-bar {
+  height: 4px;
+  background: var(--bg-secondary);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: var(--accent-primary);
+  border-radius: 2px;
+  transition: width 0.3s ease;
+  width: 0%;
+}
+
+.progress-text {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  margin-top: 4px;
+  text-align: center;
+}
+
 /* Sentiment Badge */
 .sentiment-badge {
   display: flex;

@@ -232,6 +232,19 @@
               <input type="email" id="autoscan-email" placeholder="your@email.com" class="config-input">
             </div>
             <div class="config-row">
+              <label>Watchlist</label>
+              <select id="autoscan-preset" class="config-select">
+                <option value="majors-gold" selected>Majors + Gold (8)</option>
+                <option value="majors">Major Pairs (7)</option>
+                <option value="crypto">Crypto 24/7 (8)</option>
+                <option value="metals">Metals (2)</option>
+                <option value="indices">Indices (6)</option>
+                <option value="commodities">Commodities (2)</option>
+                <option value="minors">Minor Pairs (21)</option>
+                <option value="all">All 46 Instruments</option>
+              </select>
+            </div>
+            <div class="config-row">
               <label>Min Grade</label>
               <select id="autoscan-grade" class="config-select">
                 <option value="A+">A+ Only</option>
@@ -240,10 +253,32 @@
                 <option value="B">B or better</option>
               </select>
             </div>
+            <div class="config-row">
+              <label>Interval</label>
+              <select id="autoscan-interval" class="config-select">
+                <option value="180000">3 minutes</option>
+                <option value="300000" selected>5 minutes</option>
+                <option value="600000">10 minutes</option>
+                <option value="900000">15 minutes</option>
+                <option value="1800000">30 minutes</option>
+              </select>
+            </div>
+            <div class="config-row">
+              <label class="checkbox-label">
+                <input type="checkbox" id="autoscan-market-hours" checked>
+                <span>Skip closed markets</span>
+              </label>
+            </div>
             <div class="autoscan-status" id="autoscan-status">
-              <div class="status-item">
-                <span class="status-label">Status:</span>
-                <span class="status-value" id="autoscan-running">Stopped</span>
+              <div class="status-row">
+                <div class="status-item">
+                  <span class="status-label">Status:</span>
+                  <span class="status-value" id="autoscan-running">Stopped</span>
+                </div>
+                <div class="status-item market-status">
+                  <span class="market-indicator forex" id="market-forex" title="Forex Market">FX</span>
+                  <span class="market-indicator crypto active" id="market-crypto" title="Crypto 24/7">Crypto</span>
+                </div>
               </div>
               <div class="status-item">
                 <span class="status-label">Last Scan:</span>
@@ -254,8 +289,18 @@
                 <span class="status-value" id="autoscan-next">-</span>
               </div>
               <div class="status-item">
+                <span class="status-label">Scanned:</span>
+                <span class="status-value" id="autoscan-scanned">0 symbols</span>
+              </div>
+              <div class="status-item">
                 <span class="status-label">New Signals:</span>
                 <span class="status-value" id="autoscan-signals">0</span>
+              </div>
+              <div class="scan-progress hidden" id="scan-progress">
+                <div class="progress-bar">
+                  <div class="progress-fill" id="scan-progress-fill"></div>
+                </div>
+                <span class="progress-text" id="scan-progress-text"></span>
               </div>
             </div>
           </div>
