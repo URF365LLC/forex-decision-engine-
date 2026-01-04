@@ -236,6 +236,11 @@ const UI = {
     const freshnessHTML = signalAgeDisplay ?
       `<span class="signal-age ${isStale ? 'stale' : ''}">🕐 Detected ${signalAgeDisplay}</span>` : '';
 
+    // Optimal entry window display
+    const optimalWindow = decision.timing?.optimalEntryWindow || decision.timing?.optimalWindowMinutes;
+    const optimalHTML = optimalWindow && timingState === 'optimal' ?
+      `<span class="optimal-window">⏱️ Best entry within ${optimalWindow} min</span>` : '';
+
     // Sentiment display - no longer on decision object, fetched on-demand
     const sentimentHTML = '';
 
