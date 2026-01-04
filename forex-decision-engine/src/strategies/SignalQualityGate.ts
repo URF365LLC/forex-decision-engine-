@@ -64,7 +64,7 @@ export interface Stoch {
 
 export const GATE_CONFIG = {
   enforceClosedBar: true,
-  enforceEntryFreshness: true,
+  enforceEntryFreshness: false, // Disabled: signals should show with timing metadata, not be blocked
   enforceMinVolatility: true,
   minAtrPercent: 0.05, // 0.05% minimum ATR
   maxEntryBarAgeMs: {

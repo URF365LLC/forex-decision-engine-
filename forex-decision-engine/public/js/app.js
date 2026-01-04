@@ -1091,8 +1091,15 @@ const App = {
   },
   
   async startAutoScan() {
-    const email = UI.$('autoscan-email')?.value || '';
+    const email = UI.$('autoscan-email')?.value?.trim() || '';
     const minGrade = UI.$('autoscan-grade')?.value || 'B';
+    
+    if (!email || !email.includes('@')) {
+      UI.$('autoscan-toggle').checked = false;
+      UI.toast('Please enter a valid email address for alerts', 'error');
+      UI.$('autoscan-email')?.focus();
+      return;
+    }
     
     try {
       const response = await fetch('/api/autoscan/start', {
@@ -1106,12 +1113,12 @@ const App = {
       if (data.success) {
         UI.show('autoscan-config');
         this.updateAutoScanUI(data.status);
-        UI.toast('Auto-scan started! Scans every 5 minutes.', 'success');
+        UI.toast(`Auto-scan started! Alerts will be sent to ${email}`, 'success');
         
         this.autoScanInterval = setInterval(() => this.loadAutoScanStatus(), 60000);
       } else {
         UI.$('autoscan-toggle').checked = false;
-        UI.toast('Failed to start auto-scan', 'error');
+        UI.toast(data.error || 'Failed to start auto-scan', 'error');
       }
     } catch (error) {
       UI.$('autoscan-toggle').checked = false;

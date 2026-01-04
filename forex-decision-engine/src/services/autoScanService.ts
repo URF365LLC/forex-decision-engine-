@@ -111,10 +111,16 @@ class AutoScanService {
     };
   }
   
-  start(config: Partial<AutoScanConfig> = {}): void {
+  start(config: Partial<AutoScanConfig> = {}): { success: boolean; error?: string } {
     if (this.isRunning) {
       logger.warn('AUTO_SCAN: Already running, stopping first');
       this.stop();
+    }
+    
+    const email = config.email ?? this.config.email;
+    if (!email || !email.includes('@')) {
+      logger.warn('AUTO_SCAN: Cannot start without valid email for alerts');
+      return { success: false, error: 'Valid email address required for alerts' };
     }
     
     this.config = { 
@@ -143,11 +149,13 @@ class AutoScanService {
       },
     };
     
-    logger.info(`AUTO_SCAN: Starting with ${this.config.symbols.length} symbols, strategy schedules ${this.config.strategies.length}`);
+    logger.info(`AUTO_SCAN: Starting with ${this.config.symbols.length} symbols, strategy schedules ${this.config.strategies.length}, alerts to ${this.config.email}`);
     
     this.scheduleStrategyRuns();
     this.updateNextScanTime();
     this.saveConfig();
+    
+    return { success: true };
   }
   
   stop(): void {
@@ -175,7 +183,7 @@ class AutoScanService {
     return { ...this.status };
   }
   
-  updateConfig(config: Partial<AutoScanConfig>): void {
+  updateConfig(config: Partial<AutoScanConfig>): { success: boolean; error?: string } {
     const wasRunning = this.isRunning;
     
     if (wasRunning) {
@@ -192,8 +200,14 @@ class AutoScanService {
     };
     
     if (wasRunning && this.config.enabled) {
-      this.start(this.config);
+      const result = this.start(this.config);
+      if (!result.success) {
+        logger.warn(`AUTO_SCAN: Failed to restart after config update: ${result.error}`);
+        return result;
+      }
     }
+    
+    return { success: true };
   }
   
   private updateNextScanTime(): void {
@@ -455,8 +469,15 @@ class AutoScanService {
   autoStartIfEnabled(): void {
     const savedConfig = this.loadConfig();
     if (savedConfig && savedConfig.enabled) {
+      if (!savedConfig.email || !savedConfig.email.includes('@')) {
+        logger.warn('AUTO_SCAN: Cannot auto-start - saved config missing valid email');
+        return;
+      }
       logger.info('AUTO_SCAN: Auto-starting from saved config');
-      this.start(savedConfig);
+      const result = this.start(savedConfig);
+      if (!result.success) {
+        logger.warn(`AUTO_SCAN: Auto-start failed: ${result.error}`);
+      }
     } else {
       logger.debug('AUTO_SCAN: No enabled config to auto-start');
     }

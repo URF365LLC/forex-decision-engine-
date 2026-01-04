@@ -684,7 +684,7 @@ app.post('/api/autoscan/start', (req, res) => {
   try {
     const { minGrade = 'B', email, intervalMs = 5 * 60 * 1000, symbols, strategies } = req.body;
     
-    autoScanService.start({
+    const result = autoScanService.start({
       minGrade,
       email,
       intervalMs,
@@ -699,6 +699,15 @@ app.post('/api/autoscan/start', (req, res) => {
         broadcastUpgrade({ type: 'new_signal', decision, isNew });
       }
     });
+    
+    if (!result.success) {
+      res.status(400).json({
+        success: false,
+        error: result.error,
+        status: autoScanService.getStatus()
+      });
+      return;
+    }
     
     res.json({
       success: true,
@@ -728,13 +737,22 @@ app.put('/api/autoscan/config', (req, res) => {
   try {
     const { minGrade, email, intervalMs, symbols, strategies } = req.body;
     
-    autoScanService.updateConfig({
+    const result = autoScanService.updateConfig({
       minGrade,
       email,
       intervalMs,
       symbols,
       strategies
     });
+    
+    if (!result.success) {
+      res.status(400).json({
+        success: false,
+        error: result.error,
+        status: autoScanService.getStatus()
+      });
+      return;
+    }
     
     res.json({
       success: true,
