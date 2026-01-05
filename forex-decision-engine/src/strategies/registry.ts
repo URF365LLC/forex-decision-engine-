@@ -14,6 +14,8 @@ import { TripleEma } from './intraday/TripleEma.js';
 import { BreakRetest } from './intraday/BreakRetest.js';
 import { CciZeroLine } from './intraday/CciZeroLine.js';
 import { EmaPullback } from './intraday/EmaPullback.js';
+import { MultiOscillatorMomentum } from './intraday/MultiOscillatorMomentum.js';
+import { LiquiditySweep } from './intraday/LiquiditySweep.js';
 
 const STRATEGIES: Record<string, IStrategy> = {
   'rsi-bounce': new RsiBounce(),
@@ -25,6 +27,8 @@ const STRATEGIES: Record<string, IStrategy> = {
   'break-retest-intra': new BreakRetest(),
   'cci-zero': new CciZeroLine(),
   'ema-pullback-intra': new EmaPullback(),
+  'multi-oscillator-momentum': new MultiOscillatorMomentum(),
+  'liquidity-sweep': new LiquiditySweep(),
 };
 
 const INTRADAY_STRATEGIES: StrategyMeta[] = [
@@ -135,6 +139,30 @@ const INTRADAY_STRATEGIES: StrategyMeta[] = [
     requiredIndicators: ['bars', 'ema20', 'ema50', 'ema200', 'rsi', 'adx', 'atr'],
     timeframes: { trend: 'H4', entry: 'H1' },
     version: '2025-12-29'
+  },
+  { 
+    id: 'multi-oscillator-momentum', 
+    name: 'Multi-Oscillator Momentum', 
+    description: 'Momentum shifts using RSI, MACD, and Stochastic confluence (replaces CCI)', 
+    style: 'intraday', 
+    winRate: 60, 
+    avgRR: 2.0, 
+    signalsPerWeek: '5-10', 
+    requiredIndicators: ['bars', 'rsi', 'macd', 'stoch', 'atr'],
+    timeframes: { trend: 'H4', entry: 'H1' },
+    version: '2026-01-05'
+  },
+  { 
+    id: 'liquidity-sweep', 
+    name: 'ICT Liquidity Sweep', 
+    description: 'Trade reversals after liquidity sweeps at swing highs/lows (Smart Money Concepts)', 
+    style: 'intraday', 
+    winRate: 62, 
+    avgRR: 2.5, 
+    signalsPerWeek: '3-6', 
+    requiredIndicators: ['bars', 'atr'],
+    timeframes: { trend: 'H4', entry: 'H1' },
+    version: '2026-01-05'
   },
 ];
 

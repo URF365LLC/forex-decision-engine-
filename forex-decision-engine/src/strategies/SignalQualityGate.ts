@@ -291,6 +291,7 @@ function checkSession(symbol: string): SessionResult {
   const instrumentClass = getInstrumentClass(symbol);
   const now = new Date();
   const utcHour = now.getUTCHours();
+  const utcMinute = now.getUTCMinutes();
   const utcDay = now.getUTCDay(); // 0 = Sunday
   
   // Weekend check (FX/Indices closed)
@@ -300,19 +301,51 @@ function checkSession(symbol: string): SessionResult {
   
   switch (instrumentClass) {
     case 'fx':
-      // FX: Only trade London + NY (07:00-21:00 UTC)
-      // Best: London/NY overlap (13:00-17:00 UTC)
-      if (utcHour < 7 || utcHour >= 21) {
-        return { allowed: false, adjustment: 0, reason: 'FX: Outside trading hours (07:00-21:00 UTC)' };
+      // ═══════════════════════════════════════════════════════════════════
+      // FX KILLZONES - ICT-style session optimization
+      // ═══════════════════════════════════════════════════════════════════
+      // Asian Dead Zone: 00:00-06:00 UTC (low liquidity, avoid for FX)
+      if (utcHour < 6) {
+        return { allowed: true, adjustment: -15, reason: 'FX: Asian session (low liquidity)' };
       }
-      if (utcHour >= 13 && utcHour < 17) return { allowed: true, adjustment: 10 }; // Overlap bonus
-      if (utcHour >= 8 && utcHour < 16) return { allowed: true, adjustment: 5 };  // London
+      
+      // London Open Killzone: 07:00-09:00 UTC (+15 confidence)
+      // Prime institutional order flow, key reversals/continuations
+      if (utcHour >= 7 && utcHour < 9) {
+        return { allowed: true, adjustment: 15 };
+      }
+      
+      // London Session: 09:00-13:00 UTC (+10 confidence)
+      if (utcHour >= 9 && utcHour < 13) {
+        return { allowed: true, adjustment: 10 };
+      }
+      
+      // London/NY Overlap Killzone: 13:00-17:00 UTC (+20 confidence)
+      // HIGHEST VOLUME PERIOD - best signals
+      if (utcHour >= 13 && utcHour < 17) {
+        return { allowed: true, adjustment: 20 };
+      }
+      
+      // NY Open Killzone: 13:30-15:30 UTC (+15 within overlap)
+      // Already covered by overlap, but could be used for sub-hour precision
+      
+      // NY Afternoon: 17:00-21:00 UTC (+5 confidence)
+      if (utcHour >= 17 && utcHour < 21) {
+        return { allowed: true, adjustment: 5 };
+      }
+      
+      // Late NY / Pre-Asian: 21:00-00:00 UTC (neutral)
       return { allowed: true, adjustment: 0 };
       
     case 'crypto':
-      // Crypto: 24/7, but avoid lowest liquidity (02:00-06:00 UTC)
+      // Crypto: 24/7, but penalize lowest liquidity
+      // 02:00-06:00 UTC is typically lowest crypto volume
       if (utcHour >= 2 && utcHour < 6) {
-        return { allowed: true, adjustment: -10 }; // Allow but penalize
+        return { allowed: true, adjustment: -10 };
+      }
+      // US afternoon/evening tends to have good crypto liquidity
+      if (utcHour >= 14 && utcHour < 22) {
+        return { allowed: true, adjustment: 5 };
       }
       return { allowed: true, adjustment: 0 };
       
@@ -322,8 +355,30 @@ function checkSession(symbol: string): SessionResult {
       if (utcHour < 13 || utcHour >= 20) {
         return { allowed: false, adjustment: 0, reason: 'Equities: Outside US market hours' };
       }
-      if (utcHour === 13) return { allowed: true, adjustment: -5 }; // Opening volatility
-      if (utcHour >= 14 && utcHour < 16) return { allowed: true, adjustment: 5 }; // Mid-day
+      
+      // Opening 30 min: 13:30-14:00 UTC (-5 volatility warning)
+      if (utcHour === 13 && utcMinute >= 30) {
+        return { allowed: true, adjustment: -5 };
+      }
+      if (utcHour === 13 && utcMinute < 30) {
+        return { allowed: false, adjustment: 0, reason: 'Equities: Pre-market' };
+      }
+      
+      // Opening Drive: 14:00-15:00 UTC (+10 for directional moves)
+      if (utcHour === 14) {
+        return { allowed: true, adjustment: 10 };
+      }
+      
+      // Mid-day: 15:00-18:00 UTC (+5 stable trading)
+      if (utcHour >= 15 && utcHour < 18) {
+        return { allowed: true, adjustment: 5 };
+      }
+      
+      // Power Hour: 19:00-20:00 UTC (+10 for closing moves)
+      if (utcHour === 19) {
+        return { allowed: true, adjustment: 10 };
+      }
+      
       return { allowed: true, adjustment: 0 };
       
     default:
@@ -361,12 +416,13 @@ function detectRegime(h4Trend: H4TrendResult | undefined, atrPercent: number): R
     return { regime: 'strong-trend', allowTrend: true, allowMeanReversion: false, reason: `Strong trend (ADX=${adx.toFixed(1)})` };
   }
   
-  // Weak trend: ADX 18-30
-  if (adx >= 18) {
+  // Weak trend: ADX 14-30 (LOWERED from 18 to capture more opportunities)
+  // ADX 14-18 is "developing trend" - allow with confidence penalty
+  if (adx >= 14) {
     return { regime: 'weak-trend', allowTrend: true, allowMeanReversion: true };
   }
   
-  // Range: ADX < 18
+  // Range: ADX < 14 (LOWERED from 18)
   return { regime: 'range', allowTrend: false, allowMeanReversion: true, reason: `Range (ADX=${adx.toFixed(1)})` };
 }
 

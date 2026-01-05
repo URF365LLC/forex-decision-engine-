@@ -19,14 +19,28 @@ The backend uses Express.js with TypeScript and ES modules, with `src/server.ts`
 #### Decision Engine (`src/engine/`)
 This module orchestrates trade signal generation, including:
 -   **Indicator Factory & Services**: Uses `indicatorService.ts` as a unified routing for all asset classes via the Twelve Data API.
--   **Trend Filter**: Determines higher timeframe trends using EMA 200 and ADX.
+-   **Trend Filter**: Determines higher timeframe trends using EMA 200 and ADX. ADX threshold lowered to 14 for weak-trend detection.
 -   **Entry Trigger**: Detects pullbacks with RSI confirmation.
 -   **Position Sizer**: Calculates risk-based lot sizing aligned with prop firm constraints.
 -   **Grader**: Assigns confidence scores (A+/B/C/no-trade) based on confluence.
--   **Strategy Analyzer**: Routes to 9 distinct intraday strategies (e.g., RSI Bounce, Bollinger Mean Reversion, Triple EMA Crossover), ensuring NaN padding for indicator alignment.
+-   **Strategy Analyzer**: Routes to 11 distinct intraday strategies (including Multi-Oscillator Momentum and ICT Liquidity Sweep), ensuring NaN padding for indicator alignment.
 -   **Safety Gates**: Incorporates volatility gating and signal cooldown.
 -   **Grade Tracker**: Monitors signal grade improvements and direction changes.
 -   **Startup Validation**: Tests key symbols (EUR/USD, BTC/USD, XAU/USD) on startup.
+-   **Signal Quality Gate**: Unified pre-flight checks with ICT Killzone session bonuses (London Open +15, NY Open +15, Overlap +20).
+
+#### Smart Money Concepts (`src/modules/smartMoney/`)
+ICT-based institutional trading pattern detection:
+-   **Order Blocks**: Detects last opposing candle before >2 ATR impulse moves (bullish/bearish zones).
+-   **Fair Value Gaps**: Identifies 3-candle price imbalances that tend to fill.
+-   **Liquidity Sweep**: Detects stop hunts at swing highs/lows with reversal confirmation.
+-   **Market Structure**: Tracks swing points, BOS (Break of Structure), CHOCH (Change of Character).
+
+#### Regime Detector (`src/modules/regimeDetector.ts`)
+ATR percentile-based volatility regime classification:
+-   **Compression** (<25th percentile): Favor mean reversion, tighter RR (0.8x multiplier).
+-   **Normal** (25-75th percentile): Standard parameters (1.0x multiplier).
+-   **Expansion** (>75th percentile): Favor momentum, wider RR (1.5x multiplier).
 
 #### Configuration (`src/config/`)
 -   **E8 Instrument Specs** (`e8InstrumentSpecs.ts`): Acts as the single source of truth for 46 instruments, detailing E8 Markets contract sizes, commission models, pip values, and leverage.
@@ -50,7 +64,10 @@ Key services include:
 Core API endpoints facilitate system health checks, symbol retrieval, signal analysis and scanning, signal history management, strategy listing, and comprehensive trade journaling with statistics and export capabilities. Real-time grade upgrades are streamed via `/api/upgrades/stream`.
 
 ### Feature Specifications
--   **Multi-Strategy System**: Implements 9 intraday strategies with defined win rates and specific indicators.
+-   **Multi-Strategy System**: Implements 11 intraday strategies with defined win rates and specific indicators:
+    -   RSI Bounce, RSI Oversold, Stochastic Oversold, Bollinger Mean Reversion
+    -   Williams %R + EMA, Triple EMA Crossover, Break & Retest, CCI Zero-Line
+    -   EMA Pullback, **Multi-Oscillator Momentum** (new), **ICT Liquidity Sweep** (new).
 -   **Confidence Scoring**: Decisions receive a 0-100 score, mapped to A+, A, B+, B, C grades.
 -   **Reason Codes**: Provides machine-readable explanations for trade decisions.
 -   **Journaling**: Comprehensive trade journaling with P&L, stats, and quick actions.

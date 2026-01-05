@@ -55,8 +55,8 @@ export class EmaPullback implements IStrategy {
     // V2: Fix falsy check
     if (!allValidNumbers(ema20Signal, ema50Signal, ema200Signal, rsiSignal, adxSignal, atrSignal)) return null;
     
-    // V2: ADX as gate (was just bonus)
-    if (adxSignal! < 20) return null;
+    // NOTE: Redundant ADX>=20 check REMOVED - SignalQualityGate handles regime detection
+    // The preflight already gates for trend-continuation strategies with adaptive ADX thresholds
     
     const triggers: string[] = [];
     const reasonCodes: ReasonCode[] = [];
