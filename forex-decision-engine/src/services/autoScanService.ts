@@ -1,18 +1,22 @@
 /**
- * Auto-Scan Service v2.0 - OPTIMIZED
+ * Auto-Scan Service v2.1 - INDIVIDUAL API CALLS
  * 
- * Key Optimizations:
+ * Key Changes from v2.0:
+ * - Uses individual API calls per symbol (indicators cannot be batched per Twelve Data docs)
+ * - Only time_series/OHLCV can be batched, but we use existing indicatorService for simplicity
+ * - Each symbol analyzed independently for reliability
+ * 
+ * Features:
  * 1. Symbol watchlist presets (majors, minors, crypto, metals, custom)
  * 2. Market hours filter (forex closed on weekends, crypto 24/7)
  * 3. Per-strategy scheduling with staggered execution
  * 4. Enhanced status tracking (progress %, per-strategy results)
- * 5. Smarter batching to reduce API calls
  * 
  * Persists config to data/autoScanConfig.json for auto-start on server reboot
  */
 
 import { createLogger } from './logger.js';
-import { fetchAllSymbolData, BatchIndicatorData, validateBatchResults } from './batchDataService.js';
+import { analyzeWithStrategy } from '../engine/strategyAnalyzer.js';
 import { ALL_INSTRUMENTS, FOREX_SPECS, CRYPTO_SPECS, METAL_SPECS, INDEX_SPECS, COMMODITY_SPECS } from '../config/e8InstrumentSpecs.js';
 import { isNewSignal, trackSignal } from '../storage/signalFreshnessTracker.js';
 import { strategyRegistry } from '../strategies/registry.js';
@@ -523,66 +527,79 @@ class AutoScanService {
     let newSignals = 0;
     let errors = 0;
     
-    try {
-      const batchData = await fetchAllSymbolData(symbolsToScan);
-      const { valid, incomplete } = validateBatchResults(batchData);
+    // Process symbols sequentially to respect rate limits
+    for (let i = 0; i < symbolsToScan.length; i++) {
+      const symbol = symbolsToScan[i];
       
-      symbolsScanned = valid.length;
-      errors = incomplete.length;
+      // Update progress
+      this.status.currentScan = {
+        strategyId: schedule.strategyId,
+        progress: i + 1,
+        total: symbolsToScan.length,
+        percent: Math.round(((i + 1) / symbolsToScan.length) * 100),
+      };
       
-      for (const symbol of valid) {
-        const data = batchData.get(symbol);
-        if (!data) continue;
+      try {
+        // Use individual API calls via analyzeWithStrategy
+        const result = await analyzeWithStrategy(
+          symbol,
+          schedule.strategyId,
+          DEFAULT_SETTINGS,
+          { skipCache: false, skipCooldown: false, skipVolatility: false }
+        );
         
-        try {
-          const strategy = strategyRegistry.get(schedule.strategyId);
-          if (!strategy) continue;
+        symbolsScanned++;
+        
+        if (result.errors.length > 0) {
+          logger.debug(`AUTO_SCAN: ${symbol} had errors: ${result.errors.join(', ')}`);
+        }
+        
+        const decision = result.decision;
+        
+        if (decision && meetsMinGrade(decision.grade, this.config.minGrade)) {
+          signalsFound++;
           
-          const indicatorData = this.convertToIndicatorData(symbol, data);
-          const decision = await strategy.analyze(indicatorData, DEFAULT_SETTINGS);
+          const upgrade = gradeTracker.updateGrade(
+            symbol,
+            schedule.strategyId,
+            decision.strategyName || schedule.strategyId,
+            decision.grade,
+            decision.direction
+          );
           
-          if (decision && meetsMinGrade(decision.grade, this.config.minGrade)) {
-            signalsFound++;
-            
-            const upgrade = gradeTracker.updateGrade(
-              symbol,
-              schedule.strategyId,
-              decision.strategyName,
-              decision.grade,
-              decision.direction
-            );
-            
-            if (upgrade) {
-              decision.upgrade = upgrade;
-            }
-            
-            const isNew = isNewSignal(symbol, schedule.strategyId, decision.direction);
-            
-            if (isNew) {
-              newSignals++;
-              trackSignal(symbol, schedule.strategyId, decision.direction);
-            }
+          if (upgrade) {
+            decision.upgrade = upgrade;
+          }
+          
+          const isNew = isNewSignal(symbol, schedule.strategyId, decision.direction);
+          
+          if (isNew) {
+            newSignals++;
+            trackSignal(symbol, schedule.strategyId, decision.direction);
+          }
 
-            if (this.shouldNotify(decision, isNew)) {
-              if (this.alertCallback) {
-                this.alertCallback(decision, isNew);
-              } else {
-                logger.warn(`AUTO_SCAN: Qualifying ${decision.grade} signal found but NO ALERT CALLBACK configured - email will not be sent!`);
-              }
-            }
-            
-            if (isNew) {
-              logger.info(`AUTO_SCAN: NEW SIGNAL - ${symbol} ${decision.direction} ${decision.grade} (${schedule.strategyId})`);
+          if (this.shouldNotify(decision, isNew)) {
+            if (this.alertCallback) {
+              this.alertCallback(decision, isNew);
+            } else {
+              logger.warn(`AUTO_SCAN: Qualifying ${decision.grade} signal found but NO ALERT CALLBACK configured - email will not be sent!`);
             }
           }
-        } catch (strategyError) {
-          errors++;
-          logger.debug(`AUTO_SCAN: Strategy error ${schedule.strategyId} on ${symbol}: ${strategyError}`);
+          
+          if (isNew) {
+            logger.info(`AUTO_SCAN: NEW SIGNAL - ${symbol} ${decision.direction} ${decision.grade} (${schedule.strategyId})`);
+          }
         }
+      } catch (error) {
+        errors++;
+        const msg = error instanceof Error ? error.message : String(error);
+        logger.debug(`AUTO_SCAN: Error analyzing ${symbol} with ${schedule.strategyId}: ${msg}`);
       }
-    } catch (error) {
-      logger.error(`AUTO_SCAN: Scan failed for ${schedule.strategyId} - ${error}`);
-      errors++;
+      
+      // Small delay between symbols to be gentle on rate limits
+      if (i < symbolsToScan.length - 1) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
     }
     
     const elapsed = Date.now() - startTime;
@@ -622,26 +639,6 @@ class AutoScanService {
     const highGrade = decision.grade === 'A+' || decision.grade === 'A';
     const upgradeTypes = decision.upgrade?.upgradeType === 'new-signal' || decision.upgrade?.upgradeType === 'grade-improvement';
     return highGrade && (isNew || upgradeTypes);
-  }
-  
-  private convertToIndicatorData(symbol: string, data: BatchIndicatorData): any {
-    return {
-      symbol,
-      bars: data.bars,
-      ema20: data.ema20,
-      ema50: data.ema50,
-      ema200: data.ema200,
-      rsi: data.rsi,
-      atr: data.atr,
-      adx: data.adx,
-      stoch: data.stoch,
-      cci: data.cci,
-      bbands: data.bbands,
-      willr: data.willr,
-      ema200H4: data.ema200H4,
-      adxH4: data.adxH4,
-      trendBarsH4: data.trendBarsH4,
-    };
   }
 
   private saveConfig(): void {
