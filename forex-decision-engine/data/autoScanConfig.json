@@ -2,14 +2,14 @@
   "enabled": true,
   "intervalMs": 300000,
   "symbols": [
-    "BTCUSD",
-    "ETHUSD",
-    "XRPUSD",
-    "ADAUSD",
-    "SOLUSD",
-    "LTCUSD",
-    "BCHUSD",
-    "BNBUSD"
+    "EURUSD",
+    "GBPUSD",
+    "USDJPY",
+    "USDCHF",
+    "AUDUSD",
+    "NZDUSD",
+    "USDCAD",
+    "XAUUSD"
   ],
   "strategies": [
     {
@@ -49,9 +49,9 @@
       "intervalMs": 300000
     }
   ],
-  "minGrade": "B+",
+  "minGrade": "A",
   "email": "urfreight365@gmail.com",
-  "watchlistPreset": "crypto",
+  "watchlistPreset": "majors-gold",
   "customSymbols": [],
   "respectMarketHours": true
 }

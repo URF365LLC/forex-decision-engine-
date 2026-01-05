@@ -1,0 +1,64 @@
+Current strategy assessment (relevance + optimization ideas)
+Bollinger Mean Reversion – Solid MR logic (BB touch + RSI + rejection + H4 trend) with fixed 1.5R targeting.
+Optimization: Add volatility/regime filter (e.g., ATR percentile) before allowing mean reversion, session/time-of-day gating to avoid low-liquidity signals, and adaptive profit targets when H4 trend is strong vs. mixed instead of the fixed 1.5R.
+
+Break & Retest – Strong structure logic (HH/HL or LH/LL), meaningful break test, acceptance candle, and swing-based stops with 2R target.
+Optimization: Layer liquidity mapping (next HTF swing/imbalances) instead of simple nearest swing filter, add volume/OBV/VWAP confirmation on break, and include a time-in-trade/invalid after N bars rule to reduce grindy chop.
+
+CCI Zero-Line Cross – Extreme-to-zero cross with H4 trend filter, but otherwise minimal context and static 2R exits.
+Optimization: Require market structure alignment (higher highs/lows or lows/highs) and add a momentum confirmation (e.g., candle body % or volume spike) to cut false flips around zero.
+
+EMA Pullback (20/50/200) – With-trend pullback, ADX gate, rejection of counter-trend, 2R target.
+Optimization: Add “last impulse strength” (distance from EMA20 to price before pullback) and session filter; consider partials at structure + runner to capture trending legs.
+
+RSI Oversold Bounce (MR) – Low bar requirement (50), BB + RSI extremes, allows counter-trend unless H4 trend is strong; RR about 1.2–1.3.
+Optimization: Tighten structural filter (require local double-bottom/top or demand/supply tag) and volatility regime gate; raise min RR or add scaling exits to justify frequent signals.
+
+RSI Oversold Pullback (with-trend) – Robust HTF validation (H4 EMA200 + ADX>20), swing-based stops, 2R target.
+Optimization: Add pullback quality check (depth vs. HTF structure) and optional session/open-drive avoidance when RSI tags extremes during news.
+
+Stochastic Oversold (with-trend) – Enforces H4 trend, rejection candle, EMA200 alignment, swing stops, 1.5R target.
+Optimization: Add ADX-based regime scaling (1.5R in chop, 2R+ in strong trend), and a “failed follow-through” timeout to drop weak crosses.
+
+Triple EMA Crossover (8/21/55) – Internal EMA calc, pullback to EMA21, H4 trend required, 2R target.
+Optimization: Add HTF structure or anchor to VWAP for confluence; include slope/angle threshold on EMA55 (trend quality) and time-of-day gating to avoid late-session fakeouts.
+
+Williams %R + EMA – Trend-only (ADX_H4>=20, EMA200 alignment), %R turn + EMA20 reclaim/break, rejection preferred, swing stops, 1.5R target.
+Optimization: Add volatility sanity (ATR% already hinted but could use percentile), and incorporate session/VWAP or volume confirmation on the reclaim/break.
+
+What stays vs. what needs updating
+Keep as core (minor tuning): Break & Retest; RSI Oversold Pullback; Stochastic Oversold; Williams %R + EMA; EMA Pullback – all have strong HTF trend logic and structure/swing-aware exits but would benefit from session/regime/volume layers.
+
+Update/upgrade: Bollinger MR (regime + adaptive exits), RSI Bounce (structure + higher RR), CCI Zero-Line (structure/momentum confirm), Triple EMA (confluence + time/session).
+
+Replace/park none yet, but CCI Zero-Line and RSI Bounce should be re-scoped if win-rate deteriorates after adding stricter gating.
+
+Modern/trending techniques to consider
+Session & opening-range awareness (e.g., London/NY kill zones, ORB filter) to reduce signals in dead liquidity periods—can be added as a preflight gate across all intraday systems.
+
+VWAP and anchored VWAP confluence for intraday bias and dynamic support/resistance—particularly useful for EMA Pullback, Triple EMA, and Williams %R.
+
+Liquidity/SMC-style filters (equal highs/lows sweeps, breaker blocks) to upgrade Break & Retest and Bollinger MR; prevents entries directly into obvious liquidity pools.
+
+Volatility regime detection (ATR percentile or HV rank) to switch between MR vs. momentum templates and to scale targets (e.g., 1.2R→1.8R in expansion, 1.5R→1.0R in compression).
+
+Volume/OBV/Delta confirmation on breakouts/retests and momentum flips to reduce false positives.
+
+News & macro calendar guardrails for mean-reversion strategies during high-impact releases.
+
+Trade management enhancements: partial TP at structure + trailing stop on remainder; time-stop/invalid-after-N-bars; adaptive position sizing via recent win-rate or volatility.
+
+Cross-asset/context signals (DXY/US10Y for majors, oil for CAD, gold for AUD) for trend confirmation or veto.
+
+ML-lite scoring layer (stacked logistic/gradient-boosted features: distance to VWAP, ATR z-score, candle body %, slope) to re-rank signals instead of binary pass/fail.
+
+Actionable next steps
+Implement common preflight modules for session/time filters and ATR percentile regimes, and apply to MR-first strategies (Bollinger MR, RSI Bounce) and momentum/trend strategies (Triple EMA, EMA Pullback) with adaptive RR tables.
+
+Add confluence packs (VWAP/anchored VWAP, volume confirmation, liquidity sweep detection) starting with Break & Retest and Williams %R to sharpen entries.
+
+Upgrade structure checks for CCI Zero-Line and RSI Bounce (require micro-structure + rejection) or downgrade their signal weight until improved.
+
+Enhance trade management (partials + trailing + time-stop) across the board; start with frequent-fire MR strategies to boost expectancy.
+
+Integrate news/calendar guard and cross-asset bias signals for high-vol pairs to avoid event-driven traps.
