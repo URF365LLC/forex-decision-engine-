@@ -550,13 +550,16 @@ class AutoScanService {
         
         symbolsScanned++;
         
+        // Count analyzer errors (non-empty errors array)
         if (result.errors.length > 0) {
-          logger.debug(`AUTO_SCAN: ${symbol} had errors: ${result.errors.join(', ')}`);
+          errors += result.errors.length;
+          logger.debug(`AUTO_SCAN: ${symbol} had ${result.errors.length} errors: ${result.errors.join(', ')}`);
         }
         
+        // Safely access decision (may be null if analysis failed)
         const decision = result.decision;
         
-        if (decision && meetsMinGrade(decision.grade, this.config.minGrade)) {
+        if (decision && decision.grade && meetsMinGrade(decision.grade, this.config.minGrade)) {
           signalsFound++;
           
           const upgrade = gradeTracker.updateGrade(
