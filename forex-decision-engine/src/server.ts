@@ -37,6 +37,19 @@ import { gradeTracker } from './services/gradeTracker.js';
 import { autoScanService } from './services/autoScanService.js';
 import { alertService } from './services/alertService.js';
 import { grokSentimentService } from './services/grokSentimentService.js';
+import { validateBody, validateQuery } from './middleware/validate.js';
+import { requestIdMiddleware } from './middleware/requestId.js';
+import { 
+  ScanRequestSchema, 
+  JournalUpdateSchema, 
+  SignalUpdateSchema,
+  PaginationSchema,
+  AutoScanStartSchema,
+  AutoScanConfigSchema,
+  JournalEntrySchema,
+  BatchSentimentSchema,
+} from './validation/schemas.js';
+import { z } from 'zod';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -86,14 +99,15 @@ function isScanInProgress(strategyId: string): boolean {
 
 app.use(cors());
 app.use(express.json());
+app.use(requestIdMiddleware);
 app.use(express.static(path.join(__dirname, '../public')));
 
-// Request logging
+// Request logging with correlation ID
 app.use((req, res, next) => {
   const start = Date.now();
   res.on('finish', () => {
     const duration = Date.now() - start;
-    logger.debug(`${req.method} ${req.path} ${res.statusCode} ${duration}ms`);
+    logger.debug(`[${req.id}] ${req.method} ${req.path} ${res.statusCode} ${duration}ms`);
   });
   next();
 });
@@ -103,15 +117,73 @@ app.use((req, res, next) => {
 // ═══════════════════════════════════════════════════════════════
 
 /**
- * Health check
+ * Liveness probe - always returns ok if server is running
  */
 app.get('/api/health', (req, res) => {
   res.json({
     status: 'ok',
     version: '2.0.0',
     timestamp: new Date().toISOString(),
-    apiKeyConfigured: !!process.env.TWELVE_DATA_API_KEY,
-    instrumentCount: ALL_INSTRUMENTS.length,
+  });
+});
+
+/**
+ * Readiness probe - checks if all dependencies are ready
+ */
+app.get('/api/ready', (req, res) => {
+  const checks = {
+    apiKey: !!process.env.TWELVE_DATA_API_KEY,
+    instruments: ALL_INSTRUMENTS.length > 0,
+    signalStore: signalStore.getStats().total >= 0,
+    cache: cache.getStats() !== null,
+  };
+  
+  const allReady = Object.values(checks).every(Boolean);
+  
+  res.status(allReady ? 200 : 503).json({
+    status: allReady ? 'ready' : 'not_ready',
+    version: '2.0.0',
+    timestamp: new Date().toISOString(),
+    checks,
+  });
+});
+
+/**
+ * Metrics endpoint for monitoring
+ */
+app.get('/api/metrics', (req, res) => {
+  const cacheStats = cache.getStats();
+  const rateLimitState = rateLimiter.getState();
+  const signalStats = signalStore.getStats();
+  
+  res.json({
+    version: '2.0.0',
+    uptime: process.uptime(),
+    timestamp: new Date().toISOString(),
+    cache: {
+      size: cacheStats.size,
+      hitRate: cacheStats.hitCount / (cacheStats.hitCount + cacheStats.missCount) || 0,
+      hits: cacheStats.hitCount,
+      misses: cacheStats.missCount,
+    },
+    rateLimit: {
+      tokens: rateLimitState.tokens,
+      maxTokens: rateLimitState.maxTokens,
+      utilization: 1 - (rateLimitState.tokens / rateLimitState.maxTokens),
+    },
+    signals: {
+      total: signalStats.total,
+      byGrade: signalStats.byGrade,
+      winRate: signalStats.resultStats?.winRate || 0,
+    },
+    autoScan: {
+      enabled: autoScanService.getStatus().config.enabled,
+      lastScan: autoScanService.getStatus().lastScanAt,
+    },
+    sentiment: {
+      enabled: grokSentimentService.isEnabled(),
+      cacheStats: grokSentimentService.getCacheStats(),
+    },
   });
 });
 
@@ -227,20 +299,10 @@ app.post('/api/analyze', async (req, res) => {
  * Scan multiple symbols
  * V1.1: strategyId is REQUIRED, drawdown check is MANDATORY (unless paperTrading)
  */
-app.post('/api/scan', async (req, res) => {
+app.post('/api/scan', validateBody(ScanRequestSchema), async (req, res) => {
   const { symbols, settings, strategyId, force } = req.body;
   
-  // GATE 1: strategyId is REQUIRED (V1.1) - Must be a specific strategy (no "all")
   const allStrategies = strategyRegistry.list().map(s => s.id);
-
-  if (!strategyId) {
-    logger.warn('REJECTED: /api/scan called without strategyId');
-    return res.status(400).json({
-      error: 'strategy_required',
-      message: 'strategyId is required. Use GET /api/strategies to see available options.',
-      availableStrategies: allStrategies,
-    });
-  }
   
   if (!strategyRegistry.get(strategyId)) {
     return res.status(400).json({
@@ -390,14 +452,15 @@ app.get('/api/signals', (req, res) => {
 /**
  * Update signal result
  */
-app.put('/api/signals/:id', (req, res) => {
+const SignalResultSchema = z.object({
+  result: z.enum(['win', 'loss', 'breakeven', 'skipped']),
+  notes: z.string().max(500).optional(),
+});
+
+app.put('/api/signals/:id', validateBody(SignalResultSchema), (req, res) => {
   try {
     const id = parseInt(req.params.id);
     const { result, notes } = req.body;
-    
-    if (!['win', 'loss', 'breakeven', 'skipped'].includes(result)) {
-      return res.status(400).json({ error: 'Invalid result. Must be: win, loss, breakeven, or skipped' });
-    }
     
     const updated = signalStore.updateResult(id, result, notes);
     
@@ -436,24 +499,9 @@ app.get('/api/signals/stats', (req, res) => {
 /**
  * Add journal entry
  */
-app.post('/api/journal', (req, res) => {
+app.post('/api/journal', validateBody(JournalEntrySchema), (req, res) => {
   try {
     const entry = req.body;
-    
-    if (!entry.symbol || !entry.direction || !entry.action) {
-      return res.status(400).json({ 
-        error: 'Missing required fields: symbol, direction, action' 
-      });
-    }
-    
-    if (!['long', 'short'].includes(entry.direction)) {
-      return res.status(400).json({ error: 'Direction must be long or short' });
-    }
-    
-    if (!['taken', 'skipped', 'missed'].includes(entry.action)) {
-      return res.status(400).json({ error: 'Action must be taken, skipped, or missed' });
-    }
-    
     const newEntry = journalStore.add(entry);
     res.json({ success: true, entry: newEntry });
   } catch (error) {
@@ -556,18 +604,9 @@ app.get('/api/journal/:id', (req, res) => {
 /**
  * Update journal entry
  */
-app.put('/api/journal/:id', (req, res) => {
+app.put('/api/journal/:id', validateBody(JournalUpdateSchema), (req, res) => {
   try {
     const updates = req.body;
-    
-    const validationErrors = validateJournalUpdate(updates);
-    if (validationErrors.length > 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'Validation failed',
-        errors: validationErrors,
-      });
-    }
     
     if (updates.notes) {
       updates.notes = sanitizeNotes(updates.notes);
@@ -692,7 +731,7 @@ app.get('/api/autoscan/presets', (req, res) => {
   });
 });
 
-app.post('/api/autoscan/start', (req, res) => {
+app.post('/api/autoscan/start', validateBody(AutoScanStartSchema), (req, res) => {
   try {
     const { 
       minGrade = 'B', 
@@ -757,7 +796,7 @@ app.get('/api/autoscan/status', (req, res) => {
   res.json(autoScanService.getStatus());
 });
 
-app.put('/api/autoscan/config', (req, res) => {
+app.put('/api/autoscan/config', validateBody(AutoScanConfigSchema), (req, res) => {
   try {
     const { minGrade, email, intervalMs, symbols, strategies, watchlistPreset, customSymbols, respectMarketHours } = req.body;
     
@@ -841,21 +880,13 @@ app.get('/api/sentiment/:symbol', async (req, res) => {
   }
 });
 
-app.post('/api/sentiment/batch', async (req, res) => {
+app.post('/api/sentiment/batch', validateBody(BatchSentimentSchema), async (req, res) => {
   const { symbols } = req.body;
   
   if (!grokSentimentService.isEnabled()) {
     return res.status(503).json({ 
       error: 'Sentiment analysis not configured'
     });
-  }
-  
-  if (!Array.isArray(symbols) || symbols.length === 0) {
-    return res.status(400).json({ error: 'symbols array required' });
-  }
-  
-  if (symbols.length > 10) {
-    return res.status(400).json({ error: 'Maximum 10 symbols per batch' });
   }
   
   try {

@@ -177,12 +177,23 @@ What is the current market sentiment based on recent posts? Consider posts from 
     return 'neutral';
   }
   
-  async getBatchSentiment(symbols: string[]): Promise<Map<string, SentimentResult | null>> {
+  async getBatchSentiment(symbols: string[], concurrency: number = 3): Promise<Map<string, SentimentResult | null>> {
     const results = new Map<string, SentimentResult | null>();
     
-    for (const symbol of symbols) {
-      const sentiment = await this.getSentiment(symbol);
-      results.set(symbol, sentiment);
+    const chunks: string[][] = [];
+    for (let i = 0; i < symbols.length; i += concurrency) {
+      chunks.push(symbols.slice(i, i + concurrency));
+    }
+    
+    for (const chunk of chunks) {
+      const promises = chunk.map(symbol => 
+        this.getSentiment(symbol).then(result => ({ symbol, result }))
+      );
+      const chunkResults = await Promise.all(promises);
+      
+      for (const { symbol, result } of chunkResults) {
+        results.set(symbol, result);
+      }
     }
     
     return results;
