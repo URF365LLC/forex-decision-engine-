@@ -54,31 +54,85 @@ const App = {
     console.log('✅ Application initialized');
   },
   
+  // SSE reconnection state
+  sseReconnectAttempts: 0,
+  sseMaxReconnectDelay: 60000, // 1 minute max
+  sseBaseDelay: 1000, // 1 second base
+  sseHeartbeatTimeout: null,
+  
   /**
    * Connect to SSE stream for grade upgrade notifications
+   * Uses exponential backoff for reconnection
    */
   connectUpgradeStream() {
     if (this.upgradeEventSource) {
       this.upgradeEventSource.close();
     }
     
+    // Clear any existing heartbeat timeout
+    if (this.sseHeartbeatTimeout) {
+      clearTimeout(this.sseHeartbeatTimeout);
+    }
+    
     this.upgradeEventSource = new EventSource('/api/upgrades/stream');
+    
+    this.upgradeEventSource.onopen = () => {
+      // Reset reconnect attempts on successful connection
+      this.sseReconnectAttempts = 0;
+    };
     
     this.upgradeEventSource.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
         if (data.type === 'upgrade') {
           this.showUpgradeNotification(data.upgrade);
+        } else if (data.type === 'heartbeat') {
+          // Heartbeat received, connection is healthy
+          this.resetSseHeartbeatTimer();
         }
       } catch (e) {
-        console.error('Failed to parse upgrade event:', e);
+        // Silently ignore parse errors for non-JSON messages (like heartbeats)
       }
     };
     
-    this.upgradeEventSource.onerror = (e) => {
-      console.warn('Upgrade stream error, will reconnect...');
-      setTimeout(() => this.connectUpgradeStream(), 5000);
+    this.upgradeEventSource.onerror = () => {
+      // Close the connection
+      this.upgradeEventSource.close();
+      
+      // Calculate delay with exponential backoff + jitter
+      const delay = Math.min(
+        this.sseBaseDelay * Math.pow(2, this.sseReconnectAttempts) + Math.random() * 1000,
+        this.sseMaxReconnectDelay
+      );
+      
+      this.sseReconnectAttempts++;
+      
+      // Only log after several failed attempts
+      if (this.sseReconnectAttempts > 3) {
+        console.debug(`SSE reconnecting in ${Math.round(delay/1000)}s (attempt ${this.sseReconnectAttempts})`);
+      }
+      
+      setTimeout(() => this.connectUpgradeStream(), delay);
     };
+    
+    // Start heartbeat monitoring
+    this.resetSseHeartbeatTimer();
+  },
+  
+  /**
+   * Reset SSE heartbeat timer
+   */
+  resetSseHeartbeatTimer() {
+    if (this.sseHeartbeatTimeout) {
+      clearTimeout(this.sseHeartbeatTimeout);
+    }
+    // If no heartbeat received in 45 seconds, reconnect
+    this.sseHeartbeatTimeout = setTimeout(() => {
+      if (this.upgradeEventSource) {
+        this.upgradeEventSource.close();
+        this.connectUpgradeStream();
+      }
+    }, 45000);
   },
   
   /**
@@ -210,25 +264,36 @@ const App = {
   /**
    * Save settings
    */
-  saveSettings() {
-    const tradingMode = document.querySelector('input[name="trading-mode"]:checked')?.value || 'paper';
-    const settings = {
-      accountSize: parseFloat(UI.$('account-size').value) || 10000,
-      riskPercent: parseFloat(UI.$('risk-percent').value) || 0.5,
-      style: document.querySelector('input[name="style"]:checked')?.value || 'intraday',
-      timezone: UI.$('timezone').value || 'America/Chicago',
-      paperTrading: tradingMode === 'paper',
-    };
+  async saveSettings() {
+    const submitBtn = UI.$('settings-form').querySelector('button[type="submit"]');
+    UI.setButtonLoading(submitBtn, true);
+    
+    try {
+      const tradingMode = document.querySelector('input[name="trading-mode"]:checked')?.value || 'paper';
+      const settings = {
+        accountSize: parseFloat(UI.$('account-size').value) || 10000,
+        riskPercent: parseFloat(UI.$('risk-percent').value) || 0.5,
+        style: document.querySelector('input[name="style"]:checked')?.value || 'intraday',
+        timezone: UI.$('timezone').value || 'America/Chicago',
+        paperTrading: tradingMode === 'paper',
+      };
 
-    // Validate
-    if (settings.accountSize < 100 || settings.accountSize > 1000000) {
-      UI.toast('Account size must be between $100 and $1,000,000', 'error');
-      return false;
+      // Validate
+      if (settings.accountSize < 100 || settings.accountSize > 1000000) {
+        UI.toast('Account size must be between $100 and $1,000,000', 'error');
+        return false;
+      }
+
+      Storage.saveSettings(settings);
+      
+      // Brief delay to show loading state
+      await new Promise(r => setTimeout(r, 300));
+      
+      UI.toast('Settings saved successfully', 'success');
+      return true;
+    } finally {
+      UI.setButtonLoading(submitBtn, false);
     }
-
-    Storage.saveSettings(settings);
-    UI.toast('Settings saved', 'success');
-    return true;
   },
 
   /**
@@ -352,14 +417,20 @@ const App = {
    * Load results from storage
    */
   loadResults() {
-    this.results = Storage.getResults();
-    UI.renderResults(this.results, this.currentFilter);
+    // Show skeleton while loading from storage
+    UI.showSkeletons('results-container', 2, 'card');
     
-    if (this.results.length > 0) {
-      const lastScan = new Date(this.results[0].timestamp);
-      UI.$('last-scan-time').textContent = `Last scan: ${lastScan.toLocaleString()}`;
-      UI.$('refresh-btn').disabled = false;
-    }
+    // Brief delay to show skeleton (storage is sync but this helps UX)
+    setTimeout(() => {
+      this.results = Storage.getResults();
+      UI.renderResults(this.results, this.currentFilter);
+      
+      if (this.results.length > 0) {
+        const lastScan = new Date(this.results[0].timestamp);
+        UI.$('last-scan-time').textContent = `Last scan: ${lastScan.toLocaleString()}`;
+        UI.$('refresh-btn').disabled = false;
+      }
+    }, 100);
   },
 
   /**
@@ -377,8 +448,11 @@ const App = {
     }
 
     this.isScanning = true;
-    UI.$('scan-btn').disabled = true;
-    UI.$('refresh-btn').disabled = true;
+    const scanBtn = UI.$('scan-btn');
+    const refreshBtn = UI.$('refresh-btn');
+    
+    UI.setButtonLoading(scanBtn, true);
+    if (refreshBtn) refreshBtn.disabled = true;
     
     const settings = Storage.getSettings();
     
@@ -391,7 +465,14 @@ const App = {
       Storage.saveResults(this.results);
 
       const trades = this.results.filter(d => d.grade !== 'no-trade').length;
-      UI.toast(`Scan complete: ${trades} trade signals found`, 'success');
+      const gradeAPlus = this.results.filter(d => d.grade === 'A+').length;
+      
+      // Enhanced success message
+      let successMsg = `Scan complete: ${trades} trade signal${trades !== 1 ? 's' : ''} found`;
+      if (gradeAPlus > 0) {
+        successMsg += ` (${gradeAPlus} A+)`;
+      }
+      UI.toast(successMsg, 'success');
 
       // Update UI
       UI.$('last-scan-time').textContent = `Last scan: ${new Date().toLocaleString()}`;
@@ -402,11 +483,12 @@ const App = {
 
     } catch (error) {
       console.error('Scan error:', error);
-      UI.toast(`Scan failed: ${error.message}`, 'error');
+      UI.toast(`Scan failed: ${error.message}`, 'error', 5000);
     } finally {
       this.isScanning = false;
-      UI.$('scan-btn').disabled = this.selectedSymbols.length === 0;
-      UI.$('refresh-btn').disabled = this.results.length === 0;
+      UI.setButtonLoading(scanBtn, false);
+      scanBtn.disabled = this.selectedSymbols.length === 0;
+      if (refreshBtn) refreshBtn.disabled = this.results.length === 0;
       UI.hideLoading();
     }
   },
@@ -488,35 +570,53 @@ const App = {
   /**
    * Export results as JSON
    */
-  exportJSON() {
-    const data = JSON.stringify(this.results, null, 2);
-    const blob = new Blob([data], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
+  async exportJSON() {
+    const btn = UI.$('export-btn');
+    UI.setButtonLoading(btn, true);
     
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `scan-results-${new Date().toISOString().slice(0,10)}.json`;
-    a.click();
-    
-    URL.revokeObjectURL(url);
-    UI.toast('Results exported', 'success');
+    try {
+      const data = JSON.stringify(this.results, null, 2);
+      const blob = new Blob([data], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `scan-results-${new Date().toISOString().slice(0,10)}.json`;
+      a.click();
+      
+      URL.revokeObjectURL(url);
+      
+      // Brief delay to show loading state
+      await new Promise(r => setTimeout(r, 200));
+      
+      UI.toast('Results exported successfully', 'success');
+    } catch (error) {
+      UI.toast('Export failed', 'error');
+    } finally {
+      UI.setButtonLoading(btn, false);
+    }
   },
 
   /**
    * Copy summary to clipboard
    */
   async copySummary() {
-    const trades = this.results.filter(d => d.grade !== 'no-trade');
-    const summary = trades.map(d => {
-      const dir = d.direction.toUpperCase();
-      return `${d.displayName}: ${dir} ${d.grade}`;
-    }).join('\n');
-
+    const btn = UI.$('copy-summary-btn');
+    UI.setButtonLoading(btn, true);
+    
     try {
+      const trades = this.results.filter(d => d.grade !== 'no-trade');
+      const summary = trades.map(d => {
+        const dir = d.direction.toUpperCase();
+        return `${d.displayName}: ${dir} ${d.grade}`;
+      }).join('\n');
+
       await navigator.clipboard.writeText(summary || 'No trade signals');
-      UI.toast('Summary copied', 'success');
+      UI.toast('Summary copied to clipboard', 'success');
     } catch {
       UI.toast('Failed to copy', 'error');
+    } finally {
+      UI.setButtonLoading(btn, false);
     }
   },
 
@@ -543,6 +643,9 @@ const App = {
   async fetchSentiment(symbol, containerId) {
     const container = document.getElementById(containerId);
     if (!container) return;
+    
+    // Find the button within the container
+    const btn = container.querySelector('.btn-sentiment');
 
     if (this.sentimentCache[symbol]) {
       const cached = this.sentimentCache[symbol];
@@ -553,14 +656,28 @@ const App = {
       }
     }
 
-    container.innerHTML = '<span class="sentiment-loading">🧠 Fetching sentiment...</span>';
+    // Show loading state on button
+    if (btn) {
+      UI.setButtonLoading(btn, true);
+    }
+    container.innerHTML = `
+      <div class="sentiment-loading-state">
+        <span class="sentiment-spinner"></span>
+        <span>Analyzing market sentiment...</span>
+      </div>
+    `;
 
     try {
       const response = await fetch(`/api/sentiment/${encodeURIComponent(symbol)}`);
       const data = await response.json();
       
       if (data.error) {
-        container.innerHTML = `<span class="sentiment-error">⚠️ ${data.error}</span>`;
+        container.innerHTML = `
+          <div class="sentiment-error-state">
+            <span>⚠️ ${data.error}</span>
+            <button class="btn btn-small" onclick="App.fetchSentiment('${symbol}', '${containerId}')">Retry</button>
+          </div>
+        `;
         return;
       }
       
@@ -568,11 +685,21 @@ const App = {
         this.sentimentCache[symbol] = { data: data, fetchedAt: Date.now() };
         container.innerHTML = UI.createSentimentBadge(data);
       } else {
-        container.innerHTML = '<span class="sentiment-unavailable">No sentiment data</span>';
+        container.innerHTML = `
+          <div class="sentiment-unavailable-state">
+            <span>No sentiment data available</span>
+            <button class="btn btn-small" onclick="App.fetchSentiment('${symbol}', '${containerId}')">Retry</button>
+          </div>
+        `;
       }
     } catch (error) {
       console.error('Sentiment fetch error:', error);
-      container.innerHTML = '<span class="sentiment-error">⚠️ Failed to fetch</span>';
+      container.innerHTML = `
+        <div class="sentiment-error-state">
+          <span>⚠️ Failed to fetch sentiment</span>
+          <button class="btn btn-small" onclick="App.fetchSentiment('${symbol}', '${containerId}')">Retry</button>
+        </div>
+      `;
     }
   },
 
@@ -668,6 +795,10 @@ const App = {
    * Load journal entries
    */
   async loadJournal() {
+    // Show skeleton loaders while fetching
+    UI.showSkeletons('journal-container', 3, 'card');
+    UI.showSkeletons('journal-stats', 4, 'stat');
+    
     try {
       const [entriesRes, statsRes] = await Promise.all([
         API.getJournalEntries(),
@@ -679,6 +810,15 @@ const App = {
       this.renderJournalStats(statsRes.stats);
     } catch (error) {
       console.error('Failed to load journal:', error);
+      UI.toast('Failed to load journal', 'error');
+      // Show empty state on error
+      UI.$('journal-container').innerHTML = `
+        <div class="empty-state">
+          <div class="empty-icon">⚠️</div>
+          <p>Failed to load journal</p>
+          <button class="btn btn-primary" onclick="App.loadJournal()">Retry</button>
+        </div>
+      `;
     }
   },
 
@@ -715,10 +855,18 @@ const App = {
     }
 
     if (entries.length === 0) {
+      const isFiltered = this.journalFilter !== 'all';
       container.innerHTML = `
-        <div class="empty-state">
-          <div class="empty-icon">📓</div>
-          <p>No trades found</p>
+        <div class="empty-state enhanced">
+          <div class="empty-illustration">
+            <div class="empty-icon-stack">
+              <span class="empty-icon-main">📓</span>
+              <span class="empty-icon-sub">✏️</span>
+            </div>
+          </div>
+          <h3 class="empty-title">${isFiltered ? 'No matching trades' : 'Your trading journal is empty'}</h3>
+          <p class="empty-hint">${isFiltered ? 'Try adjusting your filter to see more trades' : 'Start logging trades from your scan results to track your performance and build your trading history'}</p>
+          ${!isFiltered ? `<button class="btn btn-primary" onclick="App.switchScreen('results')">View Scan Results</button>` : ''}
         </div>
       `;
       return;

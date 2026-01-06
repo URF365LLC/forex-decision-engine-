@@ -43,19 +43,110 @@ const UI = {
   },
 
   /**
-   * Show toast notification
+   * Set button loading state
+   */
+  setButtonLoading(btnOrId, loading = true, originalText = null) {
+    const btn = typeof btnOrId === 'string' ? this.$(btnOrId) : btnOrId;
+    if (!btn) return;
+    
+    if (loading) {
+      btn.dataset.originalText = btn.textContent;
+      btn.classList.add('loading');
+      btn.disabled = true;
+    } else {
+      btn.classList.remove('loading');
+      btn.disabled = false;
+      if (originalText !== null) {
+        btn.textContent = originalText;
+      } else if (btn.dataset.originalText) {
+        btn.textContent = btn.dataset.originalText;
+        delete btn.dataset.originalText;
+      }
+    }
+  },
+
+  /**
+   * Show toast notification with enhanced styling
    */
   toast(message, type = 'info', duration = 3000) {
     const container = this.$('toast-container');
+    if (!container) return;
+    
     const toast = document.createElement('div');
     toast.className = `toast ${type}`;
-    toast.textContent = message;
+    
+    const textSpan = document.createElement('span');
+    textSpan.textContent = message;
+    toast.appendChild(textSpan);
+    
+    // Add close button for longer toasts
+    if (duration > 3000 || type === 'error') {
+      const closeBtn = document.createElement('button');
+      closeBtn.innerHTML = '×';
+      closeBtn.style.cssText = 'background:none;border:none;color:var(--text-muted);cursor:pointer;padding:0 0 0 8px;font-size:1.2rem;opacity:0.7;';
+      closeBtn.onclick = () => {
+        toast.style.opacity = '0';
+        toast.style.transform = 'translateY(10px)';
+        setTimeout(() => toast.remove(), 200);
+      };
+      toast.appendChild(closeBtn);
+    }
+    
     container.appendChild(toast);
+
+    // Store reference for persistent toasts
+    if (duration === 0) {
+      return toast;
+    }
 
     setTimeout(() => {
       toast.style.opacity = '0';
+      toast.style.transform = 'translateY(10px)';
       setTimeout(() => toast.remove(), 300);
     }, duration);
+    
+    return toast;
+  },
+  
+  /**
+   * Show persistent loading toast (returns dismiss function)
+   */
+  loadingToast(message) {
+    const toast = this.toast(message, 'loading', 0);
+    return () => {
+      if (toast && toast.parentElement) {
+        toast.style.opacity = '0';
+        toast.style.transform = 'translateY(10px)';
+        setTimeout(() => toast.remove(), 200);
+      }
+    };
+  },
+
+  /**
+   * Render skeleton loaders
+   */
+  showSkeletons(containerId, count = 3, type = 'card') {
+    const container = this.$(containerId);
+    if (!container) return;
+    
+    let html = '';
+    if (type === 'stat') {
+      // Stats are in a flex row
+      html = '<div class="skeleton-row">';
+      for (let i = 0; i < count; i++) {
+        html += '<div class="skeleton skeleton-stat"></div>';
+      }
+      html += '</div>';
+    } else {
+      for (let i = 0; i < count; i++) {
+        if (type === 'card') {
+          html += '<div class="skeleton skeleton-card"></div>';
+        } else if (type === 'text') {
+          html += '<div class="skeleton skeleton-text medium"></div>';
+        }
+      }
+    }
+    container.innerHTML = html;
   },
 
   /**
@@ -297,11 +388,18 @@ const UI = {
     
     if (!decisions || decisions.length === 0) {
       container.innerHTML = `
-        <div class="empty-state">
-          <div class="empty-icon">📋</div>
-          <p>No results yet</p>
-          <p class="empty-hint">Go to Watchlist and scan some symbols</p>
-          <button class="btn btn-primary" id="go-to-watchlist-btn" onclick="App.switchScreen('watchlist')">Open Watchlist</button>
+        <div class="empty-state enhanced">
+          <div class="empty-illustration">
+            <div class="empty-icon-stack">
+              <span class="empty-icon-main">📊</span>
+              <span class="empty-icon-sub">🎯</span>
+            </div>
+          </div>
+          <h3 class="empty-title">No scan results yet</h3>
+          <p class="empty-hint">Select symbols from your watchlist and run a scan to find trading opportunities</p>
+          <button class="btn btn-primary" id="go-to-watchlist-btn" onclick="App.switchScreen('watchlist')">
+            Open Watchlist
+          </button>
         </div>
       `;
       this.hide('results-footer');
@@ -323,10 +421,16 @@ const UI = {
     }
 
     if (filtered.length === 0) {
+      const filterLabels = {
+        'trades': 'trade signals',
+        'a+': 'A+ signals',
+        'no-trade': 'no-trade results'
+      };
       container.innerHTML = `
         <div class="empty-state">
           <div class="empty-icon">🔍</div>
-          <p>No ${filter} signals found</p>
+          <p>No ${filterLabels[filter] || filter} found</p>
+          <p class="empty-hint">Try adjusting your filter or running a new scan</p>
         </div>
       `;
       return;
