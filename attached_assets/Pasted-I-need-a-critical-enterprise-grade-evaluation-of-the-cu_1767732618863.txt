@@ -1,0 +1,54 @@
+I need a critical, enterprise-grade evaluation of the current system from a production readiness, UX maturity, and architectural polish standpoint.
+
+At present, the platform feels closer to a prototype or toy dashboard than a production-ready, enterprise-grade system. While core functionality exists, the overall experience lacks the level of refinement, responsiveness, and intentional behavior expected in a professional product.
+
+Specifically, evaluate the following areas in depth:
+
+1. Product & UX Maturity
+
+Identify where the system feels stale, unresponsive, or unfinished.
+
+Analyze button behavior, UI feedback, loading states, and interaction consistency.
+
+Call out places where actions do not clearly communicate state changes, success, failure, or intent.
+
+Assess whether the UI/UX aligns with modern enterprise dashboard standards.
+
+2. Production Readiness
+
+Identify gaps that prevent the system from being considered production-ready.
+
+Highlight performance, responsiveness, or state-management issues that would impact real users.
+
+Call out any architectural or frontend patterns that feel experimental rather than hardened.
+
+3. Sentiment Analysis (Rock Integration)
+
+Critically assess the current sentiment output from Rock.
+
+Compare the expected outcome (a nuanced, detailed, professional-grade sentiment report) versus the current simplified implementation.
+
+Analyze whether the sentiment output is overly reductive, biased, or lacking contextual depth.
+
+Explore whether it is possible to achieve a more neutral, balanced, and analytically rigorous sentiment model—one that minimizes bias while still providing actionable insight.
+
+4. Recommendations
+
+Provide concrete, prioritized recommendations to elevate the system from a prototype to an enterprise-grade product.
+
+Separate quick wins from structural improvements.
+
+Clearly identify what must change for the platform to feel polished, intentional, and trustworthy at scale.
+
+Deliverable
+Produce a structured, executive-level report with:
+
+Key findings
+
+UX and system maturity assessment
+
+Sentiment analysis evaluation
+
+Clear, actionable recommendations with rationale
+
+The goal is not incremental improvement, but a professional-grade transformation that aligns with enterprise expectations.
