@@ -60,8 +60,8 @@ export function calculateATRPercentile(
     : atr20;
   
   const sorted = [...recentATR].sort((a, b) => a - b);
-  const countBelow = sorted.filter(v => v < currentATR).length;
-  const percentile = (countBelow / sorted.length) * 100;
+  const rank = sorted.findIndex(v => v >= currentATR);
+  const percentile = (rank / sorted.length) * 100;
   
   let regime: 'compression' | 'normal' | 'expansion';
   let rrMultiplier: number;
@@ -143,13 +143,6 @@ export function shouldTradeInRegime(
   strategyType: 'trend' | 'mean-reversion' | 'breakout' | 'momentum'
 ): { allowed: boolean; reason?: string; confidenceAdjustment: number } {
   if (strategyType === 'mean-reversion') {
-    if (regime.regime === 'expansion' && regime.atrPercentile >= 90) {
-      return {
-        allowed: false,
-        reason: `Extreme volatility (${regime.atrPercentile.toFixed(0)}th pct) - mean reversion blocked`,
-        confidenceAdjustment: 0,
-      };
-    }
     if (regime.regime === 'expansion') {
       return {
         allowed: true,
@@ -166,13 +159,6 @@ export function shouldTradeInRegime(
   }
   
   if (strategyType === 'trend' || strategyType === 'momentum') {
-    if (regime.regime === 'compression' && regime.atrPercentile <= 10) {
-      return {
-        allowed: false,
-        reason: `Extreme compression (${regime.atrPercentile.toFixed(0)}th pct) - trend/momentum blocked`,
-        confidenceAdjustment: 0,
-      };
-    }
     if (regime.regime === 'compression') {
       return {
         allowed: true,
@@ -193,13 +179,6 @@ export function shouldTradeInRegime(
       return {
         allowed: true,
         confidenceAdjustment: 15,
-      };
-    }
-    if (regime.regime === 'expansion' && regime.atrPercentile >= 95) {
-      return {
-        allowed: false,
-        reason: `Extreme expansion (${regime.atrPercentile.toFixed(0)}th pct) - breakout blocked (volatility too high)`,
-        confidenceAdjustment: 0,
       };
     }
   }
