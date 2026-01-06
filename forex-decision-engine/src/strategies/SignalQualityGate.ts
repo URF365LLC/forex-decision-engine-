@@ -107,28 +107,27 @@ export function isValidStoch(stoch: unknown): stoch is Stoch {
 }
 
 function buildAtrSeries(bars: Bar[], period: number = 14): number[] {
-  if (bars.length === 0) return [];
+  if (bars.length < period + 1) return [];
   
-  const atrValues: number[] = [];
+  const trueRanges: number[] = [];
   
-  for (let i = 0; i < bars.length; i++) {
-    if (i === 0) {
-      atrValues.push(bars[i].high - bars[i].low);
-      continue;
-    }
-    
+  for (let i = 1; i < bars.length; i++) {
     const tr = Math.max(
       bars[i].high - bars[i].low,
       Math.abs(bars[i].high - bars[i - 1].close),
       Math.abs(bars[i].low - bars[i - 1].close),
     );
-    
-    if (i < period) {
-      atrValues.push(tr);
-    } else {
-      const prevATR = atrValues[i - 1];
-      atrValues.push(((prevATR * (period - 1)) + tr) / period);
-    }
+    trueRanges.push(tr);
+  }
+  
+  if (trueRanges.length < period) return [];
+  
+  let atr = trueRanges.slice(0, period).reduce((a, b) => a + b, 0) / period;
+  const atrValues: number[] = [atr];
+  
+  for (let i = period; i < trueRanges.length; i++) {
+    atr = ((atr * (period - 1)) + trueRanges[i]) / period;
+    atrValues.push(atr);
   }
   
   return atrValues;
