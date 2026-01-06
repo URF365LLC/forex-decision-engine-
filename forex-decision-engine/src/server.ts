@@ -919,6 +919,14 @@ app.listen(PORT, () => {
   });
   
   autoScanService.autoStartIfEnabled();
+  
+  const scanStatus = autoScanService.getStatus();
+  if (scanStatus.config.enabled && !scanStatus.config.email) {
+    logger.warn('AUTO_SCAN: Enabled but no email configured - alerts will not be sent!');
+  }
+  if (!alertService.isConfigured()) {
+    logger.warn('RESEND_API_KEY not set - email alerts disabled system-wide');
+  }
 });
 
 // Graceful shutdown

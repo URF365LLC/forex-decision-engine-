@@ -57,12 +57,12 @@ function padIndicatorToBarsLength<T>(
   }
 
   if (indicator.length > barsLength) {
-    logger.warn(`${symbol}: ${indicatorName} longer than bars (${indicator.length} > ${barsLength}), trimming oldest`);
+    logger.debug(`${symbol}: ${indicatorName} longer than bars (${indicator.length} > ${barsLength}), trimming oldest`);
     return indicator.slice(indicator.length - barsLength);
   }
 
   const padCount = barsLength - indicator.length;
-  logger.warn(`${symbol}: ${indicatorName} shorter than bars (${indicator.length} < ${barsLength}), padding with NaN`);
+  logger.debug(`${symbol}: ${indicatorName} shorter than bars (${indicator.length} < ${barsLength}), padding with NaN`);
   const padding = new Array(padCount).fill(NaN as unknown as T);
   return [...padding, ...indicator];
 }

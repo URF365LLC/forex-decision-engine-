@@ -1,0 +1,62 @@
+You are a Principal-level software engineer + debugging lead. I have an issue where an email notification is not triggering, and I’m seeing warnings like “Misaligned BARS for Trend & Indicators”. I need a deep, production-grade analysis.
+
+GOALS
+1) Explain precisely why the email is not triggering (root cause, not guesses).
+2) Explain what “Misaligned BARS for Trend & Indicators” means in *this codebase* and what downstream impact it has (signals, indicators, gating, alerts).
+3) Identify every relevant error, warning, bug, broken path, missing module, misconfig, or dead code contributing to these issues.
+4) Provide a step-by-step execution plan to fix everything safely, including code changes, tests, validation, rollout, and monitoring.
+
+SCOPE (DO NOT SKIP)
+- Search the repo for the email trigger path end-to-end:
+  - where alerts are generated → gating/filters → message creation → transport/provider integration → retries/failures → logging/metrics.
+- Trace data flow for bars/candles:
+  - ingestion → normalization → alignment → indicator calculations → trend detection → downstream usage.
+- Audit runtime + CI failures:
+  - typecheck/build issues, missing imports/modules, dead code causing failures, environment variables, config files, cron/scheduler triggers, webhook handlers, queue workers, etc.
+- Identify mismatched timeframes / indexing / lookbacks that could cause bar misalignment.
+- Check silent failures:
+  - try/catch swallowing errors, promise not awaited, early returns, feature flags disabling paths, disabled service stubs, unreachable code.
+
+REQUIRED OUTPUT FORMAT
+A) Findings Summary (executive-level bullets)
+- Email not triggering: confirmed reason(s)
+- Misaligned BARS warning: confirmed reason(s) + impact
+- Other critical issues discovered
+
+B) Evidence (with file paths + line numbers)
+For each issue:
+- Symptom
+- Root cause
+- Proof (exact code references, logs, stack traces, config keys)
+- Severity (P0/P1/P2) and blast radius
+
+C) Fix Plan (phased)
+Phase 0: Quick safety fixes (same-day)
+Phase 1: Correctness fixes (core logic)
+Phase 2: Hardening + observability
+Each phase must include:
+- Exact tasks
+- Files/modules to modify
+- Estimated complexity (S/M/L)
+- Tests to add/update (unit/integration/e2e)
+- Acceptance criteria (how we know it’s fixed)
+
+D) Patch Suggestions
+Provide concrete code-level recommendations (pseudo-diffs are okay) for:
+- email trigger path fixes
+- bar alignment fixes
+- logging/metrics improvements
+- guardrails to prevent recurrence
+
+E) Verification & Rollout
+- How to reproduce the bug reliably
+- How to validate in staging
+- What to monitor in production (metrics/log queries/alerts)
+- Rollback plan
+
+CONSTRAINTS
+- Do not hand-wave. If you’re uncertain, list what evidence is missing and how to obtain it in-repo (commands/search terms/tests).
+- Prefer minimal, safe changes over large refactors unless necessary.
+- Call out any deprecated/dead code that should be removed if it affects builds or runtime stability.
+
+Now run the analysis and produce the report.

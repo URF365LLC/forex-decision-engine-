@@ -1,5 +1,5 @@
 {
-  "enabled": true,
+  "enabled": false,
   "intervalMs": 300000,
   "symbols": [
     "EURUSD",
@@ -46,6 +46,18 @@
     },
     {
       "strategyId": "ema-pullback-intra",
+      "intervalMs": 300000
+    },
+    {
+      "strategyId": "multi-oscillator-momentum",
+      "intervalMs": 300000
+    },
+    {
+      "strategyId": "liquidity-sweep",
+      "intervalMs": 300000
+    },
+    {
+      "strategyId": "ema-pullback-swing",
       "intervalMs": 300000
     }
   ],

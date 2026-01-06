@@ -679,6 +679,27 @@ class AutoScanService {
       
       const content = fs.readFileSync(CONFIG_FILE, 'utf-8');
       const config = JSON.parse(content) as PersistedConfig;
+      
+      const registeredStrategies = strategyRegistry.list().map(s => s.id);
+      const savedStrategyIds = config.strategies.map(s => s.strategyId);
+      let migrated = false;
+      
+      for (const stratId of registeredStrategies) {
+        if (!savedStrategyIds.includes(stratId)) {
+          logger.info(`AUTO_SCAN: Auto-migrating new strategy to config: ${stratId}`);
+          config.strategies.push({
+            strategyId: stratId,
+            intervalMs: config.intervalMs
+          });
+          migrated = true;
+        }
+      }
+      
+      if (migrated) {
+        fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2), 'utf-8');
+        logger.info('AUTO_SCAN: Config migrated with new strategies');
+      }
+      
       logger.info('AUTO_SCAN: Loaded saved config', { enabled: config.enabled, strategies: config.strategies.length });
       return config;
     } catch (error) {
