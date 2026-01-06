@@ -105,5 +105,24 @@ Core API endpoints facilitate system health checks, symbol retrieval, signal ana
 -   `XAI_API_KEY`: (Optional) Enables xAI Grok sentiment analysis.
 
 ### NPM Dependencies
--   **Runtime**: `express`, `cors`, `dotenv`.
+-   **Runtime**: `express`, `cors`, `dotenv`, `zod`, `openai`.
 -   **Development**: `typescript`, `tsx`, and respective `@types/*` packages.
+
+## Recent Enhancements
+
+### Phase 1: UX Polish (Completed)
+-   **Loading States**: Button loading indicators with spinners for all async actions.
+-   **Toast Notifications**: Success/error/warning toast system with auto-dismiss and progress bar.
+-   **Skeleton Loaders**: Placeholder loading states for Results, Journal, and Watchlist screens.
+-   **SSE Reconnection**: Exponential backoff (2s-60s) with heartbeat detection and silent recovery.
+-   **Timestamps**: Signal freshness indicators with relative times (2m ago, 1h ago) and staleness warnings.
+-   **Empty States**: Visual illustrations with clear CTAs for no-data scenarios.
+
+### Phase 2: API Robustness (Completed)
+-   **Zod Validation**: All mutable endpoints use Zod schemas (`src/validation/schemas.ts`):
+    -   `ScanRequestSchema`, `JournalEntrySchema`, `JournalUpdateSchema`
+    -   `AutoScanStartSchema`, `AutoScanConfigSchema`, `BatchSentimentSchema`
+-   **Request Correlation IDs**: X-Request-ID middleware for log traceability (`src/middleware/requestId.ts`).
+-   **Health/Ready Separation**: `/api/health` (liveness) vs `/api/ready` (readiness with dependency checks).
+-   **Metrics Endpoint**: `/api/metrics` returns uptime, cache hit ratio, rate limit utilization, signal stats.
+-   **Batch Sentiment**: Parallelized with bounded concurrency (3 concurrent) for performance.
