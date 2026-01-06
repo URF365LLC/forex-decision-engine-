@@ -12,6 +12,8 @@
  */
 
 import type { Bar } from './types.js';
+import type { RegimeClassification } from '../modules/regimeDetector.js';
+import { calculateATRPercentile, shouldTradeInRegime } from '../modules/regimeDetector.js';
 
 // NOTE: Bar shape must have 'timestamp' field (string), not 'time'
 // Example: { timestamp: "2025-01-02T14:00:00Z", open: 1.23, high: 1.24, low: 1.22, close: 1.235, volume: 1000 }
@@ -45,6 +47,7 @@ export interface PreFlightResult {
   warnings: string[];
   confidenceAdjustments: number;
   h4Trend?: H4TrendResult;
+  atrRegime?: RegimeClassification;
 }
 
 export interface BBand {
@@ -101,6 +104,34 @@ export function isValidStoch(stoch: unknown): stoch is Stoch {
   if (!stoch || typeof stoch !== 'object') return false;
   const s = stoch as Record<string, unknown>;
   return isValidNumber(s.k) && isValidNumber(s.d);
+}
+
+function buildAtrSeries(bars: Bar[], period: number = 14): number[] {
+  if (bars.length === 0) return [];
+  
+  const atrValues: number[] = [];
+  
+  for (let i = 0; i < bars.length; i++) {
+    if (i === 0) {
+      atrValues.push(bars[i].high - bars[i].low);
+      continue;
+    }
+    
+    const tr = Math.max(
+      bars[i].high - bars[i].low,
+      Math.abs(bars[i].high - bars[i - 1].close),
+      Math.abs(bars[i].low - bars[i - 1].close),
+    );
+    
+    if (i < period) {
+      atrValues.push(tr);
+    } else {
+      const prevATR = atrValues[i - 1];
+      atrValues.push(((prevATR * (period - 1)) + tr) / period);
+    }
+  }
+  
+  return atrValues;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -431,6 +462,19 @@ function getSessionAdjustment(): number {
   return 0;
 }
 
+function mapStrategyToRegimeType(strategyType: PreFlightInput['strategyType']): 'trend' | 'mean-reversion' | 'breakout' | 'momentum' {
+  switch (strategyType) {
+    case 'trend-continuation':
+      return 'trend';
+    case 'mean-reversion':
+      return 'mean-reversion';
+    case 'breakout':
+      return 'breakout';
+    default:
+      return 'momentum';
+  }
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // MAIN PRE-FLIGHT FUNCTION
 // ═══════════════════════════════════════════════════════════════════════════
@@ -440,6 +484,7 @@ export function runPreFlight(input: PreFlightInput): PreFlightResult {
   
   const warnings: string[] = [];
   let confidenceAdjustments = 0;
+  let atrRegime: RegimeClassification | undefined;
   
   // 1. Minimum bars check
   if (bars.length < minBars) {
@@ -501,8 +546,26 @@ export function runPreFlight(input: PreFlightInput): PreFlightResult {
   if (!h4Trend) {
     warnings.push('H4 trend data unavailable');
   }
+
+  // 7. ATR percentile regime detection (volatility-aware confidence)
+  const atrSeries = buildAtrSeries(bars, 14);
+  if (atrSeries.length >= 20) {
+    atrRegime = calculateATRPercentile(atrSeries);
+    const regimeDecision = shouldTradeInRegime(atrRegime, mapStrategyToRegimeType(strategyType));
+    confidenceAdjustments += regimeDecision.confidenceAdjustment;
+    if (!regimeDecision.allowed) {
+      return {
+        passed: false,
+        rejectReason: regimeDecision.reason || 'Regime not tradable',
+        warnings,
+        confidenceAdjustments: 0,
+        h4Trend,
+        atrRegime,
+      };
+    }
+  }
   
-  // 7. REGIME GATE (strategy type aware)
+  // 8. REGIME GATE (strategy type aware)
   const price = bars[bars.length - 1]?.close || 0;
   const atrPercent = (atr && price > 0) ? (atr / price) * 100 : 0;
   const regime = detectRegime(h4Trend, atrPercent);
@@ -541,6 +604,7 @@ export function runPreFlight(input: PreFlightInput): PreFlightResult {
     warnings,
     confidenceAdjustments,
     h4Trend,
+    atrRegime,
   };
 }
 
