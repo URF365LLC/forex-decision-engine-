@@ -2,33 +2,6 @@
   "entries": [
     {
       "source": "signal",
-      "symbol": "NZDCAD",
-      "direction": "short",
-      "style": "intraday",
-      "grade": "B+",
-      "strategyId": "stoch-oversold",
-      "strategyName": "Stochastic Oversold",
-      "confidence": 75,
-      "reasonCodes": [
-        "STOCH_OVERBOUGHT",
-        "STOCH_CROSS_DOWN",
-        "REJECTION_CONFIRMED",
-        "TREND_ALIGNED",
-        "RR_FAVORABLE"
-      ],
-      "tradeType": "pullback",
-      "action": "taken",
-      "entryPrice": 0.79584,
-      "stopLoss": 0.79587,
-      "takeProfit": 0.79215,
-      "lots": 0.55,
-      "status": "running",
-      "id": "1767630862715-ixyc078om",
-      "createdAt": "2026-01-05T16:34:22.714Z",
-      "updatedAt": "2026-01-05T16:34:22.714Z"
-    },
-    {
-      "source": "signal",
       "symbol": "USDJPY",
       "direction": "long",
       "style": "intraday",
@@ -44,14 +17,20 @@
       ],
       "tradeType": "pullback",
       "action": "taken",
-      "entryPrice": 156.201,
+      "entryPrice": 156.204,
       "stopLoss": 155.91562,
-      "takeProfit": 156.77211,
+      "takeProfit": 156.772,
       "lots": 2.06,
-      "status": "pending",
+      "status": "closed",
       "id": "1767640965410-d7z21a9us",
       "createdAt": "2026-01-05T19:22:45.410Z",
-      "updatedAt": "2026-01-05T19:22:45.410Z"
+      "updatedAt": "2026-01-06T01:32:08.784Z",
+      "exitPrice": 156.77211,
+      "pnlPips": 56.8,
+      "pnlDollars": 750.17,
+      "rMultiple": 1.97,
+      "result": "win",
+      "closedAt": "2026-01-06T01:30:30.520Z"
     }
   ]
 }

@@ -1,0 +1,334 @@
+diff --git a/forex-decision-engine/src/strategies/SignalQualityGate.ts b/forex-decision-engine/src/strategies/SignalQualityGate.ts
+index 6c3cb2cc0e0e5755e37f349cfbeee3c658281d87..dbdd5c4c5d08e945de54e9b84c2b1fe7717c728a 100644
+--- a/forex-decision-engine/src/strategies/SignalQualityGate.ts
++++ b/forex-decision-engine/src/strategies/SignalQualityGate.ts
+@@ -1,72 +1,75 @@
+ /**
+  * SignalQualityGate V2 - PROP-GRADE PRE-FLIGHT MODULE
+  * 
+  * Enforces:
+  * 1. Closed-bar signals only (REJECT if signal bar not closed)
+  * 2. Entry freshness policy (REJECT stale entries)
+  * 3. Low volatility rejection (REJECT if ATR < threshold)
+  * 4. H4 trend analysis
+  * 5. Session quality adjustments
+  * 
+  * Date: January 2, 2026
+  */
+ 
+ import type { Bar } from './types.js';
++import type { RegimeClassification } from '../modules/regimeDetector.js';
++import { calculateATRPercentile, shouldTradeInRegime } from '../modules/regimeDetector.js';
+ 
+ // NOTE: Bar shape must have 'timestamp' field (string), not 'time'
+ // Example: { timestamp: "2025-01-02T14:00:00Z", open: 1.23, high: 1.24, low: 1.22, close: 1.235, volume: 1000 }
+ 
+ // ═══════════════════════════════════════════════════════════════════════════
+ // TYPES
+ // ═══════════════════════════════════════════════════════════════════════════
+ 
+ export interface PreFlightInput {
+   symbol: string;
+   bars: Bar[];
+   interval: 'H1' | 'H4' | 'D1';
+   atr: number | null;
+   strategyType: 'trend-continuation' | 'mean-reversion' | 'breakout' | 'momentum';
+   minBars: number;
+   trendBarsH4?: Bar[];
+   ema200H4?: number[];
+   adxH4?: number[];
+ }
+ 
+ export interface H4TrendResult {
+   direction: 'bullish' | 'bearish' | 'neutral';
+   strength: 'strong' | 'moderate' | 'weak';
+   priceVsEma200: number; // percentage
+   adxValue: number;
+ }
+ 
+ export interface PreFlightResult {
+   passed: boolean;
+   rejectReason?: string;
+   warnings: string[];
+   confidenceAdjustments: number;
+   h4Trend?: H4TrendResult;
++  atrRegime?: RegimeClassification;
+ }
+ 
+ export interface BBand {
+   upper: number;
+   middle: number;
+   lower: number;
+ }
+ 
+ export interface Stoch {
+   k: number;
+   d: number;
+ }
+ 
+ // ═══════════════════════════════════════════════════════════════════════════
+ // CONFIGURATION (Can be overridden for testing)
+ // ═══════════════════════════════════════════════════════════════════════════
+ 
+ export const GATE_CONFIG = {
+   enforceClosedBar: true,
+   enforceEntryFreshness: false, // Disabled: signals should show with timing metadata, not be blocked
+   enforceMinVolatility: true,
+   minAtrPercent: 0.05, // 0.05% minimum ATR
+   maxEntryBarAgeMs: {
+     'H1': 15 * 60 * 1000,   // 15 min max into H1
+     'H4': 60 * 60 * 1000,   // 1 hour max into H4
+@@ -81,50 +84,78 @@ export function setTestMode(enabled: boolean): void {
+ 
+ // ═══════════════════════════════════════════════════════════════════════════
+ // VALIDATION HELPERS
+ // ═══════════════════════════════════════════════════════════════════════════
+ 
+ export function isValidNumber(val: unknown): val is number {
+   return typeof val === 'number' && Number.isFinite(val);
+ }
+ 
+ export function allValidNumbers(...vals: unknown[]): boolean {
+   return vals.every(isValidNumber);
+ }
+ 
+ export function isValidBBand(bb: unknown): bb is BBand {
+   if (!bb || typeof bb !== 'object') return false;
+   const b = bb as Record<string, unknown>;
+   return isValidNumber(b.upper) && isValidNumber(b.middle) && isValidNumber(b.lower);
+ }
+ 
+ export function isValidStoch(stoch: unknown): stoch is Stoch {
+   if (!stoch || typeof stoch !== 'object') return false;
+   const s = stoch as Record<string, unknown>;
+   return isValidNumber(s.k) && isValidNumber(s.d);
+ }
+ 
++function buildAtrSeries(bars: Bar[], period: number = 14): number[] {
++  if (bars.length === 0) return [];
++  
++  const atrValues: number[] = [];
++  
++  for (let i = 0; i < bars.length; i++) {
++    if (i === 0) {
++      atrValues.push(bars[i].high - bars[i].low);
++      continue;
++    }
++    
++    const tr = Math.max(
++      bars[i].high - bars[i].low,
++      Math.abs(bars[i].high - bars[i - 1].close),
++      Math.abs(bars[i].low - bars[i - 1].close),
++    );
++    
++    if (i < period) {
++      atrValues.push(tr);
++    } else {
++      const prevATR = atrValues[i - 1];
++      atrValues.push(((prevATR * (period - 1)) + tr) / period);
++    }
++  }
++  
++  return atrValues;
++}
++
+ // ═══════════════════════════════════════════════════════════════════════════
+ // H4 TREND ANALYSIS
+ // ═══════════════════════════════════════════════════════════════════════════
+ 
+ function analyzeH4Trend(
+   trendBarsH4: Bar[] | undefined,
+   ema200H4: number[] | undefined,
+   adxH4: number[] | undefined,
+ ): H4TrendResult | undefined {
+   if (!trendBarsH4 || trendBarsH4.length < 10) return undefined;
+   if (!ema200H4 || ema200H4.length === 0) return undefined;
+   if (!adxH4 || adxH4.length === 0) return undefined;
+   
+   const trendIdx = trendBarsH4.length - 1;
+   const trendBar = trendBarsH4[trendIdx];
+   const ema200Val = ema200H4[Math.min(trendIdx, ema200H4.length - 1)];
+   const adxVal = adxH4[Math.min(trendIdx, adxH4.length - 1)];
+   
+   if (!isValidNumber(ema200Val) || !isValidNumber(adxVal)) return undefined;
+   
+   const priceVsEma200 = ((trendBar.close - ema200Val) / ema200Val) * 100;
+   
+   let direction: 'bullish' | 'bearish' | 'neutral';
+   if (priceVsEma200 > 0.5) direction = 'bullish';
+   else if (priceVsEma200 < -0.5) direction = 'bearish';
+@@ -409,59 +440,73 @@ function detectRegime(h4Trend: H4TrendResult | undefined, atrPercent: number): R
+   // Chop: Low ADX + Low volatility
+   if (adx < 15 && atrPercent < 0.1) {
+     return { regime: 'chop', allowTrend: false, allowMeanReversion: false, reason: `Chop (ADX=${adx.toFixed(1)}, ATR%=${atrPercent.toFixed(2)})` };
+   }
+   
+   // Strong trend: ADX > 30
+   if (adx >= 30) {
+     return { regime: 'strong-trend', allowTrend: true, allowMeanReversion: false, reason: `Strong trend (ADX=${adx.toFixed(1)})` };
+   }
+   
+   // Weak trend: ADX 14-30 (LOWERED from 18 to capture more opportunities)
+   // ADX 14-18 is "developing trend" - allow with confidence penalty
+   if (adx >= 14) {
+     return { regime: 'weak-trend', allowTrend: true, allowMeanReversion: true };
+   }
+   
+   // Range: ADX < 14 (LOWERED from 18)
+   return { regime: 'range', allowTrend: false, allowMeanReversion: true, reason: `Range (ADX=${adx.toFixed(1)})` };
+ }
+ 
+ function getSessionAdjustment(): number {
+   // DEPRECATED: Use checkSession() instead
+   return 0;
+ }
+ 
++function mapStrategyToRegimeType(strategyType: PreFlightInput['strategyType']): 'trend' | 'mean-reversion' | 'breakout' | 'momentum' {
++  switch (strategyType) {
++    case 'trend-continuation':
++      return 'trend';
++    case 'mean-reversion':
++      return 'mean-reversion';
++    case 'breakout':
++      return 'breakout';
++    default:
++      return 'momentum';
++  }
++}
++
+ // ═══════════════════════════════════════════════════════════════════════════
+ // MAIN PRE-FLIGHT FUNCTION
+ // ═══════════════════════════════════════════════════════════════════════════
+ 
+ export function runPreFlight(input: PreFlightInput): PreFlightResult {
+   const { symbol, bars, interval, atr, strategyType, minBars, trendBarsH4, ema200H4, adxH4 } = input;
+   
+   const warnings: string[] = [];
+   let confidenceAdjustments = 0;
++  let atrRegime: RegimeClassification | undefined;
+   
+   // 1. Minimum bars check
+   if (bars.length < minBars) {
+     return {
+       passed: false,
+       rejectReason: `Insufficient bars: ${bars.length} < ${minBars}`,
+       warnings,
+       confidenceAdjustments: 0,
+     };
+   }
+   
+   // 2. Bar closure check (ENFORCED in V2)
+   const barClosure = checkBarClosure(bars, interval);
+   if (barClosure.rejectReason) {
+     return {
+       passed: false,
+       rejectReason: barClosure.rejectReason,
+       warnings,
+       confidenceAdjustments: 0,
+     };
+   }
+   
+   // 3. Entry freshness check (ENFORCED in V2)
+   const freshness = checkEntryFreshness(bars, interval);
+   if (freshness.rejectReason) {
+@@ -479,80 +524,99 @@ export function runPreFlight(input: PreFlightInput): PreFlightResult {
+     return {
+       passed: false,
+       rejectReason: volatility.rejectReason,
+       warnings,
+       confidenceAdjustments: 0,
+     };
+   }
+   
+   // 5. SESSION GATE (instrument-aware)
+   const session = checkSession(symbol);
+   if (!session.allowed) {
+     return {
+       passed: false,
+       rejectReason: session.reason || 'Session not allowed',
+       warnings,
+       confidenceAdjustments: 0,
+     };
+   }
+   confidenceAdjustments += session.adjustment;
+   
+   // 6. H4 Trend analysis
+   const h4Trend = analyzeH4Trend(trendBarsH4, ema200H4, adxH4);
+   if (!h4Trend) {
+     warnings.push('H4 trend data unavailable');
+   }
++
++  // 7. ATR percentile regime detection (volatility-aware confidence)
++  const atrSeries = buildAtrSeries(bars, 14);
++  if (atrSeries.length >= 20) {
++    atrRegime = calculateATRPercentile(atrSeries);
++    const regimeDecision = shouldTradeInRegime(atrRegime, mapStrategyToRegimeType(strategyType));
++    confidenceAdjustments += regimeDecision.confidenceAdjustment;
++    if (!regimeDecision.allowed) {
++      return {
++        passed: false,
++        rejectReason: regimeDecision.reason || 'Regime not tradable',
++        warnings,
++        confidenceAdjustments: 0,
++        h4Trend,
++        atrRegime,
++      };
++    }
++  }
+   
+-  // 7. REGIME GATE (strategy type aware)
++  // 8. REGIME GATE (strategy type aware)
+   const price = bars[bars.length - 1]?.close || 0;
+   const atrPercent = (atr && price > 0) ? (atr / price) * 100 : 0;
+   const regime = detectRegime(h4Trend, atrPercent);
+   
+   // Enforce regime rules based on strategy type
+   if (strategyType === 'trend-continuation' && !regime.allowTrend) {
+     return {
+       passed: false,
+       rejectReason: `Trend strategy blocked: ${regime.reason || regime.regime}`,
+       warnings,
+       confidenceAdjustments: 0,
+       h4Trend,
+     };
+   }
+   if (strategyType === 'mean-reversion' && !regime.allowMeanReversion && regime.regime === 'strong-trend') {
+     return {
+       passed: false,
+       rejectReason: `Mean reversion blocked: ${regime.reason || 'strong trend'}`,
+       warnings,
+       confidenceAdjustments: 0,
+       h4Trend,
+     };
+   }
+   if (regime.regime === 'chop') {
+     return {
+       passed: false,
+       rejectReason: regime.reason || 'Choppy market',
+       warnings,
+       confidenceAdjustments: 0,
+       h4Trend,
+     };
+   }
+   
+   return {
+     passed: true,
+     warnings,
+     confidenceAdjustments,
+     h4Trend,
++    atrRegime,
+   };
+ }
+ 
+ // ═══════════════════════════════════════════════════════════════════════════
+ // LOGGING HELPER
+ // ═══════════════════════════════════════════════════════════════════════════
+ 
+ export function logPreFlight(symbol: string, strategyId: string, result: PreFlightResult): void {
+   if (!result.passed) {
+     console.log(`[${strategyId}] ${symbol} REJECTED: ${result.rejectReason}`);
+   }
+   if (result.warnings.length > 0) {
+     console.log(`[${strategyId}] ${symbol} WARNINGS: ${result.warnings.join(', ')}`);
+   }
+ }
