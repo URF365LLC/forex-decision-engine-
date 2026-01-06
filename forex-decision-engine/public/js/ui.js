@@ -481,29 +481,88 @@ const UI = {
     if (!sentiment) return '';
     
     const ratingEmoji = {
+      'extremely_bullish': '🟢🟢',
       'bullish': '🟢',
-      'bearish': '🔴',
+      'slightly_bullish': '🟢',
       'neutral': '⚪',
-      'mixed': '🟡'
+      'slightly_bearish': '🔴',
+      'bearish': '🔴',
+      'extremely_bearish': '🔴🔴'
     }[sentiment.rating] || '⚪';
     
-    const ratingClass = {
-      'bullish': 'sentiment-bullish',
-      'bearish': 'sentiment-bearish',
-      'neutral': 'sentiment-neutral',
-      'mixed': 'sentiment-mixed'
-    }[sentiment.rating] || 'sentiment-neutral';
-    
+    const ratingClass = this.getSentimentClass(sentiment.rating);
     const scoreDisplay = sentiment.score > 0 ? `+${sentiment.score}` : sentiment.score;
+    const ratingLabel = sentiment.rating.replace(/_/g, ' ').toUpperCase();
+    
+    const shortTerm = sentiment.shortTermBias;
+    const longTerm = sentiment.longTermBias;
+    const contrarian = sentiment.contrarian;
+    
+    let biasHTML = '';
+    if (shortTerm && longTerm) {
+      const stClass = this.getSentimentClass(shortTerm.rating);
+      const ltClass = this.getSentimentClass(longTerm.rating);
+      const stLabel = shortTerm.rating.replace(/_/g, ' ');
+      const ltLabel = longTerm.rating.replace(/_/g, ' ');
+      
+      biasHTML = `
+        <div class="sentiment-bias-split">
+          <div class="bias-item ${stClass}">
+            <span class="bias-label">Short-term</span>
+            <span class="bias-value">${stLabel} (${shortTerm.score > 0 ? '+' : ''}${shortTerm.score})</span>
+          </div>
+          <div class="bias-item ${ltClass}">
+            <span class="bias-label">Long-term</span>
+            <span class="bias-value">${ltLabel} (${longTerm.score > 0 ? '+' : ''}${longTerm.score})</span>
+          </div>
+        </div>
+      `;
+    }
+    
+    let contrarianHTML = '';
+    if (contrarian && contrarian.detected) {
+      const typeLabel = (contrarian.type || '').replace(/_/g, ' ').toUpperCase();
+      contrarianHTML = `
+        <div class="contrarian-warning">
+          <span class="contrarian-icon">⚠️</span>
+          <span class="contrarian-type">${typeLabel}</span>
+          <span class="contrarian-strength">${contrarian.strength}%</span>
+          ${contrarian.warning ? `<span class="contrarian-message">${contrarian.warning}</span>` : ''}
+        </div>
+      `;
+    }
+    
+    let consensusHTML = '';
+    if (sentiment.consensusLevel !== undefined) {
+      const consensusLevel = sentiment.consensusLevel;
+      const consensusClass = consensusLevel > 75 ? 'consensus-extreme' : consensusLevel > 50 ? 'consensus-high' : 'consensus-normal';
+      consensusHTML = `<span class="consensus-indicator ${consensusClass}" title="Consensus: ${consensusLevel}%">C:${consensusLevel}%</span>`;
+    }
     
     return `
       <div class="sentiment-badge ${ratingClass}">
-        <span class="sentiment-icon">${ratingEmoji}</span>
-        <span class="sentiment-rating">${sentiment.rating.toUpperCase()}</span>
-        <span class="sentiment-score">${scoreDisplay}</span>
-        ${sentiment.summary ? `<span class="sentiment-summary">${sentiment.summary}</span>` : ''}
+        <div class="sentiment-header">
+          <span class="sentiment-icon">${ratingEmoji}</span>
+          <span class="sentiment-rating">${ratingLabel}</span>
+          <span class="sentiment-score">${scoreDisplay}</span>
+          ${consensusHTML}
+        </div>
+        ${sentiment.summary ? `<div class="sentiment-summary">${sentiment.summary}</div>` : ''}
+        ${biasHTML}
+        ${contrarianHTML}
       </div>
     `;
+  },
+  
+  getSentimentClass(rating) {
+    const ratingNorm = (rating || '').toLowerCase();
+    if (ratingNorm.includes('extremely_bullish') || ratingNorm.includes('extremely bullish')) return 'sentiment-extremely-bullish';
+    if (ratingNorm.includes('slightly_bullish') || ratingNorm.includes('slightly bullish')) return 'sentiment-slightly-bullish';
+    if (ratingNorm.includes('bullish')) return 'sentiment-bullish';
+    if (ratingNorm.includes('extremely_bearish') || ratingNorm.includes('extremely bearish')) return 'sentiment-extremely-bearish';
+    if (ratingNorm.includes('slightly_bearish') || ratingNorm.includes('slightly bearish')) return 'sentiment-slightly-bearish';
+    if (ratingNorm.includes('bearish')) return 'sentiment-bearish';
+    return 'sentiment-neutral';
   },
 };
 

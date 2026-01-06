@@ -14,7 +14,19 @@ import { createLogger } from './logger.js';
 
 const logger = createLogger('GrokSentiment');
 
-export type SentimentRating = 'bullish' | 'bearish' | 'neutral' | 'mixed';
+export type SentimentRating = 'extremely_bullish' | 'bullish' | 'slightly_bullish' | 'neutral' | 'slightly_bearish' | 'bearish' | 'extremely_bearish';
+
+export interface SentimentBias {
+  rating: SentimentRating;
+  score: number;
+}
+
+export interface ContrarianSignal {
+  detected: boolean;
+  type: 'crowded_long' | 'crowded_short' | 'capitulation' | 'euphoria' | null;
+  strength: number;
+  warning: string | null;
+}
 
 export interface SentimentResult {
   symbol: string;
@@ -26,6 +38,10 @@ export interface SentimentResult {
   postCount: number;
   timestamp: string;
   cached: boolean;
+  shortTermBias: SentimentBias;
+  longTermBias: SentimentBias;
+  contrarian: ContrarianSignal;
+  consensusLevel: number;
 }
 
 interface CacheEntry {
@@ -102,29 +118,56 @@ class GrokSentimentService {
     try {
       const keywords = getSearchKeywords(symbol);
       
-      const systemPrompt = `You are a financial sentiment analyst specializing in forex and cryptocurrency markets.
-Analyze X/Twitter posts about the given trading pair to determine market sentiment.
+      const systemPrompt = `You are an institutional-grade financial sentiment analyst specializing in forex, metals, and cryptocurrency markets.
+Analyze X/Twitter posts about the given trading pair to determine market sentiment with advanced contrarian analysis.
 
-Provide your analysis in JSON format with these fields:
-- rating: "bullish", "bearish", "neutral", or "mixed"
+Provide your analysis in JSON format with these exact fields:
+
+1. OVERALL SENTIMENT:
+- rating: One of "extremely_bullish", "bullish", "slightly_bullish", "neutral", "slightly_bearish", "bearish", "extremely_bearish"
 - score: number from -100 (extremely bearish) to +100 (extremely bullish)
-- confidence: number from 0 to 1 indicating how confident you are
-- summary: 1-2 sentence summary of the sentiment
-- keyThemes: array of 2-3 main themes from the posts
-- postCount: estimated number of relevant posts analyzed
+- confidence: number from 0 to 1 indicating analysis confidence
+- summary: 1-2 sentence summary of sentiment
+
+2. TIME-HORIZON SPLIT:
+- shortTermBias: { rating: (same 7-tier scale), score: -100 to +100 } - sentiment for next 1-4 hours based on immediate reactions
+- longTermBias: { rating: (same 7-tier scale), score: -100 to +100 } - sentiment for next 1-7 days based on fundamental views
+
+3. CONTRARIAN ANALYSIS (CRITICAL for institutional trading):
+- contrarian: {
+    detected: boolean - true if extreme consensus suggests reversal risk
+    type: "crowded_long" | "crowded_short" | "capitulation" | "euphoria" | null
+    strength: 0-100 (how extreme the crowding is)
+    warning: string or null - specific contrarian warning message
+  }
+- consensusLevel: 0-100 (how unified sentiment is - high values = potential reversal)
+
+CONTRARIAN DETECTION RULES:
+- "crowded_long": >80% bullish with excessive leverage/position mentions = fade signal
+- "crowded_short": >80% bearish with capitulation language = bounce signal  
+- "euphoria": Price targets wildly optimistic, "can't lose" mentality = top signal
+- "capitulation": Extreme despair, "selling everything", panic = bottom signal
+
+4. ADDITIONAL:
+- keyThemes: array of 2-3 main themes
+- postCount: estimated relevant posts analyzed
 
 Focus on:
-- Trader sentiment and positioning mentions
-- Price predictions and targets
-- Technical analysis comments
-- News reactions and fundamental views
-
-Ignore spam, bots, and promotional content.`;
+- Retail vs institutional sentiment divergence
+- Positioning extremes and leverage mentions
+- Fear/greed language intensity
+- Contrarian signals when consensus is extreme`;
 
       const userPrompt = `Analyze current X/Twitter sentiment for ${symbol} trading.
 Search keywords: ${keywords}
 
-What is the current market sentiment based on recent posts? Consider posts from the last 24 hours.`;
+Provide comprehensive sentiment analysis including:
+1. Overall 7-tier sentiment rating
+2. Short-term (intraday) vs long-term (swing) bias split
+3. Contrarian signal detection (crowded trades, euphoria, capitulation)
+4. Consensus level (how one-sided is the crowd)
+
+Consider posts from the last 24 hours. Flag any extreme positioning that suggests reversal risk.`;
 
       const response = await this.client.chat.completions.create({
         model: 'grok-3',
@@ -143,6 +186,23 @@ What is the current market sentiment based on recent posts? Consider posts from 
       
       const parsed = JSON.parse(content);
       
+      const shortTermBias: SentimentBias = {
+        rating: this.normalizeRating(parsed.shortTermBias?.rating || parsed.rating),
+        score: Math.max(-100, Math.min(100, parsed.shortTermBias?.score || parsed.score || 0)),
+      };
+      
+      const longTermBias: SentimentBias = {
+        rating: this.normalizeRating(parsed.longTermBias?.rating || parsed.rating),
+        score: Math.max(-100, Math.min(100, parsed.longTermBias?.score || parsed.score || 0)),
+      };
+      
+      const contrarian: ContrarianSignal = {
+        detected: parsed.contrarian?.detected || false,
+        type: this.normalizeContrarianType(parsed.contrarian?.type),
+        strength: Math.max(0, Math.min(100, parsed.contrarian?.strength || 0)),
+        warning: parsed.contrarian?.warning || null,
+      };
+      
       const result: SentimentResult = {
         symbol,
         rating: this.normalizeRating(parsed.rating),
@@ -153,6 +213,10 @@ What is the current market sentiment based on recent posts? Consider posts from 
         postCount: parsed.postCount || 0,
         timestamp: new Date().toISOString(),
         cached: false,
+        shortTermBias,
+        longTermBias,
+        contrarian,
+        consensusLevel: Math.max(0, Math.min(100, parsed.consensusLevel || 50)),
       };
       
       sentimentCache.set(symbol, {
@@ -170,11 +234,29 @@ What is the current market sentiment based on recent posts? Consider posts from 
   }
   
   private normalizeRating(rating: string): SentimentRating {
-    const normalized = (rating || '').toLowerCase();
+    const normalized = (rating || '').toLowerCase().replace(/[_-]/g, '');
+    
+    if (normalized.includes('extremelybullish') || normalized.includes('verybullish')) return 'extremely_bullish';
+    if (normalized.includes('slightlybullish') || normalized.includes('mildlybullish')) return 'slightly_bullish';
     if (normalized.includes('bullish') || normalized.includes('positive')) return 'bullish';
+    
+    if (normalized.includes('extremelybearish') || normalized.includes('verybearish')) return 'extremely_bearish';
+    if (normalized.includes('slightlybearish') || normalized.includes('mildlybearish')) return 'slightly_bearish';
     if (normalized.includes('bearish') || normalized.includes('negative')) return 'bearish';
-    if (normalized.includes('mixed')) return 'mixed';
+    
     return 'neutral';
+  }
+  
+  private normalizeContrarianType(type: string | null | undefined): ContrarianSignal['type'] {
+    if (!type) return null;
+    const normalized = type.toLowerCase().replace(/[_-]/g, '');
+    
+    if (normalized.includes('crowdedlong')) return 'crowded_long';
+    if (normalized.includes('crowdedshort')) return 'crowded_short';
+    if (normalized.includes('capitulation')) return 'capitulation';
+    if (normalized.includes('euphoria')) return 'euphoria';
+    
+    return null;
   }
   
   async getBatchSentiment(symbols: string[], concurrency: number = 3): Promise<Map<string, SentimentResult | null>> {
