@@ -1,0 +1,181 @@
+You are acting as a Principal Systems Architect / Platform Engineer performing a post-build stabilization and scalability review. The system is functionally “built,” but now needs to be evaluated from the standpoint of long-term correctness, data integrity, scalability, and maintainability.
+
+Your task is to identify what must be stabilized, repaired, rewired, or expanded to evolve the platform from a working implementation into a robust, enterprise-grade system.
+
+Primary Objectives
+
+System Stabilization
+
+Identify components that are fragile, inconsistent, or overly coupled.
+
+Call out areas where behavior is nondeterministic, state is ambiguous, or failures are silent.
+
+Highlight parts of the system that work “by accident” rather than by design.
+
+Data Pipeline Integrity & Bottleneck Analysis
+
+Map the end-to-end data pipeline:
+
+ingestion → normalization → processing → caching → storage → display → downstream consumers
+
+Identify:
+
+bottlenecks
+
+duplicated processing
+
+unnecessary recomputation
+
+blocking or synchronous paths that should be async
+
+Determine whether any parts of the pipeline should be rewired or re-sequenced to improve throughput, correctness, and clarity.
+
+Schema, Engine, and Module Validation
+
+Audit all schemas, engines, and core modules for:
+
+correctness
+
+consistency
+
+version drift
+
+implicit assumptions
+
+Identify where:
+
+schemas are loosely enforced
+
+validation is missing or inconsistent
+
+modules disagree on data shape or semantics
+
+Recommend where cross-validation or stricter contracts should be introduced.
+
+Legacy Code & Architectural Debt
+
+Identify legacy or deprecated code paths that:
+
+no longer serve a purpose
+
+introduce risk or confusion
+
+complicate data flow or reasoning
+
+Recommend:
+
+removal
+
+refactor
+
+consolidation
+
+Clearly justify why each legacy component should stay, change, or be removed.
+
+Backend Codebase Cleanup & Re-architecture
+
+Evaluate backend structure for:
+
+clear ownership and boundaries
+
+separation of concerns
+
+testability
+
+extensibility
+
+Identify places where:
+
+logic is duplicated
+
+responsibilities are blurred
+
+refactors were partial or inconsistent
+
+Recommend targeted rewrites where necessary, prioritizing correctness and data integrity over feature expansion.
+
+Signal Accuracy, Display, and Storage
+
+Assess whether current architecture best supports:
+
+accurate signal detection
+
+consistent signal interpretation
+
+reliable display to users
+
+durable and queryable storage
+
+Identify architectural improvements that would:
+
+reduce noise
+
+prevent data leakage or misalignment
+
+improve traceability from raw data → signal → stored record
+
+Required Deliverables
+
+A) Executive Architecture Assessment
+
+Current system maturity
+
+Key stabilization risks
+
+Readiness for scale and expansion
+
+B) Data Pipeline & Bottleneck Report
+
+Visual/textual pipeline map
+
+Identified bottlenecks and failure points
+
+Recommended rewiring or restructuring
+
+C) Schema & Contract Review
+
+Inconsistencies or validation gaps
+
+Cross-module mismatches
+
+Proposed schema/contract improvements
+
+D) Legacy & Technical Debt Inventory
+
+What can be removed safely
+
+What must be refactored
+
+What should be rewritten vs preserved
+
+E) Backend Cleanup & Refactor Plan
+
+High-impact cleanup opportunities
+
+Suggested architectural adjustments
+
+Risk assessment per change
+
+F) Stabilization & Expansion Roadmap
+
+Phase 0: Immediate stabilization (correctness & integrity)
+
+Phase 1: Structural cleanup & rewiring
+
+Phase 2: Expansion-ready architecture improvements
+
+Constraints & Expectations
+
+Assume the system works today, but optimize for correctness, clarity, and longevity.
+
+Avoid unnecessary over-engineering, but do not preserve broken or fragile patterns.
+
+Tie recommendations to specific architectural reasoning, not stylistic preference.
+
+Treat this as a systems-level design and remediation review, not a code-style critique.
+
+Final Goal
+
+Deliver a clear, architect-level answer to:
+
+“Now that the system is built, what must we stabilize, repair, remove, or re-architect to ensure accurate data flow, trustworthy signals, and long-term scalability?”
