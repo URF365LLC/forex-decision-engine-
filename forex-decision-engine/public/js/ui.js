@@ -397,7 +397,7 @@ const UI = {
           </div>
           <h3 class="empty-title">No scan results yet</h3>
           <p class="empty-hint">Select symbols from your watchlist and run a scan to find trading opportunities</p>
-          <button class="btn btn-primary" id="go-to-watchlist-btn" onclick="App.switchScreen('watchlist')">
+          <button class="btn btn-primary" id="go-to-watchlist-btn" onclick="App.switchScreen('manual-scan')">
             Open Watchlist
           </button>
         </div>

@@ -28,7 +28,7 @@ const App = {
       this.showWelcome();
     } else {
       UI.hide('welcome-screen');
-      UI.show('results-screen');
+      UI.show('manual-scan-screen');
     }
 
     // Load universe
@@ -487,7 +487,7 @@ const App = {
       UI.$('last-scan-time').textContent = `Last scan: ${new Date().toLocaleString()}`;
       
       // Switch to results screen
-      UI.switchScreen('results');
+      UI.switchScreen('manual-scan');
       UI.renderResults(this.results, this.currentFilter);
       
       // Load market sentiment overview
@@ -884,7 +884,7 @@ const App = {
           </div>
           <h3 class="empty-title">${isFiltered ? 'No matching trades' : 'Your trading journal is empty'}</h3>
           <p class="empty-hint">${isFiltered ? 'Try adjusting your filter to see more trades' : 'Start logging trades from your scan results to track your performance and build your trading history'}</p>
-          ${!isFiltered ? `<button class="btn btn-primary" onclick="App.switchScreen('results')">View Scan Results</button>` : ''}
+          ${!isFiltered ? `<button class="btn btn-primary" onclick="App.switchScreen('manual-scan')">View Scan Results</button>` : ''}
         </div>
       `;
       return;
@@ -1136,7 +1136,7 @@ const App = {
     UI.$('settings-form')?.addEventListener('submit', (e) => {
       e.preventDefault();
       if (this.saveSettings()) {
-        UI.switchScreen('watchlist');
+        UI.switchScreen('manual-scan');
       }
     });
 
@@ -1256,10 +1256,10 @@ const App = {
       if (document.activeElement.tagName !== 'INPUT' && 
           document.activeElement.tagName !== 'TEXTAREA' &&
           document.activeElement.tagName !== 'SELECT') {
-        const screens = ['results', 'watchlist', 'journal', 'settings'];
+        const screens = ['manual-scan', 'auto-scan', 'journal', 'settings'];
         const keyNum = parseInt(e.key);
         
-        if (keyNum >= 1 && keyNum <= 4) {
+        if (keyNum >= 1 && keyNum <= screens.length) {
           e.preventDefault();
           this.switchScreen(screens[keyNum - 1]);
         }
@@ -1520,7 +1520,7 @@ const App = {
           <div class="empty-icon">🔍</div>
           <p>No detected trades yet</p>
           <p class="empty-hint">Start auto-scan to detect trading opportunities</p>
-          <button class="btn btn-primary" id="go-to-autoscan-btn" onclick="UI.switchScreen('watchlist')">Configure Auto-Scan</button>
+          <button class="btn btn-primary" id="go-to-autoscan-btn" onclick="UI.switchScreen('auto-scan')">Configure Auto-Scan</button>
         </div>
       `;
       return;
@@ -1618,11 +1618,39 @@ const App = {
             <span class="price-label">TP:</span>
             <span class="price-value tp">${detection.takeProfit?.formatted || '-'}</span>
           </div>
+          ${detection.lotSize ? `
+          <div class="price-row position">
+            <span class="price-label">Size:</span>
+            <span class="price-value">${detection.lotSize} lots</span>
+          </div>
+          ` : ''}
         </div>
+        
+        ${detection.tieredExits ? `
+        <div class="detection-exits">
+          ${detection.tieredExits.tp1 ? `
+          <div class="exit-row">
+            <span class="exit-label">TP1 (1R):</span>
+            <span class="exit-value tp">${detection.tieredExits.tp1.formatted || '-'}</span>
+          </div>
+          ` : ''}
+          ${detection.tieredExits.tp2 ? `
+          <div class="exit-row">
+            <span class="exit-label">TP2 (2R):</span>
+            <span class="exit-value tp">${detection.tieredExits.tp2.formatted || '-'}</span>
+          </div>
+          ` : ''}
+        </div>
+        ` : ''}
 
         <div class="detection-meta">
           <span title="First detected">First: ${new Date(detection.firstDetectedAt).toLocaleTimeString()}</span>
-          <span title="Confirmation count">×${detection.detectionCount}</span>
+          <span title="Confirmation count">Confirmations: ${detection.detectionCount}</span>
+          ${detection.barExpiresAt ? `
+          <span class="bar-expires" title="Setup expires when candle closes" data-expires="${detection.barExpiresAt}">
+            Expires: ${this.formatBarExpiry(detection.barExpiresAt)}
+          </span>
+          ` : ''}
         </div>
 
         <div class="detection-actions">
@@ -1649,6 +1677,22 @@ const App = {
       return `${mins}m ${secs}s remaining`;
     }
     return `${secs}s remaining`;
+  },
+
+  formatBarExpiry(expiresAt) {
+    const now = Date.now();
+    const end = new Date(expiresAt).getTime();
+    const remainingMs = end - now;
+
+    if (remainingMs <= 0) return 'Expired';
+
+    const mins = Math.floor(remainingMs / 60000);
+    if (mins >= 60) {
+      const hours = Math.floor(mins / 60);
+      const remMins = mins % 60;
+      return `${hours}h ${remMins}m`;
+    }
+    return `${mins}m`;
   },
 
   /**
