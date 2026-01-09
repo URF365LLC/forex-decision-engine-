@@ -44,7 +44,7 @@ Core API endpoints cover system health, symbol retrieval, signal analysis and sc
 -   **Journaling**: Comprehensive trade journaling with P&L and statistics.
 -   **Strategy Isolation**: Caches decisions per strategy to prevent data staleness.
 -   **Margin-Aware Position Sizing**: Accounts for leverage and margin constraints.
--   **Indicator Alignment**: Uses NaN padding for consistent indicator array processing.
+-   **Indicator Alignment**: Uses timestamp-based alignment (`alignIndicatorToBars()`) to ensure indicators match bar arrays regardless of API output sizes. Falls back to NaN for missing timestamps.
 -   **Auto-Scan v2.1**: Background scanning with configurable intervals, watchlist presets, market hours filters, and email alerts for high-grade signals. Auto-scan integrates with the Detection Service to persist and manage detected trades.
 -   **Tiered Exit Management**: Each decision includes tiered exit points (TP1, TP2, trailing runner) with risk management actions.
 -   **Grok AI Sentiment Analysis**: On-demand X/Twitter market sentiment integration with caching, offering a 7-tier sentiment scale, time-horizon split, contrarian detection, and consensus level.

@@ -101,16 +101,85 @@ async function fetchWithCache<T>(
   return promise;
 }
 
+/**
+ * Align indicator array to bars array by timestamp matching.
+ * This ensures indicator[i] corresponds to bars[i] regardless of API output sizes.
+ * If no matching timestamp found, fills with NaN then backfills trailing NaNs with last valid value.
+ */
+function alignIndicatorToBars(
+  bars: OHLCVBar[],
+  indicator: IndicatorValue[],
+  indicatorName: string
+): IndicatorValue[] {
+  if (bars.length === 0) return [];
+  if (indicator.length === 0) {
+    logger.warn(`${indicatorName}: No indicator data, filling with NaN`);
+    return bars.map(b => ({ timestamp: b.timestamp, value: NaN }));
+  }
+  
+  // Create a map of indicator values by timestamp for O(1) lookup
+  const indicatorMap = new Map<string, number>();
+  for (const iv of indicator) {
+    if (iv.timestamp) {
+      indicatorMap.set(iv.timestamp, iv.value);
+    }
+  }
+  
+  // Build aligned array matching bars exactly
+  const aligned: IndicatorValue[] = [];
+  let matchCount = 0;
+  let lastValidValue: number | null = null;
+  
+  for (const bar of bars) {
+    const value = indicatorMap.get(bar.timestamp);
+    if (value !== undefined && Number.isFinite(value)) {
+      aligned.push({ timestamp: bar.timestamp, value });
+      lastValidValue = value;
+      matchCount++;
+    } else {
+      aligned.push({ timestamp: bar.timestamp, value: NaN });
+    }
+  }
+  
+  // Backfill trailing NaNs with last valid value (handles current-session data lag)
+  let backfillCount = 0;
+  if (lastValidValue !== null) {
+    for (let i = aligned.length - 1; i >= 0; i--) {
+      if (!Number.isFinite(aligned[i].value)) {
+        aligned[i].value = lastValidValue;
+        backfillCount++;
+      } else {
+        break; // Stop at first non-NaN from the end
+      }
+    }
+  }
+  
+  // Log alignment quality
+  const matchRate = bars.length > 0 ? (matchCount / bars.length * 100).toFixed(1) : '0';
+  if (matchCount < bars.length * 0.8) {
+    logger.warn(`${indicatorName}: Low timestamp match rate: ${matchRate}% (${matchCount}/${bars.length})${backfillCount > 0 ? `, backfilled ${backfillCount} trailing values` : ''}`);
+  } else {
+    logger.debug(`${indicatorName}: Aligned ${matchCount}/${bars.length} bars (${matchRate}%)${backfillCount > 0 ? `, backfilled ${backfillCount}` : ''}`);
+  }
+  
+  return aligned;
+}
+
 async function fetchTrendDataH4(symbol: string): Promise<TrendDataH4> {
   try {
     // Try H4 first (Twelve Data supports 4h natively)
-    const [trendBarsH4, ema200H4, adxH4] = await Promise.all([
+    // CRITICAL FIX: Use 'compact' for indicators to match bars (100 data points)
+    const [trendBarsH4, ema200H4Raw, adxH4Raw] = await Promise.all([
       twelveData.getOHLCV(symbol, '4h', 'compact'),
-      twelveData.getEMA(symbol, '4h', 200),
-      twelveData.getADX(symbol, '4h', 14),
+      twelveData.getEMA(symbol, '4h', 200, 'compact'),
+      twelveData.getADX(symbol, '4h', 14, 'compact'),
     ]);
     
-    logger.debug(`H4 trend data fetched successfully for ${symbol}`);
+    // Align indicators by timestamp to bars
+    const ema200H4 = alignIndicatorToBars(trendBarsH4, ema200H4Raw, 'H4 EMA200');
+    const adxH4 = alignIndicatorToBars(trendBarsH4, adxH4Raw, 'H4 ADX');
+    
+    logger.debug(`H4 trend data fetched successfully for ${symbol} (bars: ${trendBarsH4.length}, ema200: ${ema200H4.length}, adx: ${adxH4.length})`);
     
     return {
       trendBarsH4,
@@ -126,11 +195,15 @@ async function fetchTrendDataH4(symbol: string): Promise<TrendDataH4> {
       symbol,
     });
     
-    const [trendBarsD1, ema200D1, adxD1] = await Promise.all([
+    const [trendBarsD1, ema200D1Raw, adxD1Raw] = await Promise.all([
       twelveData.getOHLCV(symbol, 'daily', 'compact'),
-      twelveData.getEMA(symbol, 'daily', 200),
-      twelveData.getADX(symbol, 'daily', 14),
+      twelveData.getEMA(symbol, 'daily', 200, 'compact'),
+      twelveData.getADX(symbol, 'daily', 14, 'compact'),
     ]);
+    
+    // Align indicators by timestamp to bars
+    const ema200D1 = alignIndicatorToBars(trendBarsD1, ema200D1Raw, 'D1 EMA200');
+    const adxD1 = alignIndicatorToBars(trendBarsD1, adxD1Raw, 'D1 ADX');
     
     return {
       trendBarsH4: trendBarsD1,
@@ -148,22 +221,20 @@ function validateH4Alignment(data: Partial<IndicatorData>): boolean {
   }
   
   const h4Len = data.trendBarsH4.length;
+  let aligned = true;
   
+  // Now just validates - alignment is done in fetchTrendDataH4 via alignIndicatorToBars
   if (data.ema200H4 && data.ema200H4.length !== h4Len) {
-    logger.error(`H4 EMA200 alignment mismatch: ${data.ema200H4.length} vs bars ${h4Len}`);
-    while (data.ema200H4.length < h4Len) {
-      data.ema200H4.unshift({ timestamp: '', value: NaN });
-    }
+    logger.warn(`H4 EMA200 length check: ${data.ema200H4.length} vs bars ${h4Len}`);
+    aligned = false;
   }
   
   if (data.adxH4 && data.adxH4.length !== h4Len) {
-    logger.error(`H4 ADX alignment mismatch: ${data.adxH4.length} vs bars ${h4Len}`);
-    while (data.adxH4.length < h4Len) {
-      data.adxH4.unshift({ timestamp: '', value: NaN });
-    }
+    logger.warn(`H4 ADX length check: ${data.adxH4.length} vs bars ${h4Len}`);
+    aligned = false;
   }
   
-  return true;
+  return aligned;
 }
 
 export async function fetchIndicators(
@@ -215,7 +286,7 @@ export async function fetchIndicators(
   };
 
   try {
-    const [entryBars, trendBars, ema200, adx, h4Trend] = await Promise.all([
+    const [entryBars, trendBars, ema200Raw, adxRaw, h4Trend] = await Promise.all([
       fetchWithCache(
         CacheService.makeKey(symbol, entryInterval, 'entry-bars', { style }),
         CACHE_TTL.H1,
@@ -233,17 +304,17 @@ export async function fetchIndicators(
         []
       ),
       fetchWithCache(
-        CacheService.makeKey(symbol, 'daily', 'ema200', { style }),
+        CacheService.makeKey(symbol, 'daily', 'ema200', { style, outputSize: 'compact' }),
         dailyTtl,
-        () => twelveData.getEMA(symbol, 'daily', STRATEGY.trend.ema.period),
+        () => twelveData.getEMA(symbol, 'daily', STRATEGY.trend.ema.period, 'compact'),
         'EMA200',
         errors,
         []
       ),
       fetchWithCache(
-        CacheService.makeKey(symbol, 'daily', 'adx', { style }),
+        CacheService.makeKey(symbol, 'daily', 'adx', { style, outputSize: 'compact' }),
         dailyTtl,
-        () => twelveData.getADX(symbol, 'daily', STRATEGY.trend.adx.period),
+        () => twelveData.getADX(symbol, 'daily', STRATEGY.trend.adx.period, 'compact'),
         'ADX',
         errors,
         []
@@ -257,6 +328,10 @@ export async function fetchIndicators(
         { trendBarsH4: [], ema200H4: [], adxH4: [], trendTimeframeUsed: 'H4', trendFallbackUsed: false }
       ),
     ]);
+    
+    // Align daily indicators to trendBars by timestamp
+    const ema200 = alignIndicatorToBars(trendBars, ema200Raw, 'D1 EMA200');
+    const adx = alignIndicatorToBars(trendBars, adxRaw, 'D1 ADX');
 
     const [
       ema20,

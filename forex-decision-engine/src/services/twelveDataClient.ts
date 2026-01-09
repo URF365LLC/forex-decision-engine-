@@ -252,19 +252,21 @@ class TwelveDataClient {
     interval: string,
     indicator: string,
     params: Record<string, string> = {},
-    valueKey: string = indicator.toLowerCase()
+    valueKey: string = indicator.toLowerCase(),
+    outputSize: 'compact' | 'full' | number = 300
   ): Promise<IndicatorValue[]> {
     const normalizedSymbol = this.normalizeSymbol(symbol);
     const mappedInterval = this.mapInterval(interval);
 
-    const cacheKey = CacheService.makeKey(symbol, interval, indicator.toLowerCase(), params);
+    const outputSizeStr = typeof outputSize === 'number' ? String(outputSize) : (outputSize === 'compact' ? '100' : '500');
+    const cacheKey = CacheService.makeKey(symbol, interval, indicator.toLowerCase(), { ...params, outputSize: outputSizeStr });
     const cached = cache.get<IndicatorValue[]>(cacheKey);
     if (cached) return cached;
 
     const requestParams: Record<string, string> = {
       symbol: normalizedSymbol,
       interval: mappedInterval,
-      outputsize: '300',
+      outputsize: outputSizeStr,
       ...params,
     };
 
@@ -293,32 +295,32 @@ class TwelveDataClient {
     return result;
   }
 
-  async getEMA(symbol: string, interval: string, period: number): Promise<IndicatorValue[]> {
-    return this.getIndicator(symbol, interval, 'ema', { time_period: String(period) }, 'ema');
+  async getEMA(symbol: string, interval: string, period: number, outputSize: 'compact' | 'full' | number = 300): Promise<IndicatorValue[]> {
+    return this.getIndicator(symbol, interval, 'ema', { time_period: String(period) }, 'ema', outputSize);
   }
 
-  async getSMA(symbol: string, interval: string, period: number): Promise<IndicatorValue[]> {
-    return this.getIndicator(symbol, interval, 'sma', { time_period: String(period) }, 'sma');
+  async getSMA(symbol: string, interval: string, period: number, outputSize: 'compact' | 'full' | number = 300): Promise<IndicatorValue[]> {
+    return this.getIndicator(symbol, interval, 'sma', { time_period: String(period) }, 'sma', outputSize);
   }
 
-  async getRSI(symbol: string, interval: string, period: number = 14): Promise<IndicatorValue[]> {
-    return this.getIndicator(symbol, interval, 'rsi', { time_period: String(period) }, 'rsi');
+  async getRSI(symbol: string, interval: string, period: number = 14, outputSize: 'compact' | 'full' | number = 300): Promise<IndicatorValue[]> {
+    return this.getIndicator(symbol, interval, 'rsi', { time_period: String(period) }, 'rsi', outputSize);
   }
 
-  async getATR(symbol: string, interval: string, period: number = 14): Promise<IndicatorValue[]> {
-    return this.getIndicator(symbol, interval, 'atr', { time_period: String(period) }, 'atr');
+  async getATR(symbol: string, interval: string, period: number = 14, outputSize: 'compact' | 'full' | number = 300): Promise<IndicatorValue[]> {
+    return this.getIndicator(symbol, interval, 'atr', { time_period: String(period) }, 'atr', outputSize);
   }
 
-  async getADX(symbol: string, interval: string, period: number = 14): Promise<IndicatorValue[]> {
-    return this.getIndicator(symbol, interval, 'adx', { time_period: String(period) }, 'adx');
+  async getADX(symbol: string, interval: string, period: number = 14, outputSize: 'compact' | 'full' | number = 300): Promise<IndicatorValue[]> {
+    return this.getIndicator(symbol, interval, 'adx', { time_period: String(period) }, 'adx', outputSize);
   }
 
-  async getCCI(symbol: string, interval: string, period: number = 20): Promise<IndicatorValue[]> {
-    return this.getIndicator(symbol, interval, 'cci', { time_period: String(period) }, 'cci');
+  async getCCI(symbol: string, interval: string, period: number = 20, outputSize: 'compact' | 'full' | number = 300): Promise<IndicatorValue[]> {
+    return this.getIndicator(symbol, interval, 'cci', { time_period: String(period) }, 'cci', outputSize);
   }
 
-  async getWilliamsR(symbol: string, interval: string, period: number = 14): Promise<IndicatorValue[]> {
-    return this.getIndicator(symbol, interval, 'willr', { time_period: String(period) }, 'willr');
+  async getWilliamsR(symbol: string, interval: string, period: number = 14, outputSize: 'compact' | 'full' | number = 300): Promise<IndicatorValue[]> {
+    return this.getIndicator(symbol, interval, 'willr', { time_period: String(period) }, 'willr', outputSize);
   }
 
   async getStochastic(
