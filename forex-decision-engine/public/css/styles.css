@@ -81,6 +81,12 @@
   padding: 0;
 }
 
+/* Generic hidden class - ensures any hidden element is truly hidden */
+.hidden {
+  display: none !important;
+  pointer-events: none !important;
+}
+
 /* Accessibility: Skip Link */
 .skip-link {
   position: absolute;
