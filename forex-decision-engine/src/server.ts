@@ -124,6 +124,7 @@ app.get('/api/health', (req, res) => {
     status: 'ok',
     version: '2.0.0',
     timestamp: new Date().toISOString(),
+    apiKeyConfigured: !!process.env.TWELVE_DATA_API_KEY,
   });
 });
 
