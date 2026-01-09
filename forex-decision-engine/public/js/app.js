@@ -618,7 +618,15 @@ const App = {
   /**
    * Refresh current screen based on active tab
    */
+  isRefreshing: false,
+  
   async refreshCurrentScreen() {
+    if (this.isRefreshing) {
+      UI.toast('Refresh already in progress', 'info');
+      return;
+    }
+    
+    this.isRefreshing = true;
     const refreshBtn = UI.$('refresh-btn');
     if (refreshBtn) {
       refreshBtn.disabled = true;
@@ -630,14 +638,18 @@ const App = {
       
       switch (activeScreen) {
         case 'dashboard':
-          await this.checkHealth();
-          await this.loadJournal();
-          await this.loadDetections();
+          await Promise.allSettled([
+            this.checkHealth(),
+            this.loadJournal(),
+            this.loadDetections()
+          ]);
           UI.toast('Dashboard refreshed', 'success');
           break;
         case 'auto-scan':
-          await this.loadAutoScanStatus();
-          await this.loadDetections();
+          await Promise.allSettled([
+            this.loadAutoScanStatus(),
+            this.loadDetections()
+          ]);
           UI.toast('Auto-scan data refreshed', 'success');
           break;
         case 'journal':
@@ -649,14 +661,17 @@ const App = {
           UI.toast('Settings reloaded', 'success');
           break;
         default:
-          await this.loadDetections();
-          await this.checkHealth();
+          await Promise.allSettled([
+            this.loadDetections(),
+            this.checkHealth()
+          ]);
           UI.toast('Data refreshed', 'success');
       }
     } catch (error) {
       console.error('Refresh failed:', error);
       UI.toast('Refresh failed', 'error');
     } finally {
+      this.isRefreshing = false;
       if (refreshBtn) {
         refreshBtn.disabled = false;
         refreshBtn.textContent = 'Refresh';

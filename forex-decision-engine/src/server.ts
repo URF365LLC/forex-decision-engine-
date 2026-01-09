@@ -736,6 +736,7 @@ gradeTracker.onUpgrade((upgrade) => {
       client.write(`data: ${data}\n\n`);
     } catch (e) {
       sseClients.delete(client);
+      try { client.end(); } catch {}
     }
   }
 });
@@ -872,6 +873,7 @@ function broadcastUpgrade(data: any): void {
       client.write(`data: ${message}\n\n`);
     } catch (e) {
       sseClients.delete(client);
+      try { client.end(); } catch {}
     }
   }
 }

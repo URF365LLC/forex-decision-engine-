@@ -153,9 +153,12 @@ const UI = {
    * Show loading overlay
    */
   showLoading(text = 'Loading...') {
-    this.$('loading-text').textContent = text;
-    this.$('progress-fill').style.width = '0%';
-    this.$('progress-text').textContent = '';
+    const loadingText = this.$('loading-text');
+    const progressFill = this.$('progress-fill');
+    const progressText = this.$('progress-text');
+    if (loadingText) loadingText.textContent = text;
+    if (progressFill) progressFill.style.width = '0%';
+    if (progressText) progressText.textContent = '';
     this.show('loading-overlay');
   },
 
@@ -164,10 +167,13 @@ const UI = {
    */
   updateProgress(current, total, currentSymbol) {
     const percent = Math.round((current / total) * 100);
-    this.$('progress-fill').style.width = `${percent}%`;
-    this.$('progress-text').textContent = `${current}/${total} complete`;
-    if (currentSymbol) {
-      this.$('loading-text').textContent = `Analyzing ${currentSymbol}...`;
+    const progressFill = this.$('progress-fill');
+    const progressText = this.$('progress-text');
+    const loadingText = this.$('loading-text');
+    if (progressFill) progressFill.style.width = `${percent}%`;
+    if (progressText) progressText.textContent = `${current}/${total} complete`;
+    if (currentSymbol && loadingText) {
+      loadingText.textContent = `Analyzing ${currentSymbol}...`;
     }
   },
 

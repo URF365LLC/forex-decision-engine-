@@ -15,6 +15,7 @@ import {
   DetectionSummary,
 } from '../types/detection.js';
 import { randomUUID } from 'crypto';
+import { INSTRUMENT_MAP } from '../config/e8InstrumentSpecs.js';
 
 const logger = createLogger('DetectionStore');
 
@@ -36,6 +37,15 @@ function makeActiveKey(strategyId: string, symbol: string, direction: string): s
   return `${strategyId}:${symbol}:${direction}`;
 }
 
+function formatPriceForSymbol(price: number | string | null | undefined, symbol: string): string {
+  if (price === null || price === undefined) return '-';
+  const numPrice = typeof price === 'string' ? parseFloat(price) : price;
+  if (isNaN(numPrice)) return '-';
+  const spec = INSTRUMENT_MAP.get(symbol);
+  const digits = spec?.digits ?? 5;
+  return numPrice.toFixed(digits);
+}
+
 // ═══════════════════════════════════════════════════════════════
 // CRUD OPERATIONS
 // ═══════════════════════════════════════════════════════════════
@@ -55,13 +65,13 @@ export async function createDetection(input: CreateDetectionInput): Promise<Dete
     confidence: input.confidence,
     entry: {
       price: input.entryPrice,
-      formatted: input.entryFormatted,
+      formatted: input.entryFormatted || formatPriceForSymbol(input.entryPrice, input.symbol),
     },
     stopLoss: input.stopLoss
-      ? { price: input.stopLoss, formatted: input.stopLossFormatted || String(input.stopLoss) }
+      ? { price: input.stopLoss, formatted: input.stopLossFormatted || formatPriceForSymbol(input.stopLoss, input.symbol) }
       : null,
     takeProfit: input.takeProfit
-      ? { price: input.takeProfit, formatted: input.takeProfitFormatted || String(input.takeProfit) }
+      ? { price: input.takeProfit, formatted: input.takeProfitFormatted || formatPriceForSymbol(input.takeProfit, input.symbol) }
       : null,
     lotSize: input.lotSize ?? null,
     riskAmount: input.riskAmount ?? null,
@@ -437,27 +447,32 @@ function safeJsonParse<T>(value: unknown, defaultValue: T): T {
 // ═══════════════════════════════════════════════════════════════
 
 function rowToDetection(row: Record<string, unknown>): DetectedTrade {
+  const symbol = String(row.symbol);
+  const entryPrice = Number(row.entry_price || 0);
+  const stopLossPrice = row.stop_loss ? Number(row.stop_loss) : null;
+  const takeProfitPrice = row.take_profit ? Number(row.take_profit) : null;
+  
   return {
     id: String(row.id),
-    symbol: String(row.symbol),
+    symbol,
     strategyId: String(row.strategy_id),
     strategyName: String(row.strategy_name || ''),
     grade: String(row.grade),
     direction: row.direction as 'long' | 'short',
     confidence: Number(row.confidence || 0),
     entry: {
-      price: Number(row.entry_price || 0),
-      formatted: String(row.entry_price || '0'),
+      price: entryPrice,
+      formatted: formatPriceForSymbol(entryPrice, symbol),
     },
-    stopLoss: row.stop_loss
-      ? { price: Number(row.stop_loss), formatted: String(row.stop_loss) }
+    stopLoss: stopLossPrice !== null
+      ? { price: stopLossPrice, formatted: formatPriceForSymbol(stopLossPrice, symbol) }
       : null,
-    takeProfit: row.take_profit
-      ? { price: Number(row.take_profit), formatted: String(row.take_profit) }
+    takeProfit: takeProfitPrice !== null
+      ? { price: takeProfitPrice, formatted: formatPriceForSymbol(takeProfitPrice, symbol) }
       : null,
     lotSize: row.lot_size != null ? Number(row.lot_size) : null,
     riskAmount: row.risk_amount != null ? Number(row.risk_amount) : null,
-    tieredExits: safeJsonParse(row.tiered_exits, null),
+    tieredExits: formatTieredExits(safeJsonParse(row.tiered_exits, null), symbol),
     firstDetectedAt: String(row.first_detected_at),
     lastDetectedAt: String(row.last_detected_at),
     detectionCount: Number(row.detection_count || 1),
@@ -469,6 +484,32 @@ function rowToDetection(row: Record<string, unknown>): DetectedTrade {
     createdAt: String(row.created_at),
     updatedAt: String(row.updated_at),
   };
+}
+
+function formatTieredExits(tieredExits: any, symbol: string): any {
+  if (!tieredExits) return null;
+  if (typeof tieredExits !== 'object') return null;
+  
+  const result: any = {};
+  if (tieredExits.tp1 && tieredExits.tp1.price != null) {
+    const tp1Price = typeof tieredExits.tp1.price === 'string' 
+      ? parseFloat(tieredExits.tp1.price) 
+      : tieredExits.tp1.price;
+    result.tp1 = {
+      price: tp1Price,
+      formatted: formatPriceForSymbol(tp1Price, symbol),
+    };
+  }
+  if (tieredExits.tp2 && tieredExits.tp2.price != null) {
+    const tp2Price = typeof tieredExits.tp2.price === 'string'
+      ? parseFloat(tieredExits.tp2.price)
+      : tieredExits.tp2.price;
+    result.tp2 = {
+      price: tp2Price,
+      formatted: formatPriceForSymbol(tp2Price, symbol),
+    };
+  }
+  return Object.keys(result).length > 0 ? result : null;
 }
 
 // ═══════════════════════════════════════════════════════════════
