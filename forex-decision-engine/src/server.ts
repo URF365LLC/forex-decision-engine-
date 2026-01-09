@@ -974,6 +974,10 @@ app.get('/api/detections', validateQuery(DetectionsQuerySchema), async (req, res
       filters.status = status.includes(',')
         ? status.split(',') as any
         : status as any;
+    } else {
+      // Default: only show active detections (cooling_down, eligible)
+      // Exclude terminal states: dismissed, executed, expired, invalidated
+      filters.status = ['cooling_down', 'eligible'] as any;
     }
     if (strategyId) filters.strategyId = strategyId;
     if (symbol) filters.symbol = symbol;

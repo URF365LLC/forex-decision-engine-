@@ -114,6 +114,7 @@ Core API endpoints cover system health, symbol retrieval, signal analysis and sc
 13. **Zod Validation**: Added validation schemas for 10+ previously unvalidated endpoints including strategies, signals, journal, upgrades, sentiment, and detection endpoints.
 14. **Rate Limiter Timeout Handle Leak Fix**: Added cleanup logic in `tryAcquire()` to prevent timer leaks when promises resolve.
 15. **Cooldown Service Initialization Guards**: Added `isReady()`, `isDegraded()` methods with graceful degraded mode when DB unavailable.
+16. **Detection Filtering Fix**: API `/api/detections` now defaults to active statuses only (cooling_down, eligible), excluding dismissed/executed/expired detections from the display.
 
 ## External Dependencies
 
