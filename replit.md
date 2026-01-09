@@ -1,7 +1,7 @@
 # Forex Decision Engine
 
 ## Overview
-The Forex Decision Engine is a trading signal generator for Forex, Metals, and Cryptocurrency markets. Its primary purpose is to provide actionable trade signals, including entry zones, stop losses, and take profit targets, based on a deterministic strategy combining trend analysis (EMA 200, ADX) with entry triggers (EMA 20/50 pullbacks, RSI resets). The system produces graded trade recommendations (A+/B grades) and is specifically tailored for prop firm trading, incorporating E8 Markets risk management rules, position sizing, and drawdown guards. It features multi-strategy scanning, real-time signal freshness tracking, and integrates market sentiment analysis.
+The Forex Decision Engine is a trading signal generator for Forex, Metals, and Cryptocurrency markets. Its core purpose is to provide actionable trade signals, including entry zones, stop losses, and take profit targets. The system employs a deterministic strategy combining trend analysis with entry triggers and produces graded trade recommendations (A+/B grades). It is designed for prop firm trading, incorporating E8 Markets risk management, position sizing, and drawdown safeguards. Key capabilities include multi-strategy scanning, real-time signal freshness tracking, and market sentiment analysis.
 
 ## User Preferences
 Preferred communication style: Simple, everyday language.
@@ -9,95 +9,60 @@ Preferred communication style: Simple, everyday language.
 ## System Architecture
 
 ### UI/UX Decisions
-The frontend is built with Vanilla JavaScript, served statically, and follows a mobile-first dark theme design with accessible touch targets. It includes an `isScanning` guard to prevent duplicate requests, displays API errors with an "ERROR" badge, and provides real-time notifications for grade upgrades via Server-Sent Events (SSE).
+The frontend is built with Vanilla JavaScript, uses a mobile-first dark theme, and provides real-time notifications via Server-Sent Events (SSE). It includes `isScanning` guards, API error displays, and accessible touch targets.
 
 ### Technical Implementations
 
 #### Backend (Express + TypeScript)
-The backend uses Express.js with TypeScript and ES modules, with `src/server.ts` as the entry point for REST API endpoints. `tsx` is used for development and `tsc` for production builds.
+The backend is an Express.js application written in TypeScript using ES modules, with `src/server.ts` as the entry point for REST API endpoints.
 
 #### Decision Engine (`src/engine/`)
-This module orchestrates trade signal generation, including:
--   **Indicator Factory & Services**: Uses `indicatorService.ts` as a unified routing for all asset classes via the Twelve Data API.
--   **Trend Filter**: Determines higher timeframe trends using EMA 200 and ADX. ADX threshold lowered to 14 for weak-trend detection.
--   **Entry Trigger**: Detects pullbacks with RSI confirmation.
--   **Position Sizer**: Calculates risk-based lot sizing aligned with prop firm constraints.
--   **Grader**: Assigns confidence scores (A+/B/C/no-trade) based on confluence.
--   **Strategy Analyzer**: Routes to 11 distinct intraday strategies (including Multi-Oscillator Momentum and ICT Liquidity Sweep), ensuring NaN padding for indicator alignment.
--   **Safety Gates**: Incorporates volatility gating and signal cooldown.
--   **Grade Tracker**: Monitors signal grade improvements and direction changes.
--   **Startup Validation**: Tests key symbols (EUR/USD, BTC/USD, XAU/USD) on startup.
--   **Signal Quality Gate**: Unified pre-flight checks with ICT Killzone session bonuses (London Open +15, NY Open +15, Overlap +20).
+This module is responsible for orchestrating trade signal generation. It includes an Indicator Factory for unified data access via Twelve Data API, a Trend Filter using EMA 200 and ADX, and an Entry Trigger with RSI confirmation. A Position Sizer calculates risk-based lot sizing, while a Grader assigns confidence scores. The Strategy Analyzer routes to 11 distinct intraday strategies. Safety Gates incorporate volatility and signal cooldowns, and a Grade Tracker monitors signal improvements. Startup validation checks key symbols, and a Signal Quality Gate applies pre-flight checks, including ICT Killzone session bonuses.
 
 #### Smart Money Concepts (`src/modules/smartMoney/`)
-ICT-based institutional trading pattern detection:
--   **Order Blocks**: Detects last opposing candle before >2 ATR impulse moves (bullish/bearish zones).
--   **Fair Value Gaps**: Identifies 3-candle price imbalances that tend to fill.
--   **Liquidity Sweep**: Detects stop hunts at swing highs/lows with reversal confirmation.
--   **Market Structure**: Tracks swing points, BOS (Break of Structure), CHOCH (Change of Character).
+This module detects ICT-based institutional trading patterns such as Order Blocks, Fair Value Gaps, Liquidity Sweeps, and tracks Market Structure (BOS, CHOCH).
 
 #### Regime Detector (`src/modules/regimeDetector.ts`)
-ATR percentile-based volatility regime classification:
--   **Compression** (<25th percentile): Favor mean reversion, tighter RR (0.8x multiplier).
--   **Normal** (25-75th percentile): Standard parameters (1.0x multiplier).
--   **Expansion** (>75th percentile): Favor momentum, wider RR (1.5x multiplier).
+This module classifies volatility regimes (Compression, Normal, Expansion) based on ATR percentiles to adapt strategy parameters and risk-reward multipliers.
 
 #### Configuration (`src/config/`)
--   **E8 Instrument Specs** (`e8InstrumentSpecs.ts`): Acts as the single source of truth for 46 instruments, detailing E8 Markets contract sizes, commission models, pip values, and leverage.
--   **Strategy Parameters**: Fixed, non-user-configurable.
--   **Defaults**: Adheres to E8 Markets rules (0.5% risk, 4% daily loss limit, 6% max drawdown).
+Configuration includes `e8InstrumentSpecs.ts` as a single source of truth for 46 instruments, strategy parameters, and default settings adhering to E8 Markets rules (0.5% risk, 4% daily loss limit, 6% max drawdown).
 
 #### Services (`src/services/`)
-Key services include:
--   **Twelve Data Client**: A unified API wrapper with retry logic, fail-fast symbol normalization, and crypto exchange handling.
--   **Cache**: In-memory TTL cache for market data and decisions.
--   **Rate Limiter**: Token bucket algorithm for Twelve Data API access (610 calls/min).
--   **Signal Cooldown**: Prevents duplicate signals.
--   **Volatility Gate**: Filters signals during extreme ATR conditions.
--   **Logger**: Structured logging.
+Core services include a Twelve Data Client with retry logic and normalization, an in-memory TTL Cache, a Token Bucket Rate Limiter for API calls, Signal Cooldown mechanisms, a Volatility Gate, and structured Logging. A Circuit Breaker Service is implemented for Twelve Data, Grok AI, and Database to prevent cascading failures.
 
 #### Storage (`src/storage/`)
--   **Signal Store**: In-memory storage with JSON file persistence (`data/signals.json`).
--   **Journal Store**: Manages trade journal entries and P&L calculations, stored in `data/journal.json`.
+The system utilizes a hybrid PostgreSQL and JSON file storage approach. A Signal Store and Journal Store manage signal and trade journal entries, respectively, with PostgreSQL as the primary storage and JSON files for fallback and legacy entries. A Detection Store, backed by PostgreSQL, manages the lifecycle of trade detections.
 
 ### API Endpoints
-Core API endpoints facilitate system health checks, symbol retrieval, signal analysis and scanning, signal history management, strategy listing, and comprehensive trade journaling with statistics and export capabilities. Real-time grade upgrades are streamed via `/api/upgrades/stream`.
+Core API endpoints cover system health, symbol retrieval, signal analysis and scanning, signal history, strategy listings, trade journaling, and statistics. Real-time grade upgrades are streamed via SSE.
 
 ### Feature Specifications
--   **Multi-Strategy System**: Implements 11 intraday strategies with defined win rates and specific indicators:
-    -   RSI Bounce, RSI Oversold, Stochastic Oversold, Bollinger Mean Reversion
-    -   Williams %R + EMA, Triple EMA Crossover, Break & Retest, CCI Zero-Line
-    -   EMA Pullback, **Multi-Oscillator Momentum** (new), **ICT Liquidity Sweep** (new).
--   **Confidence Scoring**: Decisions receive a 0-100 score, mapped to A+, A, B+, B, C grades.
+-   **Multi-Strategy System**: Implements 11 intraday strategies including RSI Bounce, EMA Pullback, Multi-Oscillator Momentum, and ICT Liquidity Sweep.
+-   **Confidence Scoring**: Trade decisions receive a 0-100 score, mapped to A+/A/B+/B/C grades.
 -   **Reason Codes**: Provides machine-readable explanations for trade decisions.
--   **Journaling**: Comprehensive trade journaling with P&L, stats, and quick actions.
--   **Strategy Isolation**: Decisions are cached per strategy to prevent data staleness.
--   **Margin-Aware Position Sizing**: Accounts for leverage and margin constraints, especially for crypto.
--   **Indicator Alignment**: Uses NaN padding to ensure indicator array consistency.
--   **Auto-Scan v2.1 (Individual API Calls)**: Background scanning with:
-    -   **Watchlist Presets**: majors, majors-gold, crypto, metals, indices, commodities, minors, all, or custom selection
-    -   **Market Hours Filter**: Skips forex/metals during weekend close (Fri 22:00 - Sun 22:00 UTC), keeps crypto 24/7
-    -   **Configurable Intervals**: 3, 5, 10, 15, or 30 minutes
-    -   **Progress Tracking**: Real-time scan progress, current strategy, and per-strategy results
-    -   **Individual API Calls**: Uses per-symbol indicator fetches (Twelve Data only supports batch for OHLCV, not indicators)
-    -   **Email Alerts**: Sends alerts via Resend for A/A+ signals when detected
-    -   Config persists to `data/autoScanConfig.json` and auto-starts on server reboot with alert callback guard.
--   **Tiered Exit Management**: Every decision includes exitManagement with TP1 (1R, close 50%, move SL to breakeven), TP2 (2R, close 25%), and trailing runner for remaining 25%.
--   **Grok AI Sentiment Analysis**: On-demand X/Twitter market sentiment integration with caching.
--   **Multi-Asset Class Support**: UI and backend support for Forex, Metals, Indices, Commodities, and Crypto.
--   **H4 Trend Support**: Utilizes native Twelve Data 4h interval with D1 fallback for trend analysis.
+-   **Journaling**: Comprehensive trade journaling with P&L and statistics.
+-   **Strategy Isolation**: Caches decisions per strategy to prevent data staleness.
+-   **Margin-Aware Position Sizing**: Accounts for leverage and margin constraints.
+-   **Indicator Alignment**: Uses NaN padding for consistent indicator array processing.
+-   **Auto-Scan v2.1**: Background scanning with configurable intervals, watchlist presets, market hours filters, and email alerts for high-grade signals. Auto-scan integrates with the Detection Service to persist and manage detected trades.
+-   **Tiered Exit Management**: Each decision includes tiered exit points (TP1, TP2, trailing runner) with risk management actions.
+-   **Grok AI Sentiment Analysis**: On-demand X/Twitter market sentiment integration with caching, offering a 7-tier sentiment scale, time-horizon split, contrarian detection, and consensus level.
+-   **Multi-Asset Class Support**: Supports Forex, Metals, Indices, Commodities, and Crypto.
+-   **H4 Trend Support**: Utilizes Twelve Data's 4h interval for trend analysis with D1 fallback.
+-   **Detection System**: Manages detection lifecycle (cooling_down, eligible, executed/dismissed/expired) with a 60-minute default cooldown, PostgreSQL-backed storage, and auto-invalidation on direction flips.
+-   **Regime Detector Integration**: Adjusts confidence and risk-reward based on volatility regimes.
 
 ## External Dependencies
 
-### Twelve Data API (Primary)
+### Twelve Data API
 -   **Purpose**: Provides unified market data and technical indicators for all supported asset classes.
--   **Configuration**: Requires `TWELVE_DATA_API_KEY` and optional `TWELVE_DATA_CRYPTO_EXCHANGE`.
--   **Rate Limit**: Governed by a 610 calls/min limit.
--   **Endpoints Used**: Various time series and indicator endpoints (`/time_series`, `/ema`, `/rsi`, `/adx`, etc.).
--   **Symbol Normalization**: Uses `toDataSymbol()` for fail-fast symbol validation.
+-   **Configuration**: Requires `TWELVE_DATA_API_KEY` and optionally `TWELVE_DATA_CRYPTO_EXCHANGE`.
+-   **Rate Limit**: 610 calls/min.
+-   **Endpoints Used**: Time series and various indicator endpoints.
 
 ### Environment Variables
--   `TWELVE_DATA_API_KEY`: Required for Twelve Data access.
+-   `TWELVE_DATA_API_KEY`: API key for Twelve Data.
 -   `TWELVE_DATA_CRYPTO_EXCHANGE`: Specifies crypto exchange (default: Binance).
 -   `PORT`: Server port (default: 5000).
 -   `LOG_LEVEL`: Logging verbosity (default: info).
@@ -105,88 +70,5 @@ Core API endpoints facilitate system health checks, symbol retrieval, signal ana
 -   `XAI_API_KEY`: (Optional) Enables xAI Grok sentiment analysis.
 
 ### NPM Dependencies
--   **Runtime**: `express`, `cors`, `dotenv`, `zod`, `openai`.
--   **Development**: `typescript`, `tsx`, and respective `@types/*` packages.
-
-## Recent Enhancements
-
-### Phase 1: UX Polish (Completed)
--   **Loading States**: Button loading indicators with spinners for all async actions.
--   **Toast Notifications**: Success/error/warning toast system with auto-dismiss and progress bar.
--   **Skeleton Loaders**: Placeholder loading states for Results, Journal, and Watchlist screens.
--   **SSE Reconnection**: Exponential backoff (2s-60s) with heartbeat detection and silent recovery.
--   **Timestamps**: Signal freshness indicators with relative times (2m ago, 1h ago) and staleness warnings.
--   **Empty States**: Visual illustrations with clear CTAs for no-data scenarios.
-
-### Phase 2: API Robustness (Completed)
--   **Zod Validation**: All mutable endpoints use Zod schemas (`src/validation/schemas.ts`):
-    -   `ScanRequestSchema`, `JournalEntrySchema`, `JournalUpdateSchema`
-    -   `AutoScanStartSchema`, `AutoScanConfigSchema`, `BatchSentimentSchema`
--   **Request Correlation IDs**: X-Request-ID middleware for log traceability (`src/middleware/requestId.ts`).
--   **Health/Ready Separation**: `/api/health` (liveness) vs `/api/ready` (readiness with dependency checks).
--   **Metrics Endpoint**: `/api/metrics` returns uptime, cache hit ratio, rate limit utilization, signal stats.
--   **Batch Sentiment**: Parallelized with bounded concurrency (3 concurrent) for performance.
-
-### Phase 3: Sentiment & Accessibility (Completed)
--   **7-Tier Sentiment Scale**: Enhanced from 4-tier to 7-tier (extremely_bullish through extremely_bearish).
--   **Time-Horizon Split**: Separate short-term (intraday) and long-term (swing) bias analysis.
--   **Contrarian Detection**: Crowded trade warnings (crowded_long, crowded_short, capitulation, euphoria).
--   **Consensus Level**: 0-100% indicator showing how one-sided sentiment is (high = reversal risk).
--   **Enhanced Grok Prompt**: Institutional-grade analysis with contrarian detection rules.
--   **Multi-Sample Aggregation**: Temperature variance sampling (0.3, 0.7, 1.0) with score averaging and variance calculation for bias reduction.
--   **Sentiment Sparklines**: SVG-based trend visualization showing historical sentiment scores per symbol.
--   **Market Sentiment Sidebar**: Aggregate market overview with overall skew, bullish/bearish counts, and top movers.
--   **New API Endpoints**:
-    -   `GET /api/sentiment/:symbol/aggregated` - Multi-sample aggregated sentiment
-    -   `GET /api/sentiment/:symbol/history` - Historical sentiment data
-    -   `GET /api/sentiment/overview` - Market-wide sentiment summary
--   **Accessibility Improvements**:
-    -   Skip link for keyboard navigation
-    -   ARIA labels on navigation, toasts, and alerts
-    -   Focus-visible styles for all interactive elements
-    -   Reduced motion media query for motion-sensitive users
-    -   Keyboard shortcuts: 1-4 for screens, S for scan, Escape for modals
-    -   Arrow key navigation through result cards
-
-### Phase 4: Detection System & Database (Completed - January 2026)
--   **Per-Strategy Cooldown Fix**: Critical bug fix ensuring cooldowns are isolated per strategy (strategyId in makeKey), preventing cross-strategy blocking.
--   **PostgreSQL Database**: Kysely ORM with connection pooling for persistent storage.
-    -   Tables: detections, signals, journal_entries, cooldowns, alert_history
-    -   Indexes for efficient querying by status, symbol, strategy, cooldown
--   **Detection Service** (`src/services/detectionService.ts`):
-    -   Manages detection lifecycle: cooling_down → eligible → executed/dismissed/expired
-    -   60-minute default cooldown before signals become actionable
-    -   Auto-invalidation on direction flip
-    -   Background cooldown checker runs every 60 seconds
--   **Detection Store** (`src/storage/detectionStore.ts`): PostgreSQL-backed storage for detected trades.
--   **Auto-Scan Integration**: Auto-scan now persists detections via `processAutoScanDecision()` and invalidates opposite-direction signals.
--   **Detected Trades UI**:
-    -   New navigation tab with badge counter for eligible detections
-    -   Status filtering (All/Cooling Down/Eligible)
-    -   Strategy grouping with live cooldown timers
-    -   Execute/Dismiss action buttons
--   **Detection API Endpoints**:
-    -   `GET /api/detections` - List detections with filtering
-    -   `GET /api/detections/:id` - Get single detection
-    -   `POST /api/detections/:id/execute` - Mark detection as executed
-    -   `POST /api/detections/:id/dismiss` - Dismiss detection
-    -   `GET /api/detections/summary` - Get detection statistics
-
-### Phase 5: Resilience & Regime Detection (Completed - January 2026)
--   **Circuit Breaker Service** (`src/services/circuitBreaker.ts`):
-    -   Prevents cascading failures when external APIs are down
-    -   States: CLOSED (normal) → OPEN (rejecting) → HALF_OPEN (testing recovery)
-    -   Twelve Data circuit: 5 failures → 60s cooldown
-    -   Grok AI circuit: 3 failures → 120s cooldown
-    -   Database circuit: 3 failures → 30s cooldown
--   **Twelve Data Integration**: All API requests now wrapped in circuit breaker protection.
--   **Regime Detector Integration**: Now wired into `strategyAnalyzer.ts` decision pipeline:
-    -   ATR percentile-based volatility classification (compression/normal/expansion)
-    -   Adaptive confidence adjustments based on strategy type and regime
-    -   Regime info attached to decisions for transparency
-    -   Strategy-type detection: mean-reversion, breakout, trend
--   **Decision Regime Field**: Decisions now include regime info (type, atrPercentile, rrMultiplier, description).
-
-### NPM Dependencies (Updated)
 -   **Runtime**: `express`, `cors`, `dotenv`, `zod`, `openai`, `kysely`, `pg`.
--   **Development**: `typescript`, `tsx`, `@types/pg`, and respective `@types/*` packages.
+-   **Development**: `typescript`, `tsx`, `@types/pg`, and other `@types/*` packages.
