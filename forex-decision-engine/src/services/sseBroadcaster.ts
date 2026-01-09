@@ -24,8 +24,8 @@ export function getSSEClientCount(): number {
   return clients.size;
 }
 
-export function broadcastSSE(type: string, payload: Record<string, unknown>): void {
-  const message = JSON.stringify({ type, ...payload });
+export function broadcastSSE(payload: Record<string, unknown>): void {
+  const message = JSON.stringify(payload);
   
   for (const client of clients) {
     try {
@@ -38,9 +38,9 @@ export function broadcastSSE(type: string, payload: Record<string, unknown>): vo
 }
 
 export function broadcastError(source: string, message: string, details?: Record<string, unknown>): void {
-  broadcastSSE('error', { source, message, ...details });
+  broadcastSSE({ type: 'error', source, message, ...details });
 }
 
 export function broadcastDetectionError(symbol: string, error: string): void {
-  broadcastSSE('detection_error', { symbol, error, timestamp: new Date().toISOString() });
+  broadcastSSE({ type: 'detection_error', symbol, error, timestamp: new Date().toISOString() });
 }

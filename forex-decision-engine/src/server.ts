@@ -702,7 +702,7 @@ app.delete('/api/journal/:id', async (req, res) => {
 // GRADE UPGRADE SSE ENDPOINT
 // ═══════════════════════════════════════════════════════════════
 
-import { addSSEClient, removeSSEClient, getSSEClientCount, broadcastSSE } from './services/sseBroadcaster.js';
+import { addSSEClient, removeSSEClient, broadcastSSE } from './services/sseBroadcaster.js';
 
 /**
  * SSE endpoint for real-time grade upgrade notifications
@@ -728,7 +728,7 @@ app.get('/api/upgrades/stream', (req, res) => {
 });
 
 gradeTracker.onUpgrade((upgrade) => {
-  broadcastSSE('upgrade', { upgrade });
+  broadcastSSE({ type: 'upgrade', upgrade });
 });
 
 /**
@@ -857,7 +857,7 @@ app.put('/api/autoscan/config', validateBody(AutoScanConfigSchema), (req, res) =
 });
 
 function broadcastUpgrade(data: any): void {
-  broadcastSSE(data.type || 'signal', data);
+  broadcastSSE(data);
 }
 
 // ═══════════════════════════════════════════════════════════════
