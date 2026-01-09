@@ -44,15 +44,21 @@ const App = {
 
     // Setup event listeners
     this.setupEventListeners();
-    
+
     // Setup keyboard navigation
     this.setupKeyboardNavigation();
 
+    // Setup detection filters
+    this.setupDetectionFilters();
+
     // Check API health
     this.checkHealth();
-    
+
     // Connect to upgrade notifications
     this.connectUpgradeStream();
+
+    // Load initial detection badge count
+    this.loadDetections();
 
     console.log('✅ Application initialized');
   },
@@ -524,9 +530,15 @@ const App = {
    */
   switchScreen(screen) {
     UI.switchScreen(screen);
-    
+
     if (screen === 'journal') {
       this.loadJournal();
+    } else if (screen === 'detections') {
+      this.loadDetections();
+      this.startDetectionRefresh();
+    } else {
+      // Stop detection refresh when leaving detections screen
+      this.stopDetectionRefresh();
     }
   },
 
@@ -1444,10 +1456,10 @@ const App = {
     try {
       const response = await fetch('/api/sentiment/overview');
       if (!response.ok) return;
-      
+
       const overview = await response.json();
       if (!overview) return;
-      
+
       const sidebarContainer = UI.$('market-sidebar-container');
       if (sidebarContainer) {
         sidebarContainer.innerHTML = UI.createMarketSidebar(overview);
@@ -1459,6 +1471,332 @@ const App = {
       }
     } catch (error) {
       console.error('Failed to load market overview:', error);
+    }
+  },
+
+  // ═══════════════════════════════════════════════════════════════
+  // DETECTIONS (Auto-Scan Detected Trades Cache)
+  // ═══════════════════════════════════════════════════════════════
+
+  detections: [],
+  detectionFilter: 'all',
+  detectionRefreshInterval: null,
+
+  /**
+   * Load detections from API
+   */
+  async loadDetections() {
+    try {
+      const params = new URLSearchParams();
+      if (this.detectionFilter !== 'all') {
+        params.set('status', this.detectionFilter);
+      }
+
+      const response = await fetch(`/api/detections?${params}`);
+      if (!response.ok) throw new Error('Failed to load detections');
+
+      const data = await response.json();
+      this.detections = data.detections || [];
+
+      this.renderDetections();
+      this.updateDetectionSummary(data.summary);
+      this.updateDetectionBadge();
+    } catch (error) {
+      console.error('Failed to load detections:', error);
+      UI.toast('Failed to load detections', 'error');
+    }
+  },
+
+  /**
+   * Render detections list
+   */
+  renderDetections() {
+    const container = UI.$('detections-container');
+    if (!container) return;
+
+    if (this.detections.length === 0) {
+      container.innerHTML = `
+        <div class="empty-state">
+          <div class="empty-icon">🔍</div>
+          <p>No detected trades yet</p>
+          <p class="empty-hint">Start auto-scan to detect trading opportunities</p>
+          <button class="btn btn-primary" id="go-to-autoscan-btn" onclick="UI.switchScreen('watchlist')">Configure Auto-Scan</button>
+        </div>
+      `;
+      return;
+    }
+
+    // Group by strategy
+    const byStrategy = {};
+    for (const detection of this.detections) {
+      const key = detection.strategyId;
+      if (!byStrategy[key]) {
+        byStrategy[key] = {
+          name: detection.strategyName || detection.strategyId,
+          detections: []
+        };
+      }
+      byStrategy[key].detections.push(detection);
+    }
+
+    let html = '';
+    for (const [strategyId, group] of Object.entries(byStrategy)) {
+      html += `
+        <div class="detection-group">
+          <div class="detection-group-header">
+            <h3>${group.name}</h3>
+            <span class="detection-count">${group.detections.length}</span>
+          </div>
+          <div class="detection-list">
+      `;
+
+      for (const detection of group.detections) {
+        html += this.renderDetectionCard(detection);
+      }
+
+      html += '</div></div>';
+    }
+
+    container.innerHTML = html;
+
+    // Start cooldown timers
+    this.startCooldownTimers();
+  },
+
+  /**
+   * Render single detection card
+   */
+  renderDetectionCard(detection) {
+    const isEligible = detection.status === 'eligible';
+    const isCooling = detection.status === 'cooling_down';
+
+    const statusClass = isEligible ? 'eligible' : (isCooling ? 'cooling' : 'other');
+    const statusIcon = isEligible ? '✅' : (isCooling ? '⏱️' : '📋');
+    const statusText = isEligible ? 'ELIGIBLE' : (isCooling ? 'Cooling Down' : detection.status.replace('_', ' '));
+
+    const gradeClass = detection.grade.replace('+', '-plus').toLowerCase();
+    const directionIcon = detection.direction === 'long' ? '📈' : '📉';
+
+    let cooldownHtml = '';
+    if (isCooling && detection.cooldownEndsAt) {
+      const remaining = this.formatCooldownRemaining(detection.cooldownEndsAt);
+      cooldownHtml = `<span class="cooldown-timer" data-ends="${detection.cooldownEndsAt}">${remaining}</span>`;
+    }
+
+    const actionsHtml = isEligible ? `
+      <button class="btn btn-small btn-primary" onclick="App.executeDetection('${detection.id}')">Take Trade</button>
+      <button class="btn btn-small btn-secondary" onclick="App.dismissDetection('${detection.id}')">Dismiss</button>
+    ` : `
+      <button class="btn btn-small btn-secondary" onclick="App.dismissDetection('${detection.id}')">Dismiss</button>
+    `;
+
+    return `
+      <div class="detection-card ${statusClass}" data-id="${detection.id}">
+        <div class="detection-header">
+          <div class="detection-symbol">
+            <span class="symbol-name">${detection.symbol}</span>
+            <span class="direction ${detection.direction}">${directionIcon} ${detection.direction.toUpperCase()}</span>
+          </div>
+          <div class="detection-grade grade-${gradeClass}">${detection.grade}</div>
+        </div>
+
+        <div class="detection-status">
+          <span class="status-badge ${statusClass}">${statusIcon} ${statusText}</span>
+          ${cooldownHtml}
+        </div>
+
+        <div class="detection-prices">
+          <div class="price-row">
+            <span class="price-label">Entry:</span>
+            <span class="price-value">${detection.entry?.formatted || '-'}</span>
+          </div>
+          <div class="price-row">
+            <span class="price-label">SL:</span>
+            <span class="price-value sl">${detection.stopLoss?.formatted || '-'}</span>
+          </div>
+          <div class="price-row">
+            <span class="price-label">TP:</span>
+            <span class="price-value tp">${detection.takeProfit?.formatted || '-'}</span>
+          </div>
+        </div>
+
+        <div class="detection-meta">
+          <span title="First detected">First: ${new Date(detection.firstDetectedAt).toLocaleTimeString()}</span>
+          <span title="Confirmation count">×${detection.detectionCount}</span>
+        </div>
+
+        <div class="detection-actions">
+          ${actionsHtml}
+        </div>
+      </div>
+    `;
+  },
+
+  /**
+   * Format cooldown remaining time
+   */
+  formatCooldownRemaining(endsAt) {
+    const now = Date.now();
+    const end = new Date(endsAt).getTime();
+    const remainingMs = end - now;
+
+    if (remainingMs <= 0) return 'Ready!';
+
+    const mins = Math.floor(remainingMs / 60000);
+    const secs = Math.floor((remainingMs % 60000) / 1000);
+
+    if (mins > 0) {
+      return `${mins}m ${secs}s remaining`;
+    }
+    return `${secs}s remaining`;
+  },
+
+  /**
+   * Start cooldown timer updates
+   */
+  startCooldownTimers() {
+    // Clear existing interval
+    if (this.cooldownTimerInterval) {
+      clearInterval(this.cooldownTimerInterval);
+    }
+
+    this.cooldownTimerInterval = setInterval(() => {
+      const timers = document.querySelectorAll('.cooldown-timer');
+      let needsRefresh = false;
+
+      timers.forEach(timer => {
+        const endsAt = timer.dataset.ends;
+        const remaining = this.formatCooldownRemaining(endsAt);
+        timer.textContent = remaining;
+
+        if (remaining === 'Ready!') {
+          needsRefresh = true;
+        }
+      });
+
+      if (needsRefresh) {
+        this.loadDetections();
+      }
+    }, 1000);
+  },
+
+  /**
+   * Update detection summary stats
+   */
+  updateDetectionSummary(summary) {
+    if (!summary) return;
+
+    const coolingEl = UI.$('stat-cooling');
+    const eligibleEl = UI.$('stat-eligible');
+    const totalEl = UI.$('stat-total-detections');
+
+    if (coolingEl) coolingEl.textContent = summary.coolingDown || 0;
+    if (eligibleEl) eligibleEl.textContent = summary.eligible || 0;
+    if (totalEl) totalEl.textContent = summary.total || 0;
+  },
+
+  /**
+   * Update detection badge in navigation
+   */
+  updateDetectionBadge() {
+    const badge = UI.$('detections-badge');
+    if (!badge) return;
+
+    const activeCount = this.detections.filter(d =>
+      d.status === 'cooling_down' || d.status === 'eligible'
+    ).length;
+
+    if (activeCount > 0) {
+      badge.textContent = activeCount;
+      badge.classList.remove('hidden');
+    } else {
+      badge.classList.add('hidden');
+    }
+  },
+
+  /**
+   * Execute a detection (take the trade)
+   */
+  async executeDetection(id) {
+    try {
+      const response = await fetch(`/api/detections/${id}/execute`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({})
+      });
+
+      if (!response.ok) throw new Error('Failed to execute detection');
+
+      UI.toast('Trade executed! Added to journal.', 'success');
+      await this.loadDetections();
+    } catch (error) {
+      console.error('Failed to execute detection:', error);
+      UI.toast('Failed to execute trade', 'error');
+    }
+  },
+
+  /**
+   * Dismiss a detection
+   */
+  async dismissDetection(id) {
+    if (!confirm('Dismiss this detected trade?')) return;
+
+    try {
+      const response = await fetch(`/api/detections/${id}/dismiss`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason: 'User dismissed' })
+      });
+
+      if (!response.ok) throw new Error('Failed to dismiss detection');
+
+      UI.toast('Detection dismissed', 'info');
+      await this.loadDetections();
+    } catch (error) {
+      console.error('Failed to dismiss detection:', error);
+      UI.toast('Failed to dismiss detection', 'error');
+    }
+  },
+
+  /**
+   * Setup detection filter listeners
+   */
+  setupDetectionFilters() {
+    document.querySelectorAll('[data-detection-filter]').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        document.querySelectorAll('[data-detection-filter]').forEach(b => b.classList.remove('active'));
+        e.target.classList.add('active');
+        this.detectionFilter = e.target.dataset.detectionFilter;
+        this.loadDetections();
+      });
+    });
+  },
+
+  /**
+   * Start auto-refresh for detections
+   */
+  startDetectionRefresh() {
+    if (this.detectionRefreshInterval) {
+      clearInterval(this.detectionRefreshInterval);
+    }
+
+    // Refresh every 30 seconds
+    this.detectionRefreshInterval = setInterval(() => {
+      this.loadDetections();
+    }, 30000);
+  },
+
+  /**
+   * Stop auto-refresh for detections
+   */
+  stopDetectionRefresh() {
+    if (this.detectionRefreshInterval) {
+      clearInterval(this.detectionRefreshInterval);
+      this.detectionRefreshInterval = null;
+    }
+    if (this.cooldownTimerInterval) {
+      clearInterval(this.cooldownTimerInterval);
+      this.cooldownTimerInterval = null;
     }
   },
 };
