@@ -6,7 +6,7 @@ export const SettingsSchema = z.object({
   equity: z.number().min(100).max(10000000).optional(),
   riskPercent: z.number().min(0.1).max(5).optional(),
   riskPerTrade: z.number().min(0.1).max(5).optional(),
-  style: z.enum(['conservative', 'moderate', 'aggressive']).optional(),
+  style: z.enum(['conservative', 'moderate', 'aggressive', 'intraday', 'swing']).optional(),
   paperTrading: z.boolean().optional(),
   accountId: z.string().optional(),
   startOfDayEquity: z.number().optional(),
@@ -90,7 +90,7 @@ export const SignalUpdateSchema = z.object({
 
 export const SentimentRequestSchema = z.object({
   symbol: z.string().min(1).max(20),
-  style: z.enum(['conservative', 'moderate', 'aggressive']).optional(),
+  style: z.enum(['conservative', 'moderate', 'aggressive', 'intraday', 'swing']).optional(),
 });
 
 export const JournalExportSchema = z.object({
