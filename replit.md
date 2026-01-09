@@ -72,6 +72,11 @@ Core API endpoints cover system health, symbol retrieval, signal analysis and sc
 3. **Detection JSON Parsing**: Added `safeJsonParse()` helper in detectionStore.ts to handle cases where database returns objects instead of JSON strings.
 4. **Error Logging Improvement**: Changed error logging to use `error.message` for better visibility.
 
+### Backend-Frontend Data Integrity Fixes
+1. **Status Ticker Auto-Scan Sync**: Added ticker-autoscan update to `updateAutoScanUI()` - displays "ON" (green) or "OFF" based on backend isRunning status.
+2. **Status Ticker Signals Count Sync**: Added ticker-signals update to `updateDetectionBadge()` - displays live detection count from database.
+3. **API Route Alignment**: All frontend API calls properly aligned with backend routes (/api/autoscan/status, /api/detections, etc.).
+
 ### Enterprise Platform Audit Fixes
 1. **DB Initialization Timing Fix**: Moved `startCooldownChecker()` from module-level to inside `startServer()` after database initialization, eliminating "Failed to list detections from DB" errors.
 2. **Trade Taken Flow Enhancement**: Enhanced `/api/detections/:id/execute` endpoint to atomically mark detection as 'executed' AND create linked journal entry with full strategy attribution (strategyId, strategyName, confidence, grade).
