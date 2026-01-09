@@ -66,11 +66,17 @@ export const GATE_CONFIG = {
   enforceClosedBar: true,
   enforceEntryFreshness: false, // Disabled: signals should show with timing metadata, not be blocked
   enforceMinVolatility: true,
+  enforceBarFreshness: true, // AUDIT FIX 2026-01-09: Reject if latest bar is too old
   minAtrPercent: 0.05, // 0.05% minimum ATR
   maxEntryBarAgeMs: {
     'H1': 15 * 60 * 1000,   // 15 min max into H1
     'H4': 60 * 60 * 1000,   // 1 hour max into H4
     'D1': 4 * 60 * 60 * 1000, // 4 hours max into D1
+  } as Record<string, number>,
+  maxBarStaleAgeMs: {
+    'H1': 2 * 60 * 60 * 1000,   // 2 hours max staleness for H1
+    'H4': 8 * 60 * 60 * 1000,   // 8 hours max staleness for H4
+    'D1': 72 * 60 * 60 * 1000,  // 72 hours max staleness for D1 (handles weekends)
   } as Record<string, number>,
 };
 
@@ -213,7 +219,6 @@ function checkEntryFreshness(bars: Bar[], interval: 'H1' | 'H4' | 'D1'): { rejec
   if (!GATE_CONFIG.enforceEntryFreshness) return {};
   
   const entryBar = bars[bars.length - 1];
-  // FIX: Use 'timestamp' field (actual Bar shape), not 'time'
   if (!entryBar.timestamp) return {};
   
   const entryBarTime = new Date(entryBar.timestamp).getTime();
@@ -225,6 +230,29 @@ function checkEntryFreshness(bars: Bar[], interval: 'H1' | 'H4' | 'D1'): { rejec
   if (entryBarAgeMs > maxAge) {
     const ageMinutes = Math.round(entryBarAgeMs / 60000);
     return { rejectReason: `Entry bar stale: ${ageMinutes}min old (max ${maxAge / 60000}min)` };
+  }
+  
+  return {};
+}
+
+// AUDIT FIX 2026-01-09: Check if bar data is too stale (e.g., API hasn't updated for hours)
+function checkBarDataFreshness(bars: Bar[], interval: 'H1' | 'H4' | 'D1'): { rejectReason?: string; warning?: string } {
+  if (!GATE_CONFIG.enforceBarFreshness) return {};
+  if (bars.length === 0) return { rejectReason: 'No bar data available' };
+  
+  const latestBar = bars[bars.length - 1];
+  if (!latestBar.timestamp) return { warning: 'Bar timestamp missing, cannot verify freshness' };
+  
+  const latestBarTime = new Date(latestBar.timestamp).getTime();
+  const now = Date.now();
+  const staleness = now - latestBarTime;
+  
+  const maxStale = GATE_CONFIG.maxBarStaleAgeMs[interval] || GATE_CONFIG.maxBarStaleAgeMs['H1'];
+  
+  if (staleness > maxStale) {
+    const staleHours = Math.round(staleness / (60 * 60 * 1000) * 10) / 10;
+    const maxHours = Math.round(maxStale / (60 * 60 * 1000));
+    return { rejectReason: `Data stale: latest bar is ${staleHours}h old (max ${maxHours}h) - API may be down or market closed` };
   }
   
   return {};
@@ -412,8 +440,10 @@ function detectRegime(h4Trend: H4TrendResult | undefined, atrPercent: number): R
   }
   
   // Strong trend: ADX > 30
+  // AUDIT FIX 2026-01-09: Allow mean-reversion with penalty instead of blocking
+  // Mean-reversion at BB extremes can have 60-70% success in trends with tight stops
   if (adx >= 30) {
-    return { regime: 'strong-trend', allowTrend: true, allowMeanReversion: false, reason: `Strong trend (ADX=${adx.toFixed(1)})` };
+    return { regime: 'strong-trend', allowTrend: true, allowMeanReversion: true, reason: `Strong trend (ADX=${adx.toFixed(1)})` };
   }
   
   // Weak trend: ADX 14-30 (LOWERED from 18 to capture more opportunities)
@@ -449,6 +479,20 @@ export function runPreFlight(input: PreFlightInput): PreFlightResult {
       warnings,
       confidenceAdjustments: 0,
     };
+  }
+  
+  // 1b. AUDIT FIX 2026-01-09: Bar data freshness check (reject stale data)
+  const barFreshness = checkBarDataFreshness(bars, interval);
+  if (barFreshness.rejectReason) {
+    return {
+      passed: false,
+      rejectReason: barFreshness.rejectReason,
+      warnings,
+      confidenceAdjustments: 0,
+    };
+  }
+  if (barFreshness.warning) {
+    warnings.push(barFreshness.warning);
   }
   
   // 2. Bar closure check (ENFORCED in V2)
@@ -517,14 +561,13 @@ export function runPreFlight(input: PreFlightInput): PreFlightResult {
       h4Trend,
     };
   }
-  if (strategyType === 'mean-reversion' && !regime.allowMeanReversion && regime.regime === 'strong-trend') {
-    return {
-      passed: false,
-      rejectReason: `Mean reversion blocked: ${regime.reason || 'strong trend'}`,
-      warnings,
-      confidenceAdjustments: 0,
-      h4Trend,
-    };
+  // AUDIT FIX 2026-01-09: Apply confidence penalty instead of blocking mean-reversion in strong trends
+  // Let the strategy's internal BB+RSI confluence be the gatekeeper
+  // Note: -15 is moderate enough to allow high-confluence setups (60+ base) through but filters weak ones
+  if (strategyType === 'mean-reversion' && regime.regime === 'strong-trend') {
+    const strongTrendPenalty = -15;
+    confidenceAdjustments += strongTrendPenalty;
+    warnings.push(`Mean-reversion in strong trend: ${strongTrendPenalty}pt penalty (clamped at 0)`);
   }
   if (regime.regime === 'chop') {
     return {

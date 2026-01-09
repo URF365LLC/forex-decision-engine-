@@ -52,6 +52,17 @@ Core API endpoints cover system health, symbol retrieval, signal analysis and sc
 -   **H4 Trend Support**: Utilizes Twelve Data's 4h interval for trend analysis with D1 fallback.
 -   **Detection System**: Manages detection lifecycle (cooling_down, eligible, executed/dismissed/expired) with a 60-minute default cooldown, PostgreSQL-backed storage, and auto-invalidation on direction flips.
 -   **Regime Detector Integration**: Adjusts confidence and risk-reward based on volatility regimes.
+-   **Portfolio Risk Manager** (NEW 2026-01-09): Tracks net currency exposure across open positions, enforces max 2% per currency, supports all asset classes (forex, metals, crypto, indices, commodities).
+-   **Bar Freshness Validation** (NEW 2026-01-09): Pre-flight rejects signals when bar data is stale (>2h H1, >8h H4, >72h D1) to prevent trading on outdated information.
+-   **Mean-Reversion in Strong Trends**: Applies -15pt confidence penalty instead of blocking, allowing high-confluence setups to pass while filtering weak ones.
+
+## Recent Changes (2026-01-09)
+
+### Quantitative Audit Implementation
+1. **Portfolio Risk Manager** (`src/services/portfolioRiskManager.ts`): New service tracking currency exposure across positions to prevent correlated losses. Supports all 46 instruments with asset-class-aware currency extraction.
+2. **Stale Data Prevention**: Removed backfill logic from indicator alignment; added bar timestamp freshness validation in SignalQualityGate pre-flight.
+3. **Mean-Reversion Regime Fix**: Changed from outright blocking to confidence penalty (-15pts) in strong-trend regimes.
+4. **Indicator Alignment Cleanup**: `alignIndicatorToBars()` now returns NaN for missing data instead of backfilling with stale values.
 
 ## External Dependencies
 

@@ -141,25 +141,28 @@ function alignIndicatorToBars(
     }
   }
   
-  // Backfill trailing NaNs with last valid value (handles current-session data lag)
-  let backfillCount = 0;
-  if (lastValidValue !== null) {
-    for (let i = aligned.length - 1; i >= 0; i--) {
-      if (!Number.isFinite(aligned[i].value)) {
-        aligned[i].value = lastValidValue;
-        backfillCount++;
-      } else {
-        break; // Stop at first non-NaN from the end
-      }
+  // AUDIT FIX 2026-01-09: Do NOT backfill trailing NaNs with stale values
+  // If recent bars have no data, leave them as NaN - strategies will skip gracefully
+  // This prevents trading on stale indicator data during session opens or API lag
+  let trailingNaNCount = 0;
+  for (let i = aligned.length - 1; i >= 0; i--) {
+    if (!Number.isFinite(aligned[i].value)) {
+      trailingNaNCount++;
+    } else {
+      break;
     }
   }
   
-  // Log alignment quality
+  // Log alignment quality and warn about trailing NaNs
   const matchRate = bars.length > 0 ? (matchCount / bars.length * 100).toFixed(1) : '0';
-  if (matchCount < bars.length * 0.8) {
-    logger.warn(`${indicatorName}: Low timestamp match rate: ${matchRate}% (${matchCount}/${bars.length})${backfillCount > 0 ? `, backfilled ${backfillCount} trailing values` : ''}`);
+  if (trailingNaNCount > 0 && trailingNaNCount <= 5) {
+    logger.debug(`${indicatorName}: Aligned ${matchCount}/${bars.length} bars (${matchRate}%), ${trailingNaNCount} trailing bars have no data (will be NaN)`);
+  } else if (trailingNaNCount > 5) {
+    logger.warn(`${indicatorName}: Low data freshness - ${trailingNaNCount} trailing bars have no indicator data`);
+  } else if (matchCount < bars.length * 0.8) {
+    logger.warn(`${indicatorName}: Low timestamp match rate: ${matchRate}% (${matchCount}/${bars.length})`);
   } else {
-    logger.debug(`${indicatorName}: Aligned ${matchCount}/${bars.length} bars (${matchRate}%)${backfillCount > 0 ? `, backfilled ${backfillCount}` : ''}`);
+    logger.debug(`${indicatorName}: Aligned ${matchCount}/${bars.length} bars (${matchRate}%)`);
   }
   
   return aligned;
