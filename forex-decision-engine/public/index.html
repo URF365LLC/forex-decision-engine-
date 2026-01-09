@@ -8,26 +8,28 @@
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎯</text></svg>">
 </head>
 <body>
+  <a href="#main-content" class="skip-link">Skip to main content</a>
+  
   <!-- Upgrade Notifications Container -->
-  <div id="upgrade-notifications"></div>
+  <div id="upgrade-notifications" role="alert" aria-live="polite"></div>
   
   <div id="app">
     <!-- Header -->
-    <header class="header">
+    <header class="header" role="banner">
       <div class="header-brand">
-        <span class="header-icon">🎯</span>
+        <span class="header-icon" aria-hidden="true">🎯</span>
         <h1>Forex Decision Engine</h1>
       </div>
-      <nav class="header-nav">
-        <button class="nav-btn active" data-screen="results">Results</button>
-        <button class="nav-btn" data-screen="watchlist">Watchlist</button>
-        <button class="nav-btn" data-screen="journal">Journal</button>
-        <button class="nav-btn" data-screen="settings">Settings</button>
+      <nav class="header-nav" role="navigation" aria-label="Main navigation">
+        <button class="nav-btn active" data-screen="results" aria-current="page" aria-label="View trading results">Results</button>
+        <button class="nav-btn" data-screen="watchlist" aria-label="Manage watchlist">Watchlist</button>
+        <button class="nav-btn" data-screen="journal" aria-label="View trade journal">Journal</button>
+        <button class="nav-btn" data-screen="settings" aria-label="Configure settings">Settings</button>
       </nav>
     </header>
 
     <!-- Main Content -->
-    <main class="main">
+    <main class="main" id="main-content" role="main">
       <!-- Welcome Screen (shown on first visit) -->
       <section id="welcome-screen" class="screen welcome-screen hidden">
         <div class="welcome-content">
@@ -364,7 +366,7 @@
     </main>
 
     <!-- Toast Notifications -->
-    <div id="toast-container" class="toast-container"></div>
+    <div id="toast-container" class="toast-container" role="status" aria-live="polite" aria-label="Notifications"></div>
 
     <!-- Trade Modal -->
     <div id="trade-modal" class="modal hidden">

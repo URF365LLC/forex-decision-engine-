@@ -339,7 +339,7 @@ const UI = {
     const sentimentId = `sentiment-${decision.strategyId}-${decision.symbol}`.replace(/[^a-zA-Z0-9-]/g, '-');
 
     return `
-      <div class="decision-card ${gradeClass} ${staleClass}" data-key="${decisionKey}" data-symbol="${decision.symbol}" data-strategy="${decision.strategyId}" data-grade="${decision.grade}">
+      <div class="decision-card ${gradeClass} ${staleClass}" data-key="${decisionKey}" data-symbol="${decision.symbol}" data-strategy="${decision.strategyId}" data-grade="${decision.grade}" tabindex="0" role="article" aria-label="${decision.displayName} ${decision.direction || 'no trade'} signal, Grade ${decision.grade}">
         <div class="card-header">
           <div>
             <span class="card-symbol">${decision.displayName}</span>

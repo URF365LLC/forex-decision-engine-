@@ -126,3 +126,17 @@ Core API endpoints facilitate system health checks, symbol retrieval, signal ana
 -   **Health/Ready Separation**: `/api/health` (liveness) vs `/api/ready` (readiness with dependency checks).
 -   **Metrics Endpoint**: `/api/metrics` returns uptime, cache hit ratio, rate limit utilization, signal stats.
 -   **Batch Sentiment**: Parallelized with bounded concurrency (3 concurrent) for performance.
+
+### Phase 3: Sentiment & Accessibility (In Progress)
+-   **7-Tier Sentiment Scale**: Enhanced from 4-tier to 7-tier (extremely_bullish through extremely_bearish).
+-   **Time-Horizon Split**: Separate short-term (intraday) and long-term (swing) bias analysis.
+-   **Contrarian Detection**: Crowded trade warnings (crowded_long, crowded_short, capitulation, euphoria).
+-   **Consensus Level**: 0-100% indicator showing how one-sided sentiment is (high = reversal risk).
+-   **Enhanced Grok Prompt**: Institutional-grade analysis with contrarian detection rules.
+-   **Accessibility Improvements**:
+    -   Skip link for keyboard navigation
+    -   ARIA labels on navigation, toasts, and alerts
+    -   Focus-visible styles for all interactive elements
+    -   Reduced motion media query for motion-sensitive users
+    -   Keyboard shortcuts: 1-4 for screens, S for scan, Escape for modals
+    -   Arrow key navigation through result cards

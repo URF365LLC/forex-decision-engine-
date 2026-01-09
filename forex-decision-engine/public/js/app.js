@@ -44,6 +44,9 @@ const App = {
 
     // Setup event listeners
     this.setupEventListeners();
+    
+    // Setup keyboard navigation
+    this.setupKeyboardNavigation();
 
     // Check API health
     this.checkHealth();
@@ -1221,6 +1224,63 @@ const App = {
     
     // Load auto-scan status on init
     this.loadAutoScanStatus();
+  },
+  
+  setupKeyboardNavigation() {
+    document.addEventListener('keydown', (e) => {
+      // Close modals with Escape
+      if (e.key === 'Escape') {
+        const tradeModal = UI.$('trade-modal');
+        if (tradeModal && !tradeModal.classList.contains('hidden')) {
+          this.closeTradeModal();
+          return;
+        }
+      }
+      
+      // Navigate between screens with number keys (when not in input)
+      if (document.activeElement.tagName !== 'INPUT' && 
+          document.activeElement.tagName !== 'TEXTAREA' &&
+          document.activeElement.tagName !== 'SELECT') {
+        const screens = ['results', 'watchlist', 'journal', 'settings'];
+        const keyNum = parseInt(e.key);
+        
+        if (keyNum >= 1 && keyNum <= 4) {
+          e.preventDefault();
+          this.switchScreen(screens[keyNum - 1]);
+        }
+        
+        // Quick actions
+        if (e.key === 's' || e.key === 'S') {
+          e.preventDefault();
+          UI.$('scan-btn')?.click();
+        }
+      }
+    });
+    
+    // Arrow key navigation within results grid (using event delegation)
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        const resultsContainer = UI.$('results-container');
+        if (!resultsContainer) return;
+        
+        const cards = resultsContainer.querySelectorAll('.decision-card');
+        if (cards.length === 0) return;
+        
+        // Check if focus is on or within a decision card
+        const focusedCard = document.activeElement.closest('.decision-card') || 
+                           (document.activeElement.classList.contains('decision-card') ? document.activeElement : null);
+        
+        if (focusedCard) {
+          e.preventDefault();
+          const currentIndex = Array.from(cards).indexOf(focusedCard);
+          const nextIndex = e.key === 'ArrowDown' 
+            ? Math.min(currentIndex + 1, cards.length - 1)
+            : Math.max(currentIndex - 1, 0);
+          
+          cards[nextIndex].focus();
+        }
+      }
+    });
   },
   
   async loadAutoScanStatus() {
