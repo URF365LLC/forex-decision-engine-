@@ -1,15 +1,53 @@
 {
-  "enabled": false,
+  "enabled": true,
   "intervalMs": 300000,
   "symbols": [
     "EURUSD",
     "GBPUSD",
-    "USDJPY",
-    "USDCHF",
     "AUDUSD",
     "NZDUSD",
+    "USDJPY",
+    "EURJPY",
+    "GBPJPY",
+    "AUDJPY",
+    "NZDJPY",
+    "CADJPY",
+    "CHFJPY",
     "USDCAD",
-    "XAUUSD"
+    "EURCAD",
+    "GBPCAD",
+    "AUDCAD",
+    "NZDCAD",
+    "USDCHF",
+    "EURCHF",
+    "GBPCHF",
+    "AUDCHF",
+    "NZDCHF",
+    "CADCHF",
+    "EURGBP",
+    "EURAUD",
+    "GBPAUD",
+    "AUDNZD",
+    "EURNZD",
+    "GBPNZD",
+    "SP",
+    "NSDQ",
+    "DOW",
+    "DAX",
+    "NIKKEI",
+    "ASX",
+    "WTI",
+    "BRENT",
+    "XAUUSD",
+    "XAGUSD",
+    "BTCUSD",
+    "ETHUSD",
+    "XRPUSD",
+    "ADAUSD",
+    "SOLUSD",
+    "LTCUSD",
+    "BCHUSD",
+    "BNBUSD"
   ],
   "strategies": [
     {
@@ -55,15 +93,11 @@
     {
       "strategyId": "liquidity-sweep",
       "intervalMs": 300000
-    },
-    {
-      "strategyId": "ema-pullback-swing",
-      "intervalMs": 300000
     }
   ],
   "minGrade": "A",
-  "email": "urfreight365@gmail.com",
-  "watchlistPreset": "majors-gold",
+  "email": "Ecomtriumph2020@gmail.com",
+  "watchlistPreset": "all",
   "customSymbols": [],
   "respectMarketHours": true
 }

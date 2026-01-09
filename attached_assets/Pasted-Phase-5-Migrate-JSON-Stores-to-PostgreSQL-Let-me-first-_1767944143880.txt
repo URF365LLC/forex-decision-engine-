@@ -1,0 +1,1768 @@
+Phase 5: Migrate JSON Stores to PostgreSQL
+Let me first read the existing stores:
+
+Read
+/home/user/forex-decision-engine-/forex-decision-engine/src/storage/signalStore.ts
+Read 263 lines
+Read
+/home/user/forex-decision-engine-/forex-decision-engine/src/storage/journalStore.ts
+Read 539 lines
+Now I'll create database-backed versions of both stores. I'll update them to use PostgreSQL when available, with JSON fallback:
+
+Edit
+/home/user/forex-decision-engine-/forex-decision-engine/src/storage/signalStore.ts
+/**
+
+ * Signal Store
+
+ * In-memory signal storage (persists to JSON file)
+
+ */
+
+ 
+
+import { Decision } from '../strategies/types.js';
+
+import { createLogger } from '../services/logger.js';
+
+ * Hybrid storage: PostgreSQL when available, JSON file fallback
+
+ */
+
+ 
+
+import { Decision } from '../strategies/types.js';
+
+import { createLogger } from '../services/logger.js';
+
+import { getDb, isDbAvailable } from '../db/client.js';
+
+const __dirname = path.dirname(__filename);
+
+const MAX_SIGNAL_ENTRIES = 5000;
+
+const SIGNAL_ARCHIVE_DIR = path.join(__dirname, '../../data/archive');
+
+Continuing with Phase 5 (migrating JSON stores to PostgreSQL) and Phase 6 (adding hardening features).
+
+I've already reviewed the files. Let me complete the signalStore.ts migration to support PostgreSQL with JSON fallback, then update the database schema to support signals storage, and proceed to Phase 6.
+
+Edit
+/home/user/forex-decision-engine-/forex-decision-engine/src/storage/signalStore.ts
+import { Decision } from '../strategies/types.js';
+
+import { createLogger } from '../services/logger.js';
+
+import { getDb, isDbAvailable } from '../db/client.js';
+
+import { randomUUID } from 'crypto';
+
+import fs from 'fs';
+
+import path from 'path';
+
+import { fileURLToPath } from 'url';
+
+Edit
+/home/user/forex-decision-engine-/forex-decision-engine/src/storage/signalStore.ts
+  /**
+
+   * Save a decision to storage
+
+   */
+
+  saveSignal(decision: Decision): number {
+
+    // V1.1: Use entry.price (new) or entryPrice (legacy fallback)
+
+    const entryPrice = decision.entry?.price ?? decision.entryPrice ?? 0;
+
+    
+
+    const signal: StoredSignal = {
+
+      id: this.nextId++,
+
+      symbol: decision.symbol,
+
+      style: decision.style,
+
+      direction: decision.direction,
+
+      grade: decision.grade,
+
+      entry_low: entryPrice || null,
+
+      entry_high: entryPrice || null,
+
+      stop_loss: decision.stopLoss?.price ?? null,
+
+      take_profit: decision.takeProfit?.price ?? null,
+
+      position_lots: decision.position?.lots ?? null,
+
+      risk_amount: decision.position?.riskAmount ?? null,
+
+      reason: decision.reason,
+
+      created_at: decision.timestamp,
+
+      valid_until: decision.validUntil,
+
+      result: null,
+
+      result_notes: null,
+
+    };
+
+ 
+
+    this.signals.push(signal);
+
+    this.persist();
+
+ 
+
+    logger.debug(`Saved signal ${signal.id} for ${decision.symbol}`);
+
+    return signal.id;
+
+  async saveSignal(decision: Decision): Promise<string> {
+
+    // V1.1: Use entry.price (new) or entryPrice (legacy fallback)
+
+    const entryPrice = decision.entry?.price ?? decision.entryPrice ?? 0;
+
+    const signalId = randomUUID();
+
+ 
+
+    const signal: StoredSignal = {
+
+      id: this.nextId++,
+
+      uuid: signalId,
+
+      symbol: decision.symbol,
+
+      style: decision.style,
+
+      direction: decision.direction,
+
+      grade: decision.grade,
+
+      entry_low: entryPrice || null,
+
+      entry_high: entryPrice || null,
+
+      stop_loss: decision.stopLoss?.price ?? null,
+
+      take_profit: decision.takeProfit?.price ?? null,
+
+      position_lots: decision.position?.lots ?? null,
+
+      risk_amount: decision.position?.riskAmount ?? null,
+
+      reason: decision.reason,
+
+      created_at: decision.timestamp,
+
+      valid_until: decision.validUntil,
+
+      result: null,
+
+      result_notes: null,
+
+    };
+
+ 
+
+    // Try database first
+
+    if (isDbAvailable()) {
+
+      try {
+
+        const db = getDb();
+
+        await db
+
+          .insertInto('signals')
+
+          .values({
+
+            id: signalId,
+
+            symbol: signal.symbol,
+
+            strategy_id: decision.strategyId,
+
+            strategy_name: decision.strategyName,
+
+            grade: signal.grade,
+
+            direction: signal.direction,
+
+            entry_price: signal.entry_low,
+
+            stop_loss: signal.stop_loss,
+
+            take_profit: signal.take_profit,
+
+            confidence: decision.confidence,
+
+            reason: signal.reason,
+
+            decision_data: JSON.stringify({
+
+              style: signal.style,
+
+              positionLots: signal.position_lots,
+
+              riskAmount: signal.risk_amount,
+
+              validUntil: signal.valid_until,
+
+            }),
+
+            source: 'manual',
+
+          })
+
+          .execute();
+
+ 
+
+        logger.debug(`Saved signal ${signalId} to database for ${decision.symbol}`);
+
+        return signalId;
+
+      } catch (error) {
+
+        logger.error('Failed to save signal to database, using file fallback', { error });
+
+      }
+
+    }
+
+ 
+
+    // Fallback to file storage
+
+    this.signals.push(signal);
+
+    this.persist();
+
+ 
+
+    logger.debug(`Saved signal ${signal.id} for ${decision.symbol}`);
+
+    return signalId;
+
+  }
+
+Edit
+/home/user/forex-decision-engine-/forex-decision-engine/src/storage/signalStore.ts
+export interface StoredSignal {
+
+  id: number;
+
+  uuid?: string;  // Database UUID (used for DB storage)
+
+  result: SignalResult;
+
+  result_notes: string | null;
+
+}
+
+Edit
+/home/user/forex-decision-engine-/forex-decision-engine/src/storage/signalStore.ts
+  /**
+
+   * Get recent signals
+
+   */
+
+  getRecent(limit: number = 50): StoredSignal[] {
+
+    return this.signals
+
+      .slice()
+
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+
+      .slice(0, limit);
+
+  async getRecent(limit: number = 50): Promise<StoredSignal[]> {
+
+    // Try database first
+
+    if (isDbAvailable()) {
+
+      try {
+
+        const db = getDb();
+
+        const rows = await db
+
+          .selectFrom('signals')
+
+          .selectAll()
+
+          .orderBy('created_at', 'desc')
+
+          .limit(limit)
+
+          .execute();
+
+ 
+
+        return rows.map(this.rowToStoredSignal);
+
+      } catch (error) {
+
+        logger.error('Failed to get recent signals from database', { error });
+
+      }
+
+    }
+
+ 
+
+    // Fallback to file storage
+
+    return this.signals
+
+      .slice()
+
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+
+      .slice(0, limit);
+
+  }
+
+ 
+
+  private rowToStoredSignal(row: Record<string, unknown>): StoredSignal {
+
+    const decisionData = row.decision_data
+
+      ? (typeof row.decision_data === 'string' ? JSON.parse(row.decision_data) : row.decision_data)
+
+      : {};
+
+ 
+
+    return {
+
+      id: 0,  // DB uses UUID
+
+      uuid: String(row.id),
+
+      symbol: String(row.symbol),
+
+      style: decisionData.style || '',
+
+      direction: String(row.direction || ''),
+
+      grade: String(row.grade),
+
+      entry_low: row.entry_price ? Number(row.entry_price) : null,
+
+      entry_high: row.entry_price ? Number(row.entry_price) : null,
+
+      stop_loss: row.stop_loss ? Number(row.stop_loss) : null,
+
+      take_profit: row.take_profit ? Number(row.take_profit) : null,
+
+      position_lots: decisionData.positionLots ?? null,
+
+      risk_amount: decisionData.riskAmount ?? null,
+
+      reason: String(row.reason || ''),
+
+      created_at: String(row.created_at),
+
+      valid_until: decisionData.validUntil || '',
+
+      result: null,  // TODO: Add result tracking to signals table
+
+      result_notes: null,
+
+    };
+
+  }
+
+Edit
+/home/user/forex-decision-engine-/forex-decision-engine/src/storage/signalStore.ts
+  /**
+
+   * Get signals by symbol
+
+   */
+
+  getBySymbol(symbol: string, limit: number = 20): StoredSignal[] {
+
+    return this.signals
+
+      .filter(s => s.symbol === symbol)
+
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+
+      .slice(0, limit);
+
+  }
+
+ 
+
+  /**
+
+   * Get signals by grade
+
+   */
+
+  getByGrade(grade: string, limit: number = 50): StoredSignal[] {
+
+  async getBySymbol(symbol: string, limit: number = 20): Promise<StoredSignal[]> {
+
+    // Try database first
+
+    if (isDbAvailable()) {
+
+      try {
+
+        const db = getDb();
+
+        const rows = await db
+
+Show full diff (46 more lines)
+Edit
+/home/user/forex-decision-engine-/forex-decision-engine/src/storage/signalStore.ts
+  /**
+
+   * Get signal statistics
+
+   */
+
+  getStats(): {
+
+    total: number;
+
+    byGrade: Record<string, number>;
+
+    byResult: Record<string, number>;
+
+    winRate: number;
+
+  } {
+
+  async getStats(): Promise<{
+
+    total: number;
+
+    byGrade: Record<string, number>;
+
+    byResult: Record<string, number>;
+
+    winRate: number;
+
+  }> {
+
+    // Try database first
+
+    if (isDbAvailable()) {
+
+      try {
+
+        const db = getDb();
+
+        const rows = await db
+
+          .selectFrom('signals')
+
+          .select(['grade'])
+
+          .execute();
+
+ 
+
+        const byGrade: Record<string, number> = {};
+
+        for (const row of rows) {
+
+          const grade = String(row.grade);
+
+          byGrade[grade] = (byGrade[grade] || 0) + 1;
+
+        }
+
+ 
+
+        // TODO: Add result tracking to signals table for full stats
+
+        return {
+
+          total: rows.length,
+
+          byGrade,
+
+          byResult: {},
+
+          winRate: 0,
+
+        };
+
+      } catch (error) {
+
+        logger.error('Failed to get signal stats from database', { error });
+
+      }
+
+    }
+
+ 
+
+    // Fallback to file storage
+
+      winRate,
+
+    };
+
+  }
+
+Edit
+/home/user/forex-decision-engine-/forex-decision-engine/src/storage/signalStore.ts
+  /**
+
+   * Delete old signals
+
+   */
+
+  cleanup(daysOld: number = 30): number {
+
+    const cutoff = Date.now() - daysOld * 24 * 60 * 60 * 1000;
+
+    const before = this.signals.length;
+
+    this.signals = this.signals.filter(s => 
+
+      new Date(s.created_at).getTime() > cutoff
+
+  async cleanup(daysOld: number = 30): Promise<number> {
+
+    const cutoff = new Date(Date.now() - daysOld * 24 * 60 * 60 * 1000);
+
+ 
+
+    // Try database first
+
+    if (isDbAvailable()) {
+
+      try {
+
+        const db = getDb();
+
+        const result = await db
+
+          .deleteFrom('signals')
+
+          .where('created_at', '<', cutoff.toISOString())
+
+          .executeTakeFirst();
+
+ 
+
+        const removed = Number(result.numDeletedRows ?? 0);
+
+        if (removed > 0) {
+
+          logger.info(`Cleaned up ${removed} old signals from database`);
+
+        }
+
+        return removed;
+
+      } catch (error) {
+
+        logger.error('Failed to cleanup signals in database', { error });
+
+      }
+
+    }
+
+ 
+
+    // Fallback to file storage
+
+    const before = this.signals.length;
+
+    this.signals = this.signals.filter(s =>
+
+      new Date(s.created_at).getTime() > cutoff.getTime()
+
+    }
+
+    return removed;
+
+  }
+
+Now let me check and update the journalStore.ts similarly:
+
+Read
+/home/user/forex-decision-engine-/forex-decision-engine/src/storage/journalStore.ts
+Read 539 lines
+The journalStore is more complex. Let me add database support to it:
+
+Edit
+/home/user/forex-decision-engine-/forex-decision-engine/src/storage/journalStore.ts
+/**
+
+ * Journal Store
+
+ * Trading journal for tracking decisions and outcomes
+
+ * Persists to JSON file with atomic writes
+
+ */
+
+ 
+
+import { createLogger } from '../services/logger.js';
+
+import { getInstrumentSpec } from '../config/e8InstrumentSpecs.js';
+
+ * Hybrid storage: PostgreSQL when available, JSON file fallback
+
+ */
+
+ 
+
+import { createLogger } from '../services/logger.js';
+
+import { getInstrumentSpec } from '../config/e8InstrumentSpecs.js';
+
+import { getDb, isDbAvailable } from '../db/client.js';
+
+import { randomUUID } from 'crypto';
+
+import fs from 'fs';
+
+import path from 'path';
+
+import { fileURLToPath } from 'url';
+
+Edit
+/home/user/forex-decision-engine-/forex-decision-engine/src/storage/journalStore.ts
+  /**
+
+   * Add a new journal entry
+
+   */
+
+  add(entry: Omit<TradeJournalEntry, 'id' | 'createdAt' | 'updatedAt'>): TradeJournalEntry {
+
+    const now = new Date().toISOString();
+
+    const newEntry: TradeJournalEntry = {
+
+      ...entry,
+
+      id: this.generateId(),
+
+      createdAt: now,
+
+      updatedAt: now,
+
+    };
+
+ 
+
+    const normalized = this.recalcExcursions(newEntry);
+
+  async add(entry: Omit<TradeJournalEntry, 'id' | 'createdAt' | 'updatedAt'>): Promise<TradeJournalEntry> {
+
+    const now = new Date().toISOString();
+
+    const entryId = randomUUID();
+
+    const newEntry: TradeJournalEntry = {
+
+      ...entry,
+
+      id: entryId,
+
+      createdAt: now,
+
+      updatedAt: now,
+
+    };
+
+ 
+
+    const normalized = this.recalcExcursions(newEntry);
+
+ 
+
+    // Try database first
+
+    if (isDbAvailable()) {
+
+      try {
+
+        const db = getDb();
+
+        await db
+
+          .insertInto('journal_entries')
+
+          .values({
+
+            id: entryId,
+
+            symbol: normalized.symbol,
+
+            strategy_id: normalized.strategyId ?? null,
+
+            strategy_name: normalized.strategyName ?? null,
+
+            direction: normalized.direction,
+
+            entry_price: normalized.entryPrice,
+
+            exit_price: normalized.exitPrice ?? null,
+
+            stop_loss: normalized.stopLoss,
+
+            take_profit: normalized.takeProfit,
+
+            lot_size: normalized.lots,
+
+            status: normalized.status,
+
+            outcome: normalized.result ?? null,
+
+            pnl_pips: normalized.pnlPips ?? null,
+
+            pnl_usd: normalized.pnlDollars ?? null,
+
+            notes: normalized.notes ?? null,
+
+            opened_at: normalized.createdAt,
+
+            closed_at: normalized.closedAt ?? null,
+
+          })
+
+          .execute();
+
+ 
+
+        logger.info(`Added journal entry ${entryId} to database for ${entry.symbol} (${entry.action})`);
+
+        return normalized;
+
+      } catch (error) {
+
+        logger.error('Failed to add journal entry to database, using file fallback', { error });
+
+      }
+
+    }
+
+ 
+
+    // Fallback to file storage
+
+    logger.info(`Added journal entry ${normalized.id} for ${entry.symbol} (${entry.action})`);
+
+    return normalized;
+
+  }
+
+Edit
+/home/user/forex-decision-engine-/forex-decision-engine/src/storage/journalStore.ts
+  /**
+
+   * Update an existing entry
+
+   */
+
+  update(id: string, updates: Partial<TradeJournalEntry>): TradeJournalEntry | null {
+
+    const index = this.entries.findIndex(e => e.id === id);
+
+    if (index === -1) return null;
+
+ 
+
+    const entry = this.entries[index];
+
+    const updatedEntry = this.mergeAndNormalize(entry, updates);
+
+ 
+
+    this.entries[index] = updatedEntry;
+
+    this.persist();
+
+ 
+
+    logger.info(`Updated journal entry ${id}`);
+
+    return updatedEntry;
+
+  }
+
+ 
+
+  /**
+
+   * Get single entry by ID
+
+   */
+
+  get(id: string): TradeJournalEntry | null {
+
+    return this.entries.find(e => e.id === id) || null;
+
+  async update(id: string, updates: Partial<TradeJournalEntry>): Promise<TradeJournalEntry | null> {
+
+    // Try database first
+
+    if (isDbAvailable()) {
+
+      try {
+
+        const db = getDb();
+
+        const now = new Date().toISOString();
+
+ 
+
+        const dbUpdates: Record<string, unknown> = { updated_at: now };
+
+        if (updates.exitPrice !== undefined) dbUpdates.exit_price = updates.exitPrice;
+
+        if (updates.status) dbUpdates.status = updates.status;
+
+        if (updates.result) dbUpdates.outcome = updates.result;
+
+        if (updates.pnlPips !== undefined) dbUpdates.pnl_pips = updates.pnlPips;
+
+        if (updates.pnlDollars !== undefined) dbUpdates.pnl_usd = updates.pnlDollars;
+
+        if (updates.notes !== undefined) dbUpdates.notes = updates.notes;
+
+        if (updates.closedAt) dbUpdates.closed_at = updates.closedAt;
+
+ 
+
+        await db
+
+          .updateTable('journal_entries')
+
+          .set(dbUpdates)
+
+          .where('id', '=', id)
+
+          .execute();
+
+ 
+
+        logger.info(`Updated journal entry ${id} in database`);
+
+        return this.get(id);
+
+      } catch (error) {
+
+        logger.error('Failed to update journal entry in database', { error });
+
+      }
+
+    }
+
+ 
+
+    // Fallback to file storage
+
+    const index = this.entries.findIndex(e => e.id === id);
+
+    if (index === -1) return null;
+
+ 
+
+    const entry = this.entries[index];
+
+    const updatedEntry = this.mergeAndNormalize(entry, updates);
+
+ 
+
+    this.entries[index] = updatedEntry;
+
+    this.persist();
+
+ 
+
+    logger.info(`Updated journal entry ${id}`);
+
+    return updatedEntry;
+
+  }
+
+ 
+
+  /**
+
+   * Get single entry by ID
+
+   */
+
+  async get(id: string): Promise<TradeJournalEntry | null> {
+
+    // Try database first
+
+    if (isDbAvailable()) {
+
+      try {
+
+        const db = getDb();
+
+        const row = await db
+
+          .selectFrom('journal_entries')
+
+          .selectAll()
+
+          .where('id', '=', id)
+
+          .executeTakeFirst();
+
+ 
+
+        if (row) {
+
+          return this.rowToJournalEntry(row);
+
+        }
+
+      } catch (error) {
+
+        logger.error('Failed to get journal entry from database', { error });
+
+      }
+
+    }
+
+ 
+
+    // Fallback to file storage
+
+    return this.entries.find(e => e.id === id) || null;
+
+  }
+
+ 
+
+  private rowToJournalEntry(row: Record<string, unknown>): TradeJournalEntry {
+
+    return {
+
+      id: String(row.id),
+
+      source: 'manual' as TradeSource,
+
+      symbol: String(row.symbol),
+
+      direction: (row.direction as TradeDirection) || 'long',
+
+      style: 'intraday' as TradeStyle,
+
+      strategyId: row.strategy_id ? String(row.strategy_id) : undefined,
+
+      strategyName: row.strategy_name ? String(row.strategy_name) : undefined,
+
+      tradeType: 'other' as TradeType,
+
+      entryPrice: Number(row.entry_price || 0),
+
+      stopLoss: Number(row.stop_loss || 0),
+
+      takeProfit: Number(row.take_profit || 0),
+
+      lots: Number(row.lot_size || 0),
+
+      status: (row.status as TradeStatus) || 'pending',
+
+      action: 'taken' as TradeAction,
+
+      exitPrice: row.exit_price ? Number(row.exit_price) : undefined,
+
+      result: row.outcome as TradeResult | undefined,
+
+      pnlPips: row.pnl_pips ? Number(row.pnl_pips) : undefined,
+
+      pnlDollars: row.pnl_usd ? Number(row.pnl_usd) : undefined,
+
+      notes: row.notes ? String(row.notes) : undefined,
+
+      createdAt: String(row.created_at),
+
+      updatedAt: String(row.updated_at),
+
+      closedAt: row.closed_at ? String(row.closed_at) : undefined,
+
+    };
+
+  }
+
+Edit
+/home/user/forex-decision-engine-/forex-decision-engine/src/storage/journalStore.ts
+  /**
+
+   * Get all entries with optional filters
+
+   */
+
+  getAll(filters?: JournalFilters): TradeJournalEntry[] {
+
+    let result = [...this.entries];
+
+ 
+
+    if (filters) {
+
+      if (filters.symbol) {
+
+        result = result.filter(e => e.symbol === filters.symbol);
+
+      }
+
+      if (filters.status) {
+
+        result = result.filter(e => e.status === filters.status);
+
+      }
+
+      if (filters.result) {
+
+        result = result.filter(e => e.result === filters.result);
+
+      }
+
+      if (filters.action) {
+
+        result = result.filter(e => e.action === filters.action);
+
+      }
+
+      if (filters.tradeType) {
+
+        result = result.filter(e => e.tradeType === filters.tradeType);
+
+      }
+
+      if (filters.dateFrom) {
+
+        const from = new Date(filters.dateFrom).getTime();
+
+        result = result.filter(e => new Date(e.createdAt).getTime() >= from);
+
+      }
+
+      if (filters.dateTo) {
+
+        const to = new Date(filters.dateTo).getTime();
+
+        result = result.filter(e => new Date(e.createdAt).getTime() <= to);
+
+      }
+
+    }
+
+ 
+
+    return result.sort((a, b) => 
+
+  async getAll(filters?: JournalFilters): Promise<TradeJournalEntry[]> {
+
+    // Try database first
+
+    if (isDbAvailable()) {
+
+      try {
+
+        const db = getDb();
+
+        let query = db
+
+          .selectFrom('journal_entries')
+
+          .selectAll()
+
+          .orderBy('created_at', 'desc')
+
+          .limit(1000);
+
+ 
+
+        if (filters?.symbol) {
+
+          query = query.where('symbol', '=', filters.symbol);
+
+        }
+
+        if (filters?.status) {
+
+          query = query.where('status', '=', filters.status);
+
+        }
+
+        if (filters?.result) {
+
+          query = query.where('outcome', '=', filters.result);
+
+        }
+
+        if (filters?.dateFrom) {
+
+          query = query.where('created_at', '>=', filters.dateFrom);
+
+        }
+
+        if (filters?.dateTo) {
+
+          query = query.where('created_at', '<=', filters.dateTo);
+
+        }
+
+ 
+
+        const rows = await query.execute();
+
+        return rows.map(row => this.rowToJournalEntry(row));
+
+      } catch (error) {
+
+        logger.error('Failed to get journal entries from database', { error });
+
+      }
+
+    }
+
+ 
+
+    // Fallback to file storage
+
+    let result = [...this.entries];
+
+ 
+
+    if (filters) {
+
+      if (filters.symbol) {
+
+        result = result.filter(e => e.symbol === filters.symbol);
+
+      }
+
+      if (filters.status) {
+
+        result = result.filter(e => e.status === filters.status);
+
+      }
+
+      if (filters.result) {
+
+        result = result.filter(e => e.result === filters.result);
+
+      }
+
+      if (filters.action) {
+
+        result = result.filter(e => e.action === filters.action);
+
+      }
+
+      if (filters.tradeType) {
+
+        result = result.filter(e => e.tradeType === filters.tradeType);
+
+      }
+
+      if (filters.dateFrom) {
+
+        const from = new Date(filters.dateFrom).getTime();
+
+        result = result.filter(e => new Date(e.createdAt).getTime() >= from);
+
+      }
+
+      if (filters.dateTo) {
+
+        const to = new Date(filters.dateTo).getTime();
+
+        result = result.filter(e => new Date(e.createdAt).getTime() <= to);
+
+      }
+
+    }
+
+ 
+
+    return result.sort((a, b) =>
+
+      new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+
+    );
+
+  }
+
+Edit
+/home/user/forex-decision-engine-/forex-decision-engine/src/storage/journalStore.ts
+  /**
+
+   * Delete an entry
+
+   */
+
+  delete(id: string): boolean {
+
+  async delete(id: string): Promise<boolean> {
+
+    // Try database first
+
+    if (isDbAvailable()) {
+
+      try {
+
+        const db = getDb();
+
+        const result = await db
+
+          .deleteFrom('journal_entries')
+
+          .where('id', '=', id)
+
+          .executeTakeFirst();
+
+ 
+
+        const deleted = (result.numDeletedRows ?? 0) > 0;
+
+        if (deleted) {
+
+          logger.info(`Deleted journal entry ${id} from database`);
+
+        }
+
+        return deleted;
+
+      } catch (error) {
+
+        logger.error('Failed to delete journal entry from database', { error });
+
+      }
+
+    }
+
+ 
+
+    // Fallback to file storage
+
+    logger.info(`Deleted journal entry ${id}`);
+
+    return true;
+
+  }
+
+Now let me verify the build compiles correctly before moving to Phase 6:
+
+Bash
+cd /home/user/forex-decision-engine-/forex-decision-engine && npm run build 2>&1 | head -80
+src/storage/journalStore.ts(657,26): error TS2339: Property 'map' does not exist on type 'Promise<TradeJournalEntry[]>'.
+src/storage/journalStore.ts(657,30): error TS7006: Parameter 'e' implicitly has an 'any' type.
+src/storage/journalStore.ts(683,19): error TS7006: Parameter 'row' implicitly has an 'any' type.
+... +9 lines
+I need to fix the async method calls in server.ts and journalStore.ts:
+
+Read
+/home/user/forex-decision-engine-/forex-decision-engine/src/server.ts
+Read 60 lines
+Edit
+/home/user/forex-decision-engine-/forex-decision-engine/src/server.ts
+app.get('/api/ready', (req, res) => {
+
+  const checks = {
+
+    apiKey: !!process.env.TWELVE_DATA_API_KEY,
+
+    instruments: ALL_INSTRUMENTS.length > 0,
+
+    signalStore: signalStore.getStats().total >= 0,
+
+    cache: cache.getStats() !== null,
+
+  };
+
+  
+
+  const allReady = Object.values(checks).every(Boolean);
+
+  
+
+app.get('/api/ready', async (req, res) => {
+
+  const stats = await signalStore.getStats();
+
+  const checks = {
+
+    apiKey: !!process.env.TWELVE_DATA_API_KEY,
+
+    instruments: ALL_INSTRUMENTS.length > 0,
+
+    signalStore: stats.total >= 0,
+
+    cache: cache.getStats() !== null,
+
+  };
+
+ 
+
+  const allReady = Object.values(checks).every(Boolean);
+
+ 
+
+    checks,
+
+  });
+
+});
+
+Edit
+/home/user/forex-decision-engine-/forex-decision-engine/src/server.ts
+app.get('/api/metrics', (req, res) => {
+
+  const cacheStats = cache.getStats();
+
+  const rateLimitState = rateLimiter.getState();
+
+  const signalStats = signalStore.getStats();
+
+  
+
+app.get('/api/metrics', async (req, res) => {
+
+  const cacheStats = cache.getStats();
+
+  const rateLimitState = rateLimiter.getState();
+
+  const signalStats = await signalStore.getStats();
+
+ 
+
+    },
+
+  });
+
+});
+
+Read
+/home/user/forex-decision-engine-/forex-decision-engine/src/server.ts
+Read 50 lines
+Read
+/home/user/forex-decision-engine-/forex-decision-engine/src/server.ts
+Read 40 lines
+Edit
+/home/user/forex-decision-engine-/forex-decision-engine/src/server.ts
+/**
+
+ * Get signal history
+
+ */
+
+app.get('/api/signals', (req, res) => {
+
+  try {
+
+    const limit = Math.min(parseInt(req.query.limit as string) || 50, 100);
+
+    const grade = req.query.grade as string;
+
+    const symbol = req.query.symbol as string;
+
+    
+
+    let signals;
+
+    if (grade) {
+
+      signals = signalStore.getByGrade(grade, limit);
+
+    } else if (symbol) {
+
+      signals = signalStore.getBySymbol(symbol.toUpperCase(), limit);
+
+    } else {
+
+      signals = signalStore.getRecent(limit);
+
+    }
+
+    
+
+    res.json({ success: true, count: signals.length, signals });
+
+  } catch (error) {
+
+    logger.error('Get signals error', { error });
+
+    res.status(500).json({ 
+
+      error: error instanceof Error ? error.message : 'Failed to get signals' 
+
+app.get('/api/signals', async (req, res) => {
+
+  try {
+
+    const limit = Math.min(parseInt(req.query.limit as string) || 50, 100);
+
+    const grade = req.query.grade as string;
+
+    const symbol = req.query.symbol as string;
+
+ 
+
+    let signals;
+
+    if (grade) {
+
+      signals = await signalStore.getByGrade(grade, limit);
+
+    } else if (symbol) {
+
+      signals = await signalStore.getBySymbol(symbol.toUpperCase(), limit);
+
+    } else {
+
+      signals = await signalStore.getRecent(limit);
+
+    }
+
+ 
+
+    res.json({ success: true, count: signals.length, signals });
+
+  } catch (error) {
+
+    logger.error('Get signals error', { error });
+
+    res.status(500).json({
+
+      error: error instanceof Error ? error.message : 'Failed to get signals'
+
+    });
+
+  }
+
+});
+
+Read
+/home/user/forex-decision-engine-/forex-decision-engine/src/server.ts
+Read 30 lines
+Edit
+/home/user/forex-decision-engine-/forex-decision-engine/src/server.ts
+/**
+
+ * Get signal statistics
+
+ */
+
+app.get('/api/signals/stats', (req, res) => {
+
+  try {
+
+    const stats = signalStore.getStats();
+
+    res.json({ success: true, stats });
+
+  } catch (error) {
+
+    logger.error('Get stats error', { error });
+
+    res.status(500).json({ 
+
+      error: error instanceof Error ? error.message : 'Failed to get stats' 
+
+app.get('/api/signals/stats', async (req, res) => {
+
+  try {
+
+    const stats = await signalStore.getStats();
+
+    res.json({ success: true, stats });
+
+  } catch (error) {
+
+    logger.error('Get stats error', { error });
+
+    res.status(500).json({
+
+      error: error instanceof Error ? error.message : 'Failed to get stats'
+
+    });
+
+  }
+
+});
+
+Edit
+/home/user/forex-decision-engine-/forex-decision-engine/src/server.ts
+/**
+
+ * Add journal entry
+
+ */
+
+app.post('/api/journal', validateBody(JournalEntrySchema), (req, res) => {
+
+  try {
+
+    const entry = req.body;
+
+    const newEntry = journalStore.add(entry);
+
+app.post('/api/journal', validateBody(JournalEntrySchema), async (req, res) => {
+
+  try {
+
+    const entry = req.body;
+
+    const newEntry = await journalStore.add(entry);
+
+  } catch (error) {
+
+    logger.error('Add journal entry error', { error });
+
+    res.status(500).json({
+
+Read
+/home/user/forex-decision-engine-/forex-decision-engine/src/server.ts
+Read 50 lines
+Edit
+/home/user/forex-decision-engine-/forex-decision-engine/src/server.ts
+/**
+
+ * Get journal entries
+
+ */
+
+app.get('/api/journal', (req, res) => {
+
+  try {
+
+    const filters: JournalFilters = {};
+
+    
+
+    if (req.query.symbol) filters.symbol = req.query.symbol as string;
+
+    if (req.query.status) filters.status = req.query.status as any;
+
+    if (req.query.result) filters.result = req.query.result as any;
+
+    if (req.query.action) filters.action = req.query.action as any;
+
+    if (req.query.tradeType) filters.tradeType = req.query.tradeType as any;
+
+    if (req.query.dateFrom) filters.dateFrom = req.query.dateFrom as string;
+
+    if (req.query.dateTo) filters.dateTo = req.query.dateTo as string;
+
+    
+
+    const entries = journalStore.getAll(Object.keys(filters).length > 0 ? filters : undefined);
+
+    res.json({ success: true, count: entries.length, entries });
+
+  } catch (error) {
+
+    logger.error('Get journal entries error', { error });
+
+    res.status(500).json({ 
+
+      error: error instanceof Error ? error.message : 'Failed to get journal entries' 
+
+app.get('/api/journal', async (req, res) => {
+
+  try {
+
+    const filters: JournalFilters = {};
+
+ 
+
+    if (req.query.symbol) filters.symbol = req.query.symbol as string;
+
+    if (req.query.status) filters.status = req.query.status as any;
+
+    if (req.query.result) filters.result = req.query.result as any;
+
+    if (req.query.action) filters.action = req.query.action as any;
+
+    if (req.query.tradeType) filters.tradeType = req.query.tradeType as any;
+
+    if (req.query.dateFrom) filters.dateFrom = req.query.dateFrom as string;
+
+    if (req.query.dateTo) filters.dateTo = req.query.dateTo as string;
+
+ 
+
+    const entries = await journalStore.getAll(Object.keys(filters).length > 0 ? filters : undefined);
+
+    res.json({ success: true, count: entries.length, entries });
+
+  } catch (error) {
+
+    logger.error('Get journal entries error', { error });
+
+    res.status(500).json({
+
+      error: error instanceof Error ? error.message : 'Failed to get journal entries'
+
+    });
+
+  }
+
+});
+
+Now let me fix the exportCSV function in journalStore.ts:
+
+Read
+/home/user/forex-decision-engine-/forex-decision-engine/src/storage/journalStore.ts
+Read 80 lines
+Edit
+/home/user/forex-decision-engine-/forex-decision-engine/src/storage/journalStore.ts
+  /**
+
+   * Export entries as CSV
+
+   */
+
+  exportCSV(filters?: JournalFilters): string {
+
+    const entries = this.getAll(filters);
+
+    
+
+    const headers = [
+
+      'Date',
+
+      'Symbol',
+
+      'Direction',
+
+      'Type',
+
+      'Grade',
+
+      'Entry',
+
+      'Exit',
+
+      'SL',
+
+      'TP',
+
+      'Lots',
+
+      'Status',
+
+      'Action',
+
+      'Result',
+
+      'PnL Pips',
+
+      'PnL $',
+
+      'R-Multiple',
+
+      'MFE (pips)',
+
+      'MAE (pips)',
+
+      'MFE Time',
+
+      'Dist to TP @ MFE',
+
+      'Notes',
+
+    ];
+
+ 
+
+    const rows = entries.map(e => [
+
+  async exportCSV(filters?: JournalFilters): Promise<string> {
+
+    const entries = await this.getAll(filters);
+
+ 
+
+    const headers = [
+
+      'Date',
+
+      'Symbol',
+
+      'Direction',
+
+      'Type',
+
+      'Grade',
+
+      'Entry',
+
+      'Exit',
+
+      'SL',
+
+      'TP',
+
+      'Lots',
+
+      'Status',
+
+      'Action',
+
+      'Result',
+
+      'PnL Pips',
+
+      'PnL $',
+
+      'R-Multiple',
+
+      'MFE (pips)',
+
+      'MAE (pips)',
+
+      'MFE Time',
+
+      'Dist to TP @ MFE',
+
+      'Notes',
+
+    ];
+
+ 
+
+    const rows = entries.map((e: TradeJournalEntry) => [
+
+Now let me run the build again to check for remaining errors:
+
+Bash
+npm run build 2>&1 | head -50
+> forex-decision-engine@1.0.0 build
+> tsc
+Build succeeded.
