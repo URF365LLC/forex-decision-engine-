@@ -1,5 +1,5 @@
 {
-  "enabled": false,
+  "enabled": true,
   "intervalMs": 300000,
   "symbols": [
     "EURUSD",
@@ -92,10 +92,6 @@
     },
     {
       "strategyId": "liquidity-sweep",
-      "intervalMs": 300000
-    },
-    {
-      "strategyId": "ema-pullback-swing",
       "intervalMs": 300000
     }
   ],
