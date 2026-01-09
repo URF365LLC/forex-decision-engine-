@@ -52,6 +52,31 @@
       "id": "1767640965410-d7z21a9us",
       "createdAt": "2026-01-05T19:22:45.410Z",
       "updatedAt": "2026-01-05T19:22:45.410Z"
+    },
+    {
+      "symbol": "AUDJPY",
+      "direction": "long",
+      "action": "taken",
+      "source": "signal",
+      "style": "intraday",
+      "grade": "A+",
+      "strategyId": "ema-pullback-intra",
+      "strategyName": "EMA Pullback",
+      "confidence": 90,
+      "reasonCodes": [
+        "EMA_PULLBACK",
+        "TREND_ALIGNED",
+        "RR_FAVORABLE"
+      ],
+      "stopLoss": 105.1652,
+      "tradeType": "pullback",
+      "entryPrice": 105.239,
+      "takeProfit": 105.331,
+      "lots": 7.94,
+      "status": "pending",
+      "id": "fe48c300-9f62-4d21-9946-8907e3804bb6",
+      "createdAt": "2026-01-09T13:58:26.720Z",
+      "updatedAt": "2026-01-09T13:58:26.720Z"
     }
   ]
 }

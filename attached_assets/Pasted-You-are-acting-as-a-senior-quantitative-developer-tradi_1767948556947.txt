@@ -1,0 +1,361 @@
+You are acting as a senior quantitative developer, trading-systems architect, and independent strategy auditor. Your responsibility is to perform a full quantitative audit of all trading strategies implemented in the system and produce an executive-grade, evidence-backed evaluation.
+
+This is not marketing documentation.
+It is a quantitative correctness review, data integrity assessment, and comparative strength/weakness analysis of the strategies as they are actually implemented in code.
+
+The output must be user-readable, but every statement must be:
+
+mathematically sound,
+
+faithful to the implementation,
+
+defensible under internal audit or regulatory scrutiny.
+
+If stated intent, UI descriptions, or expectations conflict with the code, the code is the source of truth.
+
+Primary Objectives
+
+For every trading strategy, you must:
+
+Verify that the strategy’s quantification is mathematically sound
+
+Validate that indicator math, data usage, and signal logic are correct
+
+Identify strengths, weaknesses, and failure modes
+
+Compare strategies relative to each other (where each performs best/worst)
+
+Identify whether and how each strategy can be improved without violating its core hypothesis
+
+Scope (Quant + Dev — Non-Negotiable)
+
+For EACH strategy, document and evaluate the following sections in the same order.
+
+1) Strategy Overview — Intent vs Implementation
+
+Strategy name
+
+One-paragraph description of the market hypothesis
+
+Market behavior targeted:
+
+trend
+
+mean reversion
+
+breakout
+
+volatility expansion / contraction
+
+Best-suited conditions:
+
+timeframes
+
+volatility regimes (e.g., ATR percentile ranges)
+
+liquidity assumptions
+
+Explicit failure modes:
+
+chop
+
+regime transitions
+
+news-driven volatility
+
+low-liquidity sessions
+
+Audit Requirement
+
+Explicitly state whether the implementation matches the stated hypothesis
+
+Call out divergences, shortcuts, or incomplete realizations of intent
+
+2) Inputs & Indicators — Mathematical Soundness
+
+Raw data inputs:
+
+OHLCV
+
+order book / spread
+
+derived volatility
+
+sentiment (if applicable)
+
+Indicators used, with exact formulas:
+
+e.g.
+
+EMA_t = α·Price_t + (1−α)·EMA_(t−1)
+
+ATR = EMA(TrueRange, n)
+
+RSI = 100 − (100 / (1 + RS))
+
+Default parameters:
+
+lookback windows
+
+smoothing constants
+
+Quantitative justification:
+
+why each lookback length matters
+
+sensitivity to parameter changes
+
+Code references:
+
+file paths
+
+functions
+
+parameter definitions
+
+Audit Requirement
+
+Identify mathematically weak, redundant, or misused indicators
+
+Flag indicators that do not meaningfully contribute to signal quality
+
+3) Signal Logic — Execution Accuracy
+
+Step-by-step signal generation:
+
+indicator computation
+
+normalization (if any)
+
+filters and gates
+
+final decision logic
+
+Entry conditions:
+
+exact boolean logic for long/short
+
+Exit conditions:
+
+stop-loss formulas
+
+take-profit logic
+
+trailing mechanisms
+
+time-based exits
+
+Filters:
+
+regime filters
+
+liquidity filters
+
+cooldown logic
+
+Confidence scoring:
+
+formula or heuristic
+
+numeric range
+
+how confidence alters execution or alerts
+
+Include pseudocode where it clarifies logic.
+
+Audit Requirement
+
+Identify logical flaws, overlapping conditions, or redundant gates
+
+Call out any logic that appears correct syntactically but is ineffective in practice
+
+4) Trade Management — Risk & Robustness
+
+Position sizing assumptions:
+
+fixed % risk
+
+volatility-scaled sizing
+
+Stop placement logic:
+
+ATR-based (e.g., k × ATR)
+
+structure-based
+
+Take-profit methods:
+
+fixed R:R
+
+trailing
+
+partial exits
+
+Conditions under which trades should not be taken
+
+Conservative (“beginner-safe”) presets
+
+Audit Requirement
+
+Identify mismatches between signal volatility and risk controls
+
+Highlight cases where trade management undermines the strategy’s edge
+
+5) Invalidation Rules — Failure Detection
+
+Explicit invalidation criteria:
+
+indicator breakdowns
+
+structure violations
+
+regime flips
+
+What a failed setup looks like
+
+Post-failure behavior:
+
+cooldown duration
+
+re-entry logic
+
+Edge cases:
+
+flat markets
+
+indicator saturation
+
+sudden volatility spikes
+
+partial-bar effects
+
+Audit Requirement
+
+Identify scenarios where the strategy should invalidate but does not
+
+Identify over-aggressive invalidation that reduces opportunity
+
+6) Examples, Edge Cases & Misuse
+
+For each strategy, provide at least:
+
+Textbook Valid Setup
+
+why the setup works
+
+how confidence reflects quality
+
+Failed / Misleading Setup
+
+why it fails
+
+early warning signs
+
+what the user should do
+
+Include:
+
+common user misinterpretations
+
+confusing UI signals
+
+warnings or confidence degradations users tend to ignore
+
+7) Configuration & Sensitivity Analysis
+
+User-adjustable parameters
+
+Sensitivity analysis:
+
+effect of shortening lookbacks
+
+effect of loosening thresholds
+
+Safe vs unsafe parameter ranges
+
+Conservative / Balanced / Aggressive presets
+
+Parameters that should not be changed without deep understanding
+
+Audit Requirement
+
+Identify parameter ranges that break mathematical assumptions
+
+Flag settings that produce misleading or unstable signals
+
+Cross-Strategy Comparison (Mandatory)
+
+After auditing all strategies, provide a comparative analysis:
+
+Strengths vs weaknesses of each strategy
+
+Market regimes where each strategy excels or fails
+
+Overlapping strategies (redundancy)
+
+Gaps in coverage (missing market behaviors)
+
+Relative robustness to noise, volatility, and liquidity
+
+Include a strategy ranking by:
+
+robustness
+
+clarity of edge
+
+sensitivity to parameters
+
+suitability for novice vs advanced users
+
+Deliverable Format
+1) Strategy Summary Table
+Strategy	Type	Best Conditions	Indicators	Strengths	Weaknesses	Risk
+2) Individual Strategy Audit Pages
+
+Use a fixed, repeatable template with the sections above.
+
+3) Improvement Recommendations
+
+For each strategy:
+
+What can be improved
+
+Why it helps quantitatively
+
+Risk of change
+
+Whether it preserves the original hypothesis
+
+4) Glossary
+
+Indicators
+
+Regime definitions
+
+Confidence scoring
+
+Warning messages
+
+Constraints
+
+No hand-waving
+
+No marketing language
+
+No assumptions without code evidence
+
+Treat this as:
+
+internal audit documentation
+
+user education
+
+regulatory-ready explanation
+
+Final Objective
+
+Produce a quant-grade strategy audit and comparison such that:
+
+Every strategy’s edge, limitations, and mathematical validity are explicitly understood — and any unexpected production behavior can be explained, justified, or corrected.
+
+Now perform the audit and deliver the full report.

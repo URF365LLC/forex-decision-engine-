@@ -1,0 +1,306 @@
+You are acting as a senior quantitative developer and trading-systems architect, with responsibility for producing a user-facing Strategy Guide / Explanation Menu that is mathematically correct, implementation-faithful, and production-safe.
+
+This guide must be understandable by end users, but every statement must remain fully consistent with the actual codebase, indicator math, execution logic, and system constraints. Treat this as both documentation and implicit validation of the strategies.
+
+Primary Objective
+
+For every trading strategy implemented in the system, produce a complete, quant-accurate breakdown that explains:
+
+What the strategy is designed to exploit (market hypothesis)
+
+How signals are calculated, including formulas and thresholds
+
+How trades should be executed and managed
+
+When and why the strategy becomes invalid or unreliable
+
+How to correctly interpret signals, confidence scores, and quality gates
+
+What assumptions and edge cases exist
+
+If the code contradicts expectations, the code wins.
+
+Scope (Quant + Dev, Non-Negotiable)
+
+For EACH strategy, document the following sections in the same order.
+
+1) Strategy Overview (Intent vs Reality)
+
+Strategy name
+
+One-paragraph description of the market hypothesis
+
+Market behavior targeted:
+
+trend
+
+mean reversion
+
+breakout
+
+volatility expansion/contraction
+
+Best-suited conditions:
+
+timeframes
+
+volatility regimes (e.g., ATR percentile ranges)
+
+liquidity assumptions
+
+Explicit failure modes:
+
+chop
+
+regime transitions
+
+news volatility
+
+low-volume sessions
+
+Include a note if the strategy’s actual implementation diverges from its stated intent.
+
+2) Inputs & Indicators (Exact, Not Approximate)
+
+Raw inputs
+
+OHLCV
+
+order book / spread
+
+derived volatility
+
+sentiment (if applicable)
+
+Indicators used, with formulas:
+
+e.g.
+
+EMA_t = α·Price_t + (1−α)·EMA_(t−1)
+
+ATR = EMA(TrueRange, n)
+
+RSI = 100 − (100 / (1 + RS))
+
+Default parameters and where they are defined:
+
+lookback lengths
+
+smoothing constants
+
+Why each lookback matters quantitatively
+
+File paths / function names where indicators are calculated
+
+3) Signal Logic (Execution-Accurate)
+
+Step-by-step signal flow:
+
+indicator computation
+
+normalization (if any)
+
+gating filters
+
+final signal decision
+
+Entry logic:
+
+exact boolean conditions for long/short
+
+Exit logic:
+
+stop loss formulas
+
+take profit logic
+
+trailing stops
+
+time-based exits
+
+Filters and gates:
+
+regime filters
+
+liquidity filters
+
+cooldown logic
+
+Confidence scoring
+
+formula or heuristic
+
+range (e.g. 0–1, 0–100)
+
+how confidence alters execution behavior
+
+Include pseudocode when helpful.
+
+4) Trade Management (Quant-Sound Guidance)
+
+Position sizing assumptions:
+
+fixed % risk
+
+volatility-scaled sizing
+
+Stop placement:
+
+ATR-based (e.g. k × ATR)
+
+structure-based
+
+Take profit logic:
+
+fixed R:R
+
+trailing
+
+partials
+
+When not to trade:
+
+low-liquidity
+
+overlapping signals
+
+conflicting regimes
+
+Conservative (“beginner-safe”) parameter presets
+
+Clearly separate what the system enforces vs what is user guidance.
+
+5) Invalidation Rules (Critical)
+
+Explicit invalidation criteria:
+
+indicator violations
+
+structure breaks
+
+regime flips
+
+What a failed setup looks like in practice
+
+Post-invalidation behavior:
+
+cooldown duration
+
+re-entry conditions
+
+Edge cases:
+
+indicator saturation
+
+flat markets
+
+volatility spikes mid-bar
+
+6) Examples & Edge Cases
+
+For each strategy, provide at least two scenarios:
+
+Textbook Valid Setup
+
+explain signal formation
+
+explain confidence
+
+explain execution
+
+Failed / Misleading Setup
+
+explain why it fails
+
+what warning signs appear
+
+what the user should do
+
+Include:
+
+common user misinterpretations
+
+UI elements that often confuse users
+
+how to read warnings and confidence degradation
+
+7) Configuration & Sensitivity Analysis
+
+User-configurable parameters
+
+Sensitivity notes:
+
+what happens if lookbacks are shortened
+
+what happens if thresholds are loosened
+
+Safe vs unsafe ranges
+
+Conservative / Balanced / Aggressive presets (if applicable)
+
+Parameters that should not be changed without understanding risk
+
+Code Fidelity Requirements
+
+Every strategy must reference:
+
+module name(s)
+
+function(s)
+
+parameter definitions
+
+If logic is unclear or incomplete:
+
+do not guess
+
+list the exact files/functions that must be reviewed
+
+Call out:
+
+dead code
+
+unused indicators
+
+mismatches between UI labels and actual logic
+
+Deliverable Format
+1) Strategy Menu (Summary Table)
+Strategy	Type	Best Conditions	Indicators	Risk	Typical Holding
+2) Individual Strategy Pages
+
+Use a fixed template with the sections above for every strategy.
+
+3) Glossary
+
+Indicators
+
+Regime terms
+
+Confidence scores
+
+Warnings / error messages
+
+Constraints
+
+No hand-waving.
+
+No marketing language.
+
+No assumptions without code confirmation.
+
+Treat this as documentation that could be used in:
+
+user education
+
+internal audits
+
+regulatory review
+
+Final Objective
+
+Produce a strategy guide that doubles as a quant-grade validation document, such that:
+
+If a strategy behaves unexpectedly in production, this document explains why.
+
+Now generate the strategy guide for all strategies currently implemented in the system.
