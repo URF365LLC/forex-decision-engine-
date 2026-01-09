@@ -1,10 +1,12 @@
 /**
  * Signal Store
- * In-memory signal storage (persists to JSON file)
+ * Hybrid storage: PostgreSQL when available, JSON file fallback
  */
 
 import { Decision } from '../strategies/types.js';
 import { createLogger } from '../services/logger.js';
+import { getDb, isDbAvailable } from '../db/client.js';
+import { randomUUID } from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -24,6 +26,7 @@ export type SignalResult = 'win' | 'loss' | 'breakeven' | 'skipped' | null;
 
 export interface StoredSignal {
   id: number;
+  uuid?: string;  // Database UUID (used for DB storage)
   symbol: string;
   style: string;
   direction: string;
@@ -119,12 +122,14 @@ class SignalStore {
   /**
    * Save a decision to storage
    */
-  saveSignal(decision: Decision): number {
+  async saveSignal(decision: Decision): Promise<string> {
     // V1.1: Use entry.price (new) or entryPrice (legacy fallback)
     const entryPrice = decision.entry?.price ?? decision.entryPrice ?? 0;
-    
+    const signalId = randomUUID();
+
     const signal: StoredSignal = {
       id: this.nextId++,
+      uuid: signalId,
       symbol: decision.symbol,
       style: decision.style,
       direction: decision.direction,
@@ -142,11 +147,47 @@ class SignalStore {
       result_notes: null,
     };
 
+    // Try database first
+    if (isDbAvailable()) {
+      try {
+        const db = getDb();
+        await db
+          .insertInto('signals')
+          .values({
+            id: signalId,
+            symbol: signal.symbol,
+            strategy_id: decision.strategyId,
+            strategy_name: decision.strategyName,
+            grade: signal.grade,
+            direction: signal.direction,
+            entry_price: signal.entry_low,
+            stop_loss: signal.stop_loss,
+            take_profit: signal.take_profit,
+            confidence: decision.confidence,
+            reason: signal.reason,
+            decision_data: JSON.stringify({
+              style: signal.style,
+              positionLots: signal.position_lots,
+              riskAmount: signal.risk_amount,
+              validUntil: signal.valid_until,
+            }),
+            source: 'manual',
+          })
+          .execute();
+
+        logger.debug(`Saved signal ${signalId} to database for ${decision.symbol}`);
+        return signalId;
+      } catch (error) {
+        logger.error('Failed to save signal to database, using file fallback', { error });
+      }
+    }
+
+    // Fallback to file storage
     this.signals.push(signal);
     this.persist();
 
     logger.debug(`Saved signal ${signal.id} for ${decision.symbol}`);
-    return signal.id;
+    return signalId;
   }
 
   /**
@@ -165,17 +206,80 @@ class SignalStore {
   /**
    * Get recent signals
    */
-  getRecent(limit: number = 50): StoredSignal[] {
+  async getRecent(limit: number = 50): Promise<StoredSignal[]> {
+    // Try database first
+    if (isDbAvailable()) {
+      try {
+        const db = getDb();
+        const rows = await db
+          .selectFrom('signals')
+          .selectAll()
+          .orderBy('created_at', 'desc')
+          .limit(limit)
+          .execute();
+
+        return rows.map(this.rowToStoredSignal);
+      } catch (error) {
+        logger.error('Failed to get recent signals from database', { error });
+      }
+    }
+
+    // Fallback to file storage
     return this.signals
       .slice()
       .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
       .slice(0, limit);
   }
 
+  private rowToStoredSignal(row: Record<string, unknown>): StoredSignal {
+    const decisionData = row.decision_data
+      ? (typeof row.decision_data === 'string' ? JSON.parse(row.decision_data) : row.decision_data)
+      : {};
+
+    return {
+      id: 0,  // DB uses UUID
+      uuid: String(row.id),
+      symbol: String(row.symbol),
+      style: decisionData.style || '',
+      direction: String(row.direction || ''),
+      grade: String(row.grade),
+      entry_low: row.entry_price ? Number(row.entry_price) : null,
+      entry_high: row.entry_price ? Number(row.entry_price) : null,
+      stop_loss: row.stop_loss ? Number(row.stop_loss) : null,
+      take_profit: row.take_profit ? Number(row.take_profit) : null,
+      position_lots: decisionData.positionLots ?? null,
+      risk_amount: decisionData.riskAmount ?? null,
+      reason: String(row.reason || ''),
+      created_at: String(row.created_at),
+      valid_until: decisionData.validUntil || '',
+      result: null,  // TODO: Add result tracking to signals table
+      result_notes: null,
+    };
+  }
+
   /**
    * Get signals by symbol
    */
-  getBySymbol(symbol: string, limit: number = 20): StoredSignal[] {
+  async getBySymbol(symbol: string, limit: number = 20): Promise<StoredSignal[]> {
+    // Try database first
+    if (isDbAvailable()) {
+      try {
+        const db = getDb();
+        const rows = await db
+          .selectFrom('signals')
+          .selectAll()
+          .where('symbol', '=', symbol)
+          .orderBy('created_at', 'desc')
+          .limit(limit)
+          .execute();
+
+        return rows.map(this.rowToStoredSignal);
+      } catch (error) {
+        logger.error('Failed to get signals by symbol from database', { error });
+      }
+    }
+
+    // Fallback to file storage
     return this.signals
       .filter(s => s.symbol === symbol)
       .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
@@ -185,7 +289,26 @@ class SignalStore {
   /**
    * Get signals by grade
    */
-  getByGrade(grade: string, limit: number = 50): StoredSignal[] {
+  async getByGrade(grade: string, limit: number = 50): Promise<StoredSignal[]> {
+    // Try database first
+    if (isDbAvailable()) {
+      try {
+        const db = getDb();
+        const rows = await db
+          .selectFrom('signals')
+          .selectAll()
+          .where('grade', '=', grade)
+          .orderBy('created_at', 'desc')
+          .limit(limit)
+          .execute();
+
+        return rows.map(this.rowToStoredSignal);
+      } catch (error) {
+        logger.error('Failed to get signals by grade from database', { error });
+      }
+    }
+
+    // Fallback to file storage
     return this.signals
       .filter(s => s.grade === grade)
       .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
@@ -195,12 +318,40 @@ class SignalStore {
   /**
    * Get signal statistics
    */
-  getStats(): {
+  async getStats(): Promise<{
     total: number;
     byGrade: Record<string, number>;
     byResult: Record<string, number>;
     winRate: number;
-  } {
+  }> {
+    // Try database first
+    if (isDbAvailable()) {
+      try {
+        const db = getDb();
+        const rows = await db
+          .selectFrom('signals')
+          .select(['grade'])
+          .execute();
+
+        const byGrade: Record<string, number> = {};
+        for (const row of rows) {
+          const grade = String(row.grade);
+          byGrade[grade] = (byGrade[grade] || 0) + 1;
+        }
+
+        // TODO: Add result tracking to signals table for full stats
+        return {
+          total: rows.length,
+          byGrade,
+          byResult: {},
+          winRate: 0,
+        };
+      } catch (error) {
+        logger.error('Failed to get signal stats from database', { error });
+      }
+    }
+
+    // Fallback to file storage
     const byGrade: Record<string, number> = {};
     const byResult: Record<string, number> = {};
 
@@ -226,11 +377,32 @@ class SignalStore {
   /**
    * Delete old signals
    */
-  cleanup(daysOld: number = 30): number {
-    const cutoff = Date.now() - daysOld * 24 * 60 * 60 * 1000;
+  async cleanup(daysOld: number = 30): Promise<number> {
+    const cutoff = new Date(Date.now() - daysOld * 24 * 60 * 60 * 1000);
+
+    // Try database first
+    if (isDbAvailable()) {
+      try {
+        const db = getDb();
+        const result = await db
+          .deleteFrom('signals')
+          .where('created_at', '<', cutoff.toISOString())
+          .executeTakeFirst();
+
+        const removed = Number(result.numDeletedRows ?? 0);
+        if (removed > 0) {
+          logger.info(`Cleaned up ${removed} old signals from database`);
+        }
+        return removed;
+      } catch (error) {
+        logger.error('Failed to cleanup signals in database', { error });
+      }
+    }
+
+    // Fallback to file storage
     const before = this.signals.length;
-    this.signals = this.signals.filter(s => 
-      new Date(s.created_at).getTime() > cutoff
+    this.signals = this.signals.filter(s =>
+      new Date(s.created_at).getTime() > cutoff.getTime()
     );
     const removed = before - this.signals.length;
     if (removed > 0) {

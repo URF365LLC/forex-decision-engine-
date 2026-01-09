@@ -40,6 +40,17 @@ import { grokSentimentService } from './services/grokSentimentService.js';
 import { validateBody, validateQuery } from './middleware/validate.js';
 import { requestIdMiddleware } from './middleware/requestId.js';
 import {
+  generalRateLimit,
+  scanRateLimit,
+  strictRateLimit,
+  getRateLimitStats,
+} from './middleware/apiRateLimit.js';
+import {
+  circuitManager,
+  twelveDataCircuit,
+  CircuitOpenError,
+} from './services/circuitBreaker.js';
+import {
   ScanRequestSchema,
   JournalUpdateSchema,
   SignalUpdateSchema,
@@ -114,6 +125,9 @@ app.use((req, res, next) => {
   next();
 });
 
+// General API rate limiting (100 req/min)
+app.use('/api', generalRateLimit);
+
 // ═══════════════════════════════════════════════════════════════
 // API ROUTES
 // ═══════════════════════════════════════════════════════════════
@@ -133,16 +147,17 @@ app.get('/api/health', (req, res) => {
 /**
  * Readiness probe - checks if all dependencies are ready
  */
-app.get('/api/ready', (req, res) => {
+app.get('/api/ready', async (req, res) => {
+  const stats = await signalStore.getStats();
   const checks = {
     apiKey: !!process.env.TWELVE_DATA_API_KEY,
     instruments: ALL_INSTRUMENTS.length > 0,
-    signalStore: signalStore.getStats().total >= 0,
+    signalStore: stats.total >= 0,
     cache: cache.getStats() !== null,
   };
-  
+
   const allReady = Object.values(checks).every(Boolean);
-  
+
   res.status(allReady ? 200 : 503).json({
     status: allReady ? 'ready' : 'not_ready',
     version: '2.0.0',
@@ -154,11 +169,13 @@ app.get('/api/ready', (req, res) => {
 /**
  * Metrics endpoint for monitoring
  */
-app.get('/api/metrics', (req, res) => {
+app.get('/api/metrics', async (req, res) => {
   const cacheStats = cache.getStats();
   const rateLimitState = rateLimiter.getState();
-  const signalStats = signalStore.getStats();
-  
+  const signalStats = await signalStore.getStats();
+  const circuitStats = circuitManager.getAllStats();
+  const apiRateLimitStats = getRateLimitStats();
+
   res.json({
     version: '2.0.0',
     uptime: process.uptime(),
@@ -174,6 +191,8 @@ app.get('/api/metrics', (req, res) => {
       maxTokens: rateLimitState.maxTokens,
       utilization: 1 - (rateLimitState.availableTokens / rateLimitState.maxTokens),
     },
+    apiRateLimit: apiRateLimitStats,
+    circuitBreakers: circuitStats,
     signals: {
       total: signalStats.total,
       byGrade: signalStats.byGrade,
@@ -302,7 +321,7 @@ app.post('/api/analyze', async (req, res) => {
  * Scan multiple symbols
  * V1.1: strategyId is REQUIRED, drawdown check is MANDATORY (unless paperTrading)
  */
-app.post('/api/scan', validateBody(ScanRequestSchema), async (req, res) => {
+app.post('/api/scan', scanRateLimit, validateBody(ScanRequestSchema), async (req, res) => {
   const { symbols, settings, strategyId, force } = req.body;
   
   const allStrategies = strategyRegistry.list().map(s => s.id);
@@ -428,26 +447,26 @@ app.post('/api/scan', validateBody(ScanRequestSchema), async (req, res) => {
 /**
  * Get signal history
  */
-app.get('/api/signals', (req, res) => {
+app.get('/api/signals', async (req, res) => {
   try {
     const limit = Math.min(parseInt(req.query.limit as string) || 50, 100);
     const grade = req.query.grade as string;
     const symbol = req.query.symbol as string;
-    
+
     let signals;
     if (grade) {
-      signals = signalStore.getByGrade(grade, limit);
+      signals = await signalStore.getByGrade(grade, limit);
     } else if (symbol) {
-      signals = signalStore.getBySymbol(symbol.toUpperCase(), limit);
+      signals = await signalStore.getBySymbol(symbol.toUpperCase(), limit);
     } else {
-      signals = signalStore.getRecent(limit);
+      signals = await signalStore.getRecent(limit);
     }
-    
+
     res.json({ success: true, count: signals.length, signals });
   } catch (error) {
     logger.error('Get signals error', { error });
-    res.status(500).json({ 
-      error: error instanceof Error ? error.message : 'Failed to get signals' 
+    res.status(500).json({
+      error: error instanceof Error ? error.message : 'Failed to get signals'
     });
   }
 });
@@ -483,14 +502,14 @@ app.put('/api/signals/:id', validateBody(SignalResultSchema), (req, res) => {
 /**
  * Get signal statistics
  */
-app.get('/api/signals/stats', (req, res) => {
+app.get('/api/signals/stats', async (req, res) => {
   try {
-    const stats = signalStore.getStats();
+    const stats = await signalStore.getStats();
     res.json({ success: true, stats });
   } catch (error) {
     logger.error('Get stats error', { error });
-    res.status(500).json({ 
-      error: error instanceof Error ? error.message : 'Failed to get stats' 
+    res.status(500).json({
+      error: error instanceof Error ? error.message : 'Failed to get stats'
     });
   }
 });
@@ -502,10 +521,10 @@ app.get('/api/signals/stats', (req, res) => {
 /**
  * Add journal entry
  */
-app.post('/api/journal', validateBody(JournalEntrySchema), (req, res) => {
+app.post('/api/journal', validateBody(JournalEntrySchema), async (req, res) => {
   try {
     const entry = req.body;
-    const newEntry = journalStore.add(entry);
+    const newEntry = await journalStore.add(entry);
     res.json({ success: true, entry: newEntry });
   } catch (error) {
     logger.error('Add journal entry error', { error });
@@ -518,10 +537,10 @@ app.post('/api/journal', validateBody(JournalEntrySchema), (req, res) => {
 /**
  * Get journal entries
  */
-app.get('/api/journal', (req, res) => {
+app.get('/api/journal', async (req, res) => {
   try {
     const filters: JournalFilters = {};
-    
+
     if (req.query.symbol) filters.symbol = req.query.symbol as string;
     if (req.query.status) filters.status = req.query.status as any;
     if (req.query.result) filters.result = req.query.result as any;
@@ -529,13 +548,13 @@ app.get('/api/journal', (req, res) => {
     if (req.query.tradeType) filters.tradeType = req.query.tradeType as any;
     if (req.query.dateFrom) filters.dateFrom = req.query.dateFrom as string;
     if (req.query.dateTo) filters.dateTo = req.query.dateTo as string;
-    
-    const entries = journalStore.getAll(Object.keys(filters).length > 0 ? filters : undefined);
+
+    const entries = await journalStore.getAll(Object.keys(filters).length > 0 ? filters : undefined);
     res.json({ success: true, count: entries.length, entries });
   } catch (error) {
     logger.error('Get journal entries error', { error });
-    res.status(500).json({ 
-      error: error instanceof Error ? error.message : 'Failed to get journal entries' 
+    res.status(500).json({
+      error: error instanceof Error ? error.message : 'Failed to get journal entries'
     });
   }
 });
