@@ -616,6 +616,55 @@ const App = {
   },
 
   /**
+   * Refresh current screen based on active tab
+   */
+  async refreshCurrentScreen() {
+    const refreshBtn = UI.$('refresh-btn');
+    if (refreshBtn) {
+      refreshBtn.disabled = true;
+      refreshBtn.textContent = 'Refreshing...';
+    }
+
+    try {
+      const activeScreen = document.querySelector('.nav-btn.active')?.dataset?.screen;
+      
+      switch (activeScreen) {
+        case 'dashboard':
+          await this.checkHealth();
+          await this.loadJournal();
+          await this.loadDetections();
+          UI.toast('Dashboard refreshed', 'success');
+          break;
+        case 'auto-scan':
+          await this.loadAutoScanStatus();
+          await this.loadDetections();
+          UI.toast('Auto-scan data refreshed', 'success');
+          break;
+        case 'journal':
+          await this.loadJournal();
+          UI.toast('Journal refreshed', 'success');
+          break;
+        case 'settings':
+          this.loadSettings();
+          UI.toast('Settings reloaded', 'success');
+          break;
+        default:
+          await this.loadDetections();
+          await this.checkHealth();
+          UI.toast('Data refreshed', 'success');
+      }
+    } catch (error) {
+      console.error('Refresh failed:', error);
+      UI.toast('Refresh failed', 'error');
+    } finally {
+      if (refreshBtn) {
+        refreshBtn.disabled = false;
+        refreshBtn.textContent = 'Refresh';
+      }
+    }
+  },
+
+  /**
    * Filter results
    */
   filterResults(filter) {
