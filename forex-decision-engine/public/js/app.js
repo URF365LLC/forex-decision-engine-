@@ -290,12 +290,9 @@ const App = {
         if (!item) return;
         
         const symbol = item.dataset.symbol;
-        const checkbox = item.querySelector('input[type="checkbox"]');
-        
-        if (checkbox) {
-          checkbox.checked = !checkbox.checked;
+        if (symbol) {
+          // toggleSymbol handles state update AND calls updateSymbolSelection for UI sync
           this.toggleSymbol(symbol);
-          item.classList.toggle('selected', checkbox.checked);
         }
       });
     }
@@ -421,12 +418,22 @@ const App = {
    * Update symbol selection UI
    */
   updateSymbolSelection() {
-    // Update checkboxes
+    // Update legacy symbol grid checkboxes
     UI.$$('.symbol-item').forEach(item => {
       const symbol = item.dataset.symbol;
       const isSelected = this.selectedSymbols.includes(symbol);
       item.classList.toggle('selected', isSelected);
-      item.querySelector('input').checked = isSelected;
+      const checkbox = item.querySelector('input');
+      if (checkbox) checkbox.checked = isSelected;
+    });
+
+    // Update Bloomberg-style watchlist sidebar items
+    UI.$$('.watchlist-item-compact').forEach(item => {
+      const symbol = item.dataset.symbol;
+      const isSelected = this.selectedSymbols.includes(symbol);
+      item.classList.toggle('selected', isSelected);
+      const checkbox = item.querySelector('input[type="checkbox"]');
+      if (checkbox) checkbox.checked = isSelected;
     });
 
     UI.updateSelectionCount(this.selectedSymbols.length);

@@ -256,7 +256,8 @@ export async function listDetections(filters: DetectionFilters = {}): Promise<De
       const rows = await query.execute();
       return rows.map(rowToDetection);
     } catch (error) {
-      logger.error('Failed to list detections from DB', { error });
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logger.error('Failed to list detections from DB', { error: errorMessage });
     }
   }
 

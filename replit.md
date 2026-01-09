@@ -66,6 +66,14 @@ Core API endpoints cover system health, symbol retrieval, signal analysis and sc
 
 ## Recent Changes (2026-01-09)
 
+### Enterprise Platform Audit Fixes
+1. **DB Initialization Timing Fix**: Moved `startCooldownChecker()` from module-level to inside `startServer()` after database initialization, eliminating "Failed to list detections from DB" errors.
+2. **Trade Taken Flow Enhancement**: Enhanced `/api/detections/:id/execute` endpoint to atomically mark detection as 'executed' AND create linked journal entry with full strategy attribution (strategyId, strategyName, confidence, grade).
+3. **Unified Detection Lifecycle**: Manual scans now also write to the detection store (for B+ grade signals with valid entry data), bridging manual and auto-scan data paths for consistent journaling.
+4. **Watchlist Sidebar Sync Fix**: Updated `updateSymbolSelection()` to properly sync both legacy `.symbol-item` and new `.watchlist-item-compact` elements, preventing state desync issues.
+5. **Detection Service Update**: Modified `executeDetection()` to allow execution from both 'cooling_down' and 'eligible' status.
+6. **Generic Hidden Class**: Added `.hidden` CSS class with `display: none !important` and `pointer-events: none !important` for proper element hiding.
+
 ### Bloomberg Terminal UI Implementation
 1. **Dashboard Redesign**: Converted main screen from "manual-scan" to "dashboard" with Bloomberg Terminal-inspired aesthetic
 2. **Status Ticker Bar**: Real-time display of API status, account balance, risk percentage, open P&L, win rate, signals count, and auto-scan status

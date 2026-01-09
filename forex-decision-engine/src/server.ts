@@ -403,10 +403,32 @@ app.post('/api/scan', validateBody(ScanRequestSchema), async (req, res) => {
     
     const decisions = await scanWithStrategy(sanitizedSymbols, strategyId, userSettings);
     
-    // Save trade signals
+    // Save trade signals to both signalStore AND detectionStore for unified lifecycle
     for (const decision of decisions) {
       if (decision.grade !== 'no-trade') {
+        // Save to signalStore for history
         await signalStore.saveSignal(decision as any);
+        
+        // Also save to detectionStore for unified trade lifecycle
+        // Only bridge high-quality signals (B grade or better) to detection system
+        const gradeRank: Record<string, number> = { 'A+': 5, 'A': 4, 'B+': 3, 'B': 2, 'C': 1, 'no-trade': 0 };
+        const decisionGrade = decision.grade || 'no-trade';
+        const isHighQuality = (gradeRank[decisionGrade] ?? 0) >= 2; // B grade or better
+        
+        if (isHighQuality && decision.direction && decision.entry) {
+          try {
+            const enrichedDecision = {
+              ...decision,
+              grade: decisionGrade,
+              strategyId: decision.strategyId || strategyId,
+              strategyName: decision.strategyName || strategyId,
+              timestamp: decision.timestamp || new Date().toISOString(),
+            };
+            await detectionService.processAutoScanDecision(enrichedDecision);
+          } catch (detectionError) {
+            logger.warn(`Failed to create detection for manual scan: ${decision.symbol}`, { error: detectionError });
+          }
+        }
       }
     }
 
@@ -1041,23 +1063,75 @@ app.get('/api/detections/:id', async (req, res) => {
 
 /**
  * Execute a detection (user took the trade)
+ * Atomically: marks detection as executed AND creates linked journal entry
  */
 app.post('/api/detections/:id/execute', async (req, res) => {
   try {
     const { notes } = req.body || {};
+    
+    // First get the detection to capture all data before status change
+    const detectionData = await detectionService.getDetection(req.params.id);
+    
+    if (!detectionData) {
+      return res.status(404).json({ error: 'Detection not found' });
+    }
+    
+    if (detectionData.status !== 'cooling_down' && detectionData.status !== 'eligible') {
+      return res.status(400).json({ error: `Cannot execute detection in status: ${detectionData.status}` });
+    }
+    
+    // Mark detection as executed
     const detection = await detectionService.executeDetection(req.params.id, notes);
 
     if (!detection) {
-      return res.status(404).json({ error: 'Detection not found or not eligible' });
+      return res.status(500).json({ error: 'Failed to execute detection' });
+    }
+    
+    // Extract prices with null safety - only create journal if we have valid entry price
+    const entryPrice = detection.entry?.price;
+    const stopLoss = detection.stopLoss?.price;
+    const takeProfit = detection.takeProfit?.price;
+    
+    let journalEntry = null;
+    
+    // Only create journal entry if we have essential price data
+    if (entryPrice && entryPrice > 0) {
+      try {
+        journalEntry = await journalStore.add({
+          source: 'signal',
+          symbol: detection.symbol,
+          direction: detection.direction as 'long' | 'short',
+          style: 'intraday',
+          grade: detection.grade,
+          strategyId: detection.strategyId,
+          strategyName: detection.strategyName || detection.strategyId,
+          confidence: detection.confidence,
+          tradeType: 'pullback',
+          entryPrice,
+          stopLoss: stopLoss || entryPrice * 0.99, // Fallback: 1% below entry for long
+          takeProfit: takeProfit || entryPrice * 1.02, // Fallback: 2% above entry for long
+          lots: detection.lotSize || 0.01,
+          status: 'running',
+          action: 'taken',
+          notes: notes || `Trade taken from detection ${detection.id.substring(0, 8)}`,
+        });
+        logger.info(`Journal entry created for detection ${detection.id}: ${journalEntry.id}`);
+      } catch (journalError) {
+        logger.warn('Failed to create journal entry for detection', { error: journalError, detectionId: detection.id });
+        // Continue - detection was executed successfully, journal is optional
+      }
+    } else {
+      logger.warn(`Detection ${detection.id} executed but journal skipped - no entry price`);
     }
 
     // Broadcast status change via SSE
     broadcastUpgrade({
       type: 'detection_executed',
       detection,
+      journalEntry,
     });
 
-    res.json({ success: true, detection });
+    res.json({ success: true, detection, journalEntry });
   } catch (error) {
     logger.error('Execute detection error', { error });
     res.status(500).json({
@@ -1092,9 +1166,6 @@ app.post('/api/detections/:id/dismiss', async (req, res) => {
     });
   }
 });
-
-// Start cooldown checker on server start
-detectionService.startCooldownChecker(60000);
 
 // ═══════════════════════════════════════════════════════════════
 // SERVE FRONTEND
@@ -1131,6 +1202,9 @@ async function startServer() {
     logger.error(`Database initialization failed: ${dbError}`);
     logger.warn('Continuing with fallback storage (JSON files)');
   }
+
+  // Start cooldown checker AFTER DB is initialized
+  detectionService.startCooldownChecker(60000);
 
   app.listen(PORT, () => {
     try {

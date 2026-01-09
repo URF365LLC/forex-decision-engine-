@@ -153,6 +153,7 @@ export async function invalidateOnConditionChange(
 
 /**
  * Execute a detection (user took the trade)
+ * Allows execution from both 'cooling_down' and 'eligible' status
  */
 export async function executeDetection(
   id: string,
@@ -165,7 +166,8 @@ export async function executeDetection(
     return null;
   }
 
-  if (detection.status !== 'eligible') {
+  // Allow execution from both cooling_down and eligible
+  if (!['cooling_down', 'eligible'].includes(detection.status)) {
     logger.warn(`Cannot execute detection in status: ${detection.status}`);
     return null;
   }
