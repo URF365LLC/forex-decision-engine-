@@ -162,6 +162,10 @@ export async function runMigrations(): Promise<void> {
     .addColumn('strategy_id', 'varchar(50)')
     .addColumn('strategy_name', 'varchar(100)')
     .addColumn('direction', 'varchar(10)')
+    .addColumn('style', 'varchar(20)')
+    .addColumn('grade', 'varchar(10)')
+    .addColumn('trade_type', 'varchar(30)')
+    .addColumn('action', 'varchar(20)')
     .addColumn('entry_price', 'numeric')
     .addColumn('exit_price', 'numeric')
     .addColumn('stop_loss', 'numeric')
@@ -171,12 +175,42 @@ export async function runMigrations(): Promise<void> {
     .addColumn('outcome', 'varchar(20)')
     .addColumn('pnl_pips', 'numeric')
     .addColumn('pnl_usd', 'numeric')
+    .addColumn('r_multiple', 'numeric')
+    .addColumn('mfe_price', 'numeric')
+    .addColumn('mae_price', 'numeric')
+    .addColumn('mfe_pips', 'numeric')
+    .addColumn('mae_pips', 'numeric')
+    .addColumn('distance_to_tp_at_mfe', 'numeric')
+    .addColumn('mfe_timestamp', 'timestamptz')
+    .addColumn('extras', 'jsonb')
     .addColumn('notes', 'text')
     .addColumn('opened_at', 'timestamptz')
     .addColumn('closed_at', 'timestamptz')
     .addColumn('created_at', 'timestamptz', (col) => col.defaultTo(sql`NOW()`))
     .addColumn('updated_at', 'timestamptz', (col) => col.defaultTo(sql`NOW()`))
     .execute();
+
+  // Add missing columns to journal_entries if table already exists
+  const addColumnIfNotExists = async (table: string, column: string, type: string) => {
+    try {
+      await sql`ALTER TABLE ${sql.raw(table)} ADD COLUMN IF NOT EXISTS ${sql.raw(column)} ${sql.raw(type)}`.execute(database);
+    } catch (e) {
+      // Column may already exist
+    }
+  };
+
+  await addColumnIfNotExists('journal_entries', 'style', 'varchar(20)');
+  await addColumnIfNotExists('journal_entries', 'grade', 'varchar(10)');
+  await addColumnIfNotExists('journal_entries', 'trade_type', 'varchar(30)');
+  await addColumnIfNotExists('journal_entries', 'action', 'varchar(20)');
+  await addColumnIfNotExists('journal_entries', 'r_multiple', 'numeric');
+  await addColumnIfNotExists('journal_entries', 'mfe_price', 'numeric');
+  await addColumnIfNotExists('journal_entries', 'mae_price', 'numeric');
+  await addColumnIfNotExists('journal_entries', 'mfe_pips', 'numeric');
+  await addColumnIfNotExists('journal_entries', 'mae_pips', 'numeric');
+  await addColumnIfNotExists('journal_entries', 'distance_to_tp_at_mfe', 'numeric');
+  await addColumnIfNotExists('journal_entries', 'mfe_timestamp', 'timestamptz');
+  await addColumnIfNotExists('journal_entries', 'extras', 'jsonb');
 
   // Create cooldowns table
   await database.schema

@@ -133,16 +133,17 @@ app.get('/api/health', (req, res) => {
 /**
  * Readiness probe - checks if all dependencies are ready
  */
-app.get('/api/ready', (req, res) => {
+app.get('/api/ready', async (req, res) => {
+  const stats = await signalStore.getStats();
   const checks = {
     apiKey: !!process.env.TWELVE_DATA_API_KEY,
     instruments: ALL_INSTRUMENTS.length > 0,
-    signalStore: signalStore.getStats().total >= 0,
+    signalStore: stats.total >= 0,
     cache: cache.getStats() !== null,
   };
-  
+
   const allReady = Object.values(checks).every(Boolean);
-  
+
   res.status(allReady ? 200 : 503).json({
     status: allReady ? 'ready' : 'not_ready',
     version: '2.0.0',
@@ -154,11 +155,11 @@ app.get('/api/ready', (req, res) => {
 /**
  * Metrics endpoint for monitoring
  */
-app.get('/api/metrics', (req, res) => {
+app.get('/api/metrics', async (req, res) => {
   const cacheStats = cache.getStats();
   const rateLimitState = rateLimiter.getState();
-  const signalStats = signalStore.getStats();
-  
+  const signalStats = await signalStore.getStats();
+
   res.json({
     version: '2.0.0',
     uptime: process.uptime(),
@@ -236,11 +237,11 @@ app.get('/api/universe', (req, res) => {
 /**
  * Get system status
  */
-app.get('/api/status', (req, res) => {
+app.get('/api/status', async (req, res) => {
   const cacheStats = cache.getStats();
   const rateLimitState = rateLimiter.getState();
-  const signalStats = signalStore.getStats();
-  
+  const signalStats = await signalStore.getStats();
+
   res.json({
     cache: cacheStats,
     rateLimit: rateLimitState,
@@ -397,7 +398,7 @@ app.post('/api/scan', validateBody(ScanRequestSchema), async (req, res) => {
     // Save trade signals
     for (const decision of decisions) {
       if (decision.grade !== 'no-trade') {
-        signalStore.saveSignal(decision as any);
+        await signalStore.saveSignal(decision as any);
       }
     }
 
@@ -428,26 +429,26 @@ app.post('/api/scan', validateBody(ScanRequestSchema), async (req, res) => {
 /**
  * Get signal history
  */
-app.get('/api/signals', (req, res) => {
+app.get('/api/signals', async (req, res) => {
   try {
     const limit = Math.min(parseInt(req.query.limit as string) || 50, 100);
     const grade = req.query.grade as string;
     const symbol = req.query.symbol as string;
-    
+
     let signals;
     if (grade) {
-      signals = signalStore.getByGrade(grade, limit);
+      signals = await signalStore.getByGrade(grade, limit);
     } else if (symbol) {
-      signals = signalStore.getBySymbol(symbol.toUpperCase(), limit);
+      signals = await signalStore.getBySymbol(symbol.toUpperCase(), limit);
     } else {
-      signals = signalStore.getRecent(limit);
+      signals = await signalStore.getRecent(limit);
     }
-    
+
     res.json({ success: true, count: signals.length, signals });
   } catch (error) {
     logger.error('Get signals error', { error });
-    res.status(500).json({ 
-      error: error instanceof Error ? error.message : 'Failed to get signals' 
+    res.status(500).json({
+      error: error instanceof Error ? error.message : 'Failed to get signals'
     });
   }
 });
@@ -460,22 +461,22 @@ const SignalResultSchema = z.object({
   notes: z.string().max(500).optional(),
 });
 
-app.put('/api/signals/:id', validateBody(SignalResultSchema), (req, res) => {
+app.put('/api/signals/:id', validateBody(SignalResultSchema), async (req, res) => {
   try {
-    const id = parseInt(req.params.id);
+    const id = req.params.id;
     const { result, notes } = req.body;
-    
-    const updated = signalStore.updateResult(id, result, notes);
-    
+
+    const updated = await signalStore.updateResult(id, result, notes);
+
     if (!updated) {
       return res.status(404).json({ error: 'Signal not found' });
     }
-    
+
     res.json({ success: true });
   } catch (error) {
     logger.error('Update signal error', { error });
-    res.status(500).json({ 
-      error: error instanceof Error ? error.message : 'Failed to update signal' 
+    res.status(500).json({
+      error: error instanceof Error ? error.message : 'Failed to update signal'
     });
   }
 });
@@ -483,14 +484,14 @@ app.put('/api/signals/:id', validateBody(SignalResultSchema), (req, res) => {
 /**
  * Get signal statistics
  */
-app.get('/api/signals/stats', (req, res) => {
+app.get('/api/signals/stats', async (req, res) => {
   try {
-    const stats = signalStore.getStats();
+    const stats = await signalStore.getStats();
     res.json({ success: true, stats });
   } catch (error) {
     logger.error('Get stats error', { error });
-    res.status(500).json({ 
-      error: error instanceof Error ? error.message : 'Failed to get stats' 
+    res.status(500).json({
+      error: error instanceof Error ? error.message : 'Failed to get stats'
     });
   }
 });
@@ -502,15 +503,15 @@ app.get('/api/signals/stats', (req, res) => {
 /**
  * Add journal entry
  */
-app.post('/api/journal', validateBody(JournalEntrySchema), (req, res) => {
+app.post('/api/journal', validateBody(JournalEntrySchema), async (req, res) => {
   try {
     const entry = req.body;
-    const newEntry = journalStore.add(entry);
+    const newEntry = await journalStore.add(entry);
     res.json({ success: true, entry: newEntry });
   } catch (error) {
     logger.error('Add journal entry error', { error });
-    res.status(500).json({ 
-      error: error instanceof Error ? error.message : 'Failed to add journal entry' 
+    res.status(500).json({
+      error: error instanceof Error ? error.message : 'Failed to add journal entry'
     });
   }
 });
@@ -518,10 +519,10 @@ app.post('/api/journal', validateBody(JournalEntrySchema), (req, res) => {
 /**
  * Get journal entries
  */
-app.get('/api/journal', (req, res) => {
+app.get('/api/journal', async (req, res) => {
   try {
     const filters: JournalFilters = {};
-    
+
     if (req.query.symbol) filters.symbol = req.query.symbol as string;
     if (req.query.status) filters.status = req.query.status as any;
     if (req.query.result) filters.result = req.query.result as any;
@@ -529,31 +530,31 @@ app.get('/api/journal', (req, res) => {
     if (req.query.tradeType) filters.tradeType = req.query.tradeType as any;
     if (req.query.dateFrom) filters.dateFrom = req.query.dateFrom as string;
     if (req.query.dateTo) filters.dateTo = req.query.dateTo as string;
-    
-    const entries = journalStore.getAll(Object.keys(filters).length > 0 ? filters : undefined);
+
+    const entries = await journalStore.getAll(Object.keys(filters).length > 0 ? filters : undefined);
     res.json({ success: true, count: entries.length, entries });
   } catch (error) {
     logger.error('Get journal entries error', { error });
-    res.status(500).json({ 
-      error: error instanceof Error ? error.message : 'Failed to get journal entries' 
+    res.status(500).json({
+      error: error instanceof Error ? error.message : 'Failed to get journal entries'
     });
   }
 });
 
 /**
- * Get single journal entry
+ * Get journal stats
  */
-app.get('/api/journal/stats', (req, res) => {
+app.get('/api/journal/stats', async (req, res) => {
   try {
     const dateFrom = req.query.dateFrom as string | undefined;
     const dateTo = req.query.dateTo as string | undefined;
-    
-    const stats = journalStore.getStats(dateFrom, dateTo);
+
+    const stats = await journalStore.getStats(dateFrom, dateTo);
     res.json({ success: true, stats });
   } catch (error) {
     logger.error('Get journal stats error', { error });
-    res.status(500).json({ 
-      error: error instanceof Error ? error.message : 'Failed to get journal stats' 
+    res.status(500).json({
+      error: error instanceof Error ? error.message : 'Failed to get journal stats'
     });
   }
 });
@@ -561,25 +562,25 @@ app.get('/api/journal/stats', (req, res) => {
 /**
  * Export journal as CSV
  */
-app.get('/api/journal/export', (req, res) => {
+app.get('/api/journal/export', async (req, res) => {
   try {
     const filters: JournalFilters = {};
-    
+
     if (req.query.symbol) filters.symbol = req.query.symbol as string;
     if (req.query.status) filters.status = req.query.status as any;
     if (req.query.result) filters.result = req.query.result as any;
     if (req.query.dateFrom) filters.dateFrom = req.query.dateFrom as string;
     if (req.query.dateTo) filters.dateTo = req.query.dateTo as string;
-    
-    const csv = journalStore.exportCSV(Object.keys(filters).length > 0 ? filters : undefined);
-    
+
+    const csv = await journalStore.exportCSV(Object.keys(filters).length > 0 ? filters : undefined);
+
     res.setHeader('Content-Type', 'text/csv');
     res.setHeader('Content-Disposition', `attachment; filename=trading-journal-${new Date().toISOString().split('T')[0]}.csv`);
     res.send(csv);
   } catch (error) {
     logger.error('Export journal error', { error });
-    res.status(500).json({ 
-      error: error instanceof Error ? error.message : 'Failed to export journal' 
+    res.status(500).json({
+      error: error instanceof Error ? error.message : 'Failed to export journal'
     });
   }
 });
@@ -587,19 +588,19 @@ app.get('/api/journal/export', (req, res) => {
 /**
  * Get single journal entry by ID
  */
-app.get('/api/journal/:id', (req, res) => {
+app.get('/api/journal/:id', async (req, res) => {
   try {
-    const entry = journalStore.get(req.params.id);
-    
+    const entry = await journalStore.get(req.params.id);
+
     if (!entry) {
       return res.status(404).json({ error: 'Journal entry not found' });
     }
-    
+
     res.json({ success: true, entry });
   } catch (error) {
     logger.error('Get journal entry error', { error });
-    res.status(500).json({ 
-      error: error instanceof Error ? error.message : 'Failed to get journal entry' 
+    res.status(500).json({
+      error: error instanceof Error ? error.message : 'Failed to get journal entry'
     });
   }
 });
@@ -607,16 +608,16 @@ app.get('/api/journal/:id', (req, res) => {
 /**
  * Update journal entry
  */
-app.put('/api/journal/:id', validateBody(JournalUpdateSchema), (req, res) => {
+app.put('/api/journal/:id', validateBody(JournalUpdateSchema), async (req, res) => {
   try {
     const updates = req.body;
-    
+
     if (updates.notes) {
       updates.notes = sanitizeNotes(updates.notes);
     }
-    
+
     if (updates.status === 'closed' && updates.exitPrice) {
-      const existing = journalStore.get(req.params.id);
+      const existing = await journalStore.get(req.params.id);
       if (existing) {
         const tempEntry = { ...existing, ...updates };
         const pnl = journalStore.calculatePnL(tempEntry as TradeJournalEntry);
@@ -624,25 +625,25 @@ app.put('/api/journal/:id', validateBody(JournalUpdateSchema), (req, res) => {
           updates.pnlPips = pnl.pnlPips;
           updates.pnlDollars = pnl.pnlDollars;
           updates.rMultiple = pnl.rMultiple;
-          
+
           if (pnl.pnlPips > 0) updates.result = 'win';
           else if (pnl.pnlPips < 0) updates.result = 'loss';
           else updates.result = 'breakeven';
         }
       }
     }
-    
-    const entry = journalStore.update(req.params.id, updates);
-    
+
+    const entry = await journalStore.update(req.params.id, updates);
+
     if (!entry) {
       return res.status(404).json({ error: 'Journal entry not found' });
     }
-    
+
     res.json({ success: true, entry });
   } catch (error) {
     logger.error('Update journal entry error', { error });
-    res.status(500).json({ 
-      error: error instanceof Error ? error.message : 'Failed to update journal entry' 
+    res.status(500).json({
+      error: error instanceof Error ? error.message : 'Failed to update journal entry'
     });
   }
 });
@@ -650,19 +651,19 @@ app.put('/api/journal/:id', validateBody(JournalUpdateSchema), (req, res) => {
 /**
  * Delete journal entry
  */
-app.delete('/api/journal/:id', (req, res) => {
+app.delete('/api/journal/:id', async (req, res) => {
   try {
-    const deleted = journalStore.delete(req.params.id);
-    
+    const deleted = await journalStore.delete(req.params.id);
+
     if (!deleted) {
       return res.status(404).json({ error: 'Journal entry not found' });
     }
-    
+
     res.json({ success: true });
   } catch (error) {
     logger.error('Delete journal entry error', { error });
-    res.status(500).json({ 
-      error: error instanceof Error ? error.message : 'Failed to delete journal entry' 
+    res.status(500).json({
+      error: error instanceof Error ? error.message : 'Failed to delete journal entry'
     });
   }
 });

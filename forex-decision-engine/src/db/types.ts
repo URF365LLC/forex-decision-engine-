@@ -73,15 +73,27 @@ export interface JournalEntriesTable {
   strategy_id: string | null;
   strategy_name: string | null;
   direction: string | null;
+  style: string | null;
+  grade: string | null;
+  trade_type: string | null;
+  action: string | null;
   entry_price: number | null;
   exit_price: number | null;
   stop_loss: number | null;
   take_profit: number | null;
   lot_size: number | null;
-  status: string | null;  // 'pending' | 'open' | 'closed' | 'cancelled'
-  outcome: string | null;  // 'win' | 'loss' | 'breakeven'
+  status: string | null;
+  outcome: string | null;
   pnl_pips: number | null;
   pnl_usd: number | null;
+  r_multiple: number | null;
+  mfe_price: number | null;
+  mae_price: number | null;
+  mfe_pips: number | null;
+  mae_pips: number | null;
+  distance_to_tp_at_mfe: number | null;
+  mfe_timestamp: string | null;
+  extras: unknown;
   notes: string | null;
   opened_at: string | null;
   closed_at: string | null;

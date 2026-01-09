@@ -225,26 +225,51 @@ class JournalStore {
     }
   }
 
+  private parseExtras(rawExtras: unknown): Record<string, unknown> {
+    if (!rawExtras) return {};
+    if (typeof rawExtras === 'string') {
+      try { return JSON.parse(rawExtras); } catch { return {}; }
+    }
+    if (typeof rawExtras === 'object') return rawExtras as Record<string, unknown>;
+    return {};
+  }
+
   private rowToJournalEntry(row: Record<string, unknown>): TradeJournalEntry {
+    const extras = this.parseExtras(row.extras);
+
     return {
       id: String(row.id),
-      source: 'manual' as TradeSource,
+      source: (extras.source as TradeSource) || 'manual',
+      signalId: typeof extras.signalId === 'number' ? extras.signalId : undefined,
       symbol: String(row.symbol),
       direction: (row.direction as TradeDirection) || 'long',
-      style: 'intraday' as TradeStyle,
+      style: (row.style as TradeStyle) || 'intraday',
+      grade: row.grade ? String(row.grade) : undefined,
       strategyId: row.strategy_id ? String(row.strategy_id) : undefined,
       strategyName: row.strategy_name ? String(row.strategy_name) : undefined,
-      tradeType: 'other' as TradeType,
+      confidence: extras.confidence as number | undefined,
+      reasonCodes: Array.isArray(extras.reasonCodes) ? extras.reasonCodes : undefined,
+      tradeType: (row.trade_type as TradeType) || 'other',
+      tradeTypeNote: extras.tradeTypeNote as string | undefined,
+      entryZoneLow: extras.entryZoneLow as number | undefined,
+      entryZoneHigh: extras.entryZoneHigh as number | undefined,
       entryPrice: Number(row.entry_price || 0),
       stopLoss: Number(row.stop_loss || 0),
       takeProfit: Number(row.take_profit || 0),
       lots: Number(row.lot_size || 0),
+      mfePrice: row.mfe_price ? Number(row.mfe_price) : undefined,
+      maePrice: row.mae_price ? Number(row.mae_price) : undefined,
+      mfePips: row.mfe_pips ? Number(row.mfe_pips) : undefined,
+      maePips: row.mae_pips ? Number(row.mae_pips) : undefined,
+      mfeTimestamp: row.mfe_timestamp ? String(row.mfe_timestamp) : undefined,
+      distanceToTpAtMfe: row.distance_to_tp_at_mfe ? Number(row.distance_to_tp_at_mfe) : undefined,
       status: (row.status as TradeStatus) || 'pending',
-      action: 'taken' as TradeAction,
+      action: (row.action as TradeAction) || 'taken',
       exitPrice: row.exit_price ? Number(row.exit_price) : undefined,
       result: row.outcome as TradeResult | undefined,
       pnlPips: row.pnl_pips ? Number(row.pnl_pips) : undefined,
       pnlDollars: row.pnl_usd ? Number(row.pnl_usd) : undefined,
+      rMultiple: row.r_multiple ? Number(row.r_multiple) : undefined,
       notes: row.notes ? String(row.notes) : undefined,
       createdAt: String(row.created_at),
       updatedAt: String(row.updated_at),
@@ -270,6 +295,16 @@ class JournalStore {
     if (isDbAvailable()) {
       try {
         const db = getDb();
+        const extras = {
+          source: normalized.source,
+          signalId: normalized.signalId,
+          confidence: normalized.confidence,
+          reasonCodes: normalized.reasonCodes,
+          tradeTypeNote: normalized.tradeTypeNote,
+          entryZoneLow: normalized.entryZoneLow,
+          entryZoneHigh: normalized.entryZoneHigh,
+        };
+
         await db
           .insertInto('journal_entries')
           .values({
@@ -278,6 +313,10 @@ class JournalStore {
             strategy_id: normalized.strategyId ?? null,
             strategy_name: normalized.strategyName ?? null,
             direction: normalized.direction,
+            style: normalized.style,
+            grade: normalized.grade ?? null,
+            trade_type: normalized.tradeType,
+            action: normalized.action,
             entry_price: normalized.entryPrice,
             exit_price: normalized.exitPrice ?? null,
             stop_loss: normalized.stopLoss,
@@ -287,6 +326,14 @@ class JournalStore {
             outcome: normalized.result ?? null,
             pnl_pips: normalized.pnlPips ?? null,
             pnl_usd: normalized.pnlDollars ?? null,
+            r_multiple: normalized.rMultiple ?? null,
+            mfe_price: normalized.mfePrice ?? null,
+            mae_price: normalized.maePrice ?? null,
+            mfe_pips: normalized.mfePips ?? null,
+            mae_pips: normalized.maePips ?? null,
+            distance_to_tp_at_mfe: normalized.distanceToTpAtMfe ?? null,
+            mfe_timestamp: normalized.mfeTimestamp ?? null,
+            extras: JSON.stringify(extras),
             notes: normalized.notes ?? null,
             opened_at: normalized.createdAt,
             closed_at: normalized.closedAt ?? null,
@@ -322,8 +369,15 @@ class JournalStore {
         if (updates.result) dbUpdates.outcome = updates.result;
         if (updates.pnlPips !== undefined) dbUpdates.pnl_pips = updates.pnlPips;
         if (updates.pnlDollars !== undefined) dbUpdates.pnl_usd = updates.pnlDollars;
+        if (updates.rMultiple !== undefined) dbUpdates.r_multiple = updates.rMultiple;
         if (updates.notes !== undefined) dbUpdates.notes = updates.notes;
         if (updates.closedAt) dbUpdates.closed_at = updates.closedAt;
+        if (updates.mfePrice !== undefined) dbUpdates.mfe_price = updates.mfePrice;
+        if (updates.maePrice !== undefined) dbUpdates.mae_price = updates.maePrice;
+        if (updates.mfePips !== undefined) dbUpdates.mfe_pips = updates.mfePips;
+        if (updates.maePips !== undefined) dbUpdates.mae_pips = updates.maePips;
+        if (updates.mfeTimestamp !== undefined) dbUpdates.mfe_timestamp = updates.mfeTimestamp;
+        if (updates.distanceToTpAtMfe !== undefined) dbUpdates.distance_to_tp_at_mfe = updates.distanceToTpAtMfe;
 
         await db
           .updateTable('journal_entries')

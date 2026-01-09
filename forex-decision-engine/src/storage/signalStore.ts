@@ -140,8 +140,8 @@ class SignalStore {
       reason: String(row.reason || ''),
       created_at: String(row.created_at),
       valid_until: decisionData.validUntil || '',
-      result: null,
-      result_notes: null,
+      result: decisionData.result ?? null,
+      result_notes: decisionData.resultNotes ?? null,
     };
   }
 
@@ -217,23 +217,45 @@ class SignalStore {
    * Update result of a signal
    */
   async updateResult(id: number | string, result: SignalResult, notes?: string): Promise<boolean> {
-    if (isDbAvailable() && typeof id === 'string') {
+    const idStr = String(id);
+    const isUuid = idStr.includes('-');
+
+    if (isDbAvailable() && isUuid) {
       try {
         const db = getDb();
-        await db
-          .updateTable('signals')
-          .set({
-            decision_data: JSON.stringify({ result, resultNotes: notes }),
-          })
-          .where('id', '=', id)
-          .execute();
-        return true;
+        const existingRow = await db
+          .selectFrom('signals')
+          .select(['id', 'decision_data'])
+          .where('id', '=', idStr)
+          .executeTakeFirst();
+
+        if (existingRow) {
+          const existingData = existingRow.decision_data
+            ? (typeof existingRow.decision_data === 'string' ? JSON.parse(existingRow.decision_data) : existingRow.decision_data)
+            : {};
+
+          await db
+            .updateTable('signals')
+            .set({
+              decision_data: JSON.stringify({ ...existingData, result, resultNotes: notes }),
+            })
+            .where('id', '=', idStr)
+            .execute();
+          return true;
+        }
       } catch (error) {
         logger.error('Failed to update signal result in database', { error });
       }
     }
 
-    const signal = this.signals.find(s => s.id === id || s.uuid === id);
+    const signal = this.signals.find(s => {
+      if (isUuid) {
+        return s.uuid === idStr;
+      }
+      const numericId = typeof id === 'number' ? id : parseInt(id, 10);
+      return !isNaN(numericId) && s.id === numericId;
+    });
+
     if (!signal) return false;
 
     signal.result = result;
