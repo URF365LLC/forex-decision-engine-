@@ -1,11 +1,12 @@
 /**
  * Journal Store
- * Trading journal for tracking decisions and outcomes
- * Persists to JSON file with atomic writes
+ * Hybrid storage: PostgreSQL when available, JSON file fallback
  */
 
 import { createLogger } from '../services/logger.js';
 import { getInstrumentSpec } from '../config/e8InstrumentSpecs.js';
+import { getDb, isDbAvailable } from '../db/client.js';
+import { randomUUID } from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -41,7 +42,6 @@ export interface TradeJournalEntry {
   style: TradeStyle;
   grade?: string;
   
-  // Strategy metadata (Phase 3)
   strategyId?: string;
   strategyName?: string;
   confidence?: number;
@@ -57,7 +57,6 @@ export interface TradeJournalEntry {
   takeProfit: number;
   lots: number;
   
-  // Trade performance metrics
   mfePrice?: number;
   maePrice?: number;
   mfePips?: number;
@@ -226,23 +225,81 @@ class JournalStore {
     }
   }
 
-  private generateId(): string {
-    return `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
+  private rowToJournalEntry(row: Record<string, unknown>): TradeJournalEntry {
+    return {
+      id: String(row.id),
+      source: 'manual' as TradeSource,
+      symbol: String(row.symbol),
+      direction: (row.direction as TradeDirection) || 'long',
+      style: 'intraday' as TradeStyle,
+      strategyId: row.strategy_id ? String(row.strategy_id) : undefined,
+      strategyName: row.strategy_name ? String(row.strategy_name) : undefined,
+      tradeType: 'other' as TradeType,
+      entryPrice: Number(row.entry_price || 0),
+      stopLoss: Number(row.stop_loss || 0),
+      takeProfit: Number(row.take_profit || 0),
+      lots: Number(row.lot_size || 0),
+      status: (row.status as TradeStatus) || 'pending',
+      action: 'taken' as TradeAction,
+      exitPrice: row.exit_price ? Number(row.exit_price) : undefined,
+      result: row.outcome as TradeResult | undefined,
+      pnlPips: row.pnl_pips ? Number(row.pnl_pips) : undefined,
+      pnlDollars: row.pnl_usd ? Number(row.pnl_usd) : undefined,
+      notes: row.notes ? String(row.notes) : undefined,
+      createdAt: String(row.created_at),
+      updatedAt: String(row.updated_at),
+      closedAt: row.closed_at ? String(row.closed_at) : undefined,
+    };
   }
 
   /**
    * Add a new journal entry
    */
-  add(entry: Omit<TradeJournalEntry, 'id' | 'createdAt' | 'updatedAt'>): TradeJournalEntry {
+  async add(entry: Omit<TradeJournalEntry, 'id' | 'createdAt' | 'updatedAt'>): Promise<TradeJournalEntry> {
     const now = new Date().toISOString();
+    const entryId = randomUUID();
     const newEntry: TradeJournalEntry = {
       ...entry,
-      id: this.generateId(),
+      id: entryId,
       createdAt: now,
       updatedAt: now,
     };
 
     const normalized = this.recalcExcursions(newEntry);
+
+    if (isDbAvailable()) {
+      try {
+        const db = getDb();
+        await db
+          .insertInto('journal_entries')
+          .values({
+            id: entryId,
+            symbol: normalized.symbol,
+            strategy_id: normalized.strategyId ?? null,
+            strategy_name: normalized.strategyName ?? null,
+            direction: normalized.direction,
+            entry_price: normalized.entryPrice,
+            exit_price: normalized.exitPrice ?? null,
+            stop_loss: normalized.stopLoss,
+            take_profit: normalized.takeProfit,
+            lot_size: normalized.lots,
+            status: normalized.status,
+            outcome: normalized.result ?? null,
+            pnl_pips: normalized.pnlPips ?? null,
+            pnl_usd: normalized.pnlDollars ?? null,
+            notes: normalized.notes ?? null,
+            opened_at: normalized.createdAt,
+            closed_at: normalized.closedAt ?? null,
+          })
+          .execute();
+
+        logger.info(`Added journal entry ${entryId} to database for ${entry.symbol} (${entry.action})`);
+        return normalized;
+      } catch (error) {
+        logger.error('Failed to add journal entry to database, using file fallback', { error });
+      }
+    }
+
     this.entries.push(normalized);
     this.persist();
 
@@ -253,7 +310,34 @@ class JournalStore {
   /**
    * Update an existing entry
    */
-  update(id: string, updates: Partial<TradeJournalEntry>): TradeJournalEntry | null {
+  async update(id: string, updates: Partial<TradeJournalEntry>): Promise<TradeJournalEntry | null> {
+    if (isDbAvailable()) {
+      try {
+        const db = getDb();
+        const now = new Date().toISOString();
+
+        const dbUpdates: Record<string, unknown> = { updated_at: now };
+        if (updates.exitPrice !== undefined) dbUpdates.exit_price = updates.exitPrice;
+        if (updates.status) dbUpdates.status = updates.status;
+        if (updates.result) dbUpdates.outcome = updates.result;
+        if (updates.pnlPips !== undefined) dbUpdates.pnl_pips = updates.pnlPips;
+        if (updates.pnlDollars !== undefined) dbUpdates.pnl_usd = updates.pnlDollars;
+        if (updates.notes !== undefined) dbUpdates.notes = updates.notes;
+        if (updates.closedAt) dbUpdates.closed_at = updates.closedAt;
+
+        await db
+          .updateTable('journal_entries')
+          .set(dbUpdates)
+          .where('id', '=', id)
+          .execute();
+
+        logger.info(`Updated journal entry ${id} in database`);
+        return this.get(id);
+      } catch (error) {
+        logger.error('Failed to update journal entry in database', { error });
+      }
+    }
+
     const index = this.entries.findIndex(e => e.id === id);
     if (index === -1) return null;
 
@@ -270,14 +354,63 @@ class JournalStore {
   /**
    * Get single entry by ID
    */
-  get(id: string): TradeJournalEntry | null {
+  async get(id: string): Promise<TradeJournalEntry | null> {
+    if (isDbAvailable()) {
+      try {
+        const db = getDb();
+        const row = await db
+          .selectFrom('journal_entries')
+          .selectAll()
+          .where('id', '=', id)
+          .executeTakeFirst();
+
+        if (row) {
+          return this.rowToJournalEntry(row as Record<string, unknown>);
+        }
+      } catch (error) {
+        logger.error('Failed to get journal entry from database', { error });
+      }
+    }
+
     return this.entries.find(e => e.id === id) || null;
   }
 
   /**
    * Get all entries with optional filters
    */
-  getAll(filters?: JournalFilters): TradeJournalEntry[] {
+  async getAll(filters?: JournalFilters): Promise<TradeJournalEntry[]> {
+    if (isDbAvailable()) {
+      try {
+        const db = getDb();
+        let query = db
+          .selectFrom('journal_entries')
+          .selectAll()
+          .orderBy('created_at', 'desc')
+          .limit(1000);
+
+        if (filters?.symbol) {
+          query = query.where('symbol', '=', filters.symbol);
+        }
+        if (filters?.status) {
+          query = query.where('status', '=', filters.status);
+        }
+        if (filters?.result) {
+          query = query.where('outcome', '=', filters.result);
+        }
+        if (filters?.dateFrom) {
+          query = query.where('created_at', '>=', filters.dateFrom);
+        }
+        if (filters?.dateTo) {
+          query = query.where('created_at', '<=', filters.dateTo);
+        }
+
+        const rows = await query.execute();
+        return rows.map(row => this.rowToJournalEntry(row as Record<string, unknown>));
+      } catch (error) {
+        logger.error('Failed to get journal entries from database', { error });
+      }
+    }
+
     let result = [...this.entries];
 
     if (filters) {
@@ -306,7 +439,7 @@ class JournalStore {
       }
     }
 
-    return result.sort((a, b) => 
+    return result.sort((a, b) =>
       new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     );
   }
@@ -314,7 +447,25 @@ class JournalStore {
   /**
    * Delete an entry
    */
-  delete(id: string): boolean {
+  async delete(id: string): Promise<boolean> {
+    if (isDbAvailable()) {
+      try {
+        const db = getDb();
+        const result = await db
+          .deleteFrom('journal_entries')
+          .where('id', '=', id)
+          .executeTakeFirst();
+
+        const deleted = (result.numDeletedRows ?? 0) > 0;
+        if (deleted) {
+          logger.info(`Deleted journal entry ${id} from database`);
+        }
+        return deleted;
+      } catch (error) {
+        logger.error('Failed to delete journal entry from database', { error });
+      }
+    }
+
     const index = this.entries.findIndex(e => e.id === id);
     if (index === -1) return false;
 
@@ -327,13 +478,6 @@ class JournalStore {
 
   /**
    * Calculate P&L for an entry
-   *
-   * Forex: P&L = pips × pipValuePerLot × lots
-   *   - Standard lot = 100,000 units, pip value = $10 (or varies by quote currency)
-   * Crypto: P&L = price_move × lots × contractSize
-   *   - Must use contractSize from E8 specs (e.g., BTCUSD = 2, ADAUSD = 100000)
-   * Metals/Indices/Commodities: P&L = pips × pipValue × lots
-   *   - Use pipValue from E8 specs
    */
   calculatePnL(entry: TradeJournalEntry): { pnlPips: number; rMultiple: number; pnlDollars: number } | null {
     if (!entry.exitPrice || entry.status !== 'closed') return null;
@@ -369,8 +513,8 @@ class JournalStore {
   /**
    * Get aggregated statistics
    */
-  getStats(dateFrom?: string, dateTo?: string): JournalStats {
-    let entries = this.entries;
+  async getStats(dateFrom?: string, dateTo?: string): Promise<JournalStats> {
+    let entries = await this.getAll();
 
     if (dateFrom) {
       const from = new Date(dateFrom).getTime();
@@ -459,8 +603,8 @@ class JournalStore {
   /**
    * Export entries as CSV
    */
-  exportCSV(filters?: JournalFilters): string {
-    const entries = this.getAll(filters);
+  async exportCSV(filters?: JournalFilters): Promise<string> {
+    const entries = await this.getAll(filters);
     
     const headers = [
       'Date',
@@ -486,7 +630,7 @@ class JournalStore {
       'Notes',
     ];
 
-    const rows = entries.map(e => [
+    const rows = entries.map((e: TradeJournalEntry) => [
       new Date(e.createdAt).toISOString().split('T')[0],
       e.symbol,
       e.direction.toUpperCase(),
