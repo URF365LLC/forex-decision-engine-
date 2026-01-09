@@ -1,0 +1,121 @@
+Hi Claude,
+
+I need you to perform a comprehensive, enterprise-grade systems audit of this codebase end-to-end, covering both the frontend and backend. Please treat this as a production readiness + correctness + maintainability review performed at a senior/staff engineer level.
+
+Scope and priorities
+
+End-to-end architecture and data flow
+
+Map the system at a high level (major modules/services, boundaries, responsibilities).
+
+Trace critical flows end-to-end (UI actions → API calls → services/business logic → storage/cache → response → UI state).
+
+Identify fragile links, implicit coupling, duplicated logic, or unclear ownership.
+
+Frontend audit (UX behavior + architecture)
+
+Validate UI state management, component boundaries, and interaction consistency.
+
+Flag stale/unresponsive UI behavior: missing loading/error/empty states, unclear action feedback, race conditions, event handling issues.
+
+Confirm UI actions reflect backend state correctly (no desync or “ghost” state).
+
+Identify UI bugs/regressions and propose fixes with specific file/function references.
+
+Backend audit (services + correctness + resilience)
+
+Review service layering, domain logic placement, error handling, and API contract consistency.
+
+Identify silent failures (swallowed exceptions, unhandled promises, early returns, default fallbacks masking errors).
+
+Validate performance risks: N+1 calls, inefficient loops, blocking I/O, unnecessary recomputation, concurrency/race conditions.
+
+Confirm configuration hygiene (env vars, feature flags, secrets, runtime modes).
+
+Integrations, caching, and persistence
+
+Audit external integrations and their failure handling (timeouts, retries, rate limits, fallbacks).
+
+Evaluate caching behavior (keying, TTL, invalidation, cross-feature contamination, Auto vs Manual parity if applicable).
+
+Audit persistence/storage usage (schema quality, indexing, logging/auditing, data integrity).
+
+Strategy/engine logic (if present)
+
+Verify strategies are correctly wired into the engine and invoked in the live path.
+
+Validate indicator calculations, bar alignment, lookbacks, and gating logic (regime/liquidity/confidence if applicable).
+
+Identify opportunities to improve correctness and reduce complexity without overengineering.
+
+SPECIAL NOTE: Commit / Change Review (Required)
+Please review the most recent changes and commits that were pushed and provide a detailed assessment:
+
+What changed and why it matters (by commit).
+
+Whether changes were applied consistently across the system.
+
+Any regressions, incomplete refactors, deleted/unused code, or mismatched contracts.
+
+Anything that should be updated, reverted, refactored, or enhanced as a result.
+
+Required output format (do not skip sections)
+A) Executive Summary (1 page)
+
+Overall system health and production readiness
+
+Top risks and blockers (P0/P1/P2)
+
+Quick wins vs structural improvements
+
+B) System Map
+
+Component/module overview and key entry points
+
+Primary data flows (text diagram is fine)
+
+C) Findings with Evidence
+For each finding:
+
+Symptom
+
+Root cause
+
+Severity (P0/P1/P2)
+
+Proof: file paths + line numbers (or function names)
+
+Recommended fix (specific)
+
+D) Commit/Change Analysis
+
+Commit-by-commit summary
+
+Risk assessment per commit
+
+Required follow-up tasks
+
+E) Fix Plan (Phased)
+
+Phase 0: immediate unblockers (build/runtime)
+
+Phase 1: correctness + parity
+
+Phase 2: hardening + observability
+For each task:
+
+Files/modules to change
+
+Tests to add/update (unit/integration/e2e)
+
+Acceptance criteria (how we know it’s fixed)
+
+Constraints
+
+Do not guess. If something is unclear, state what evidence is missing and how to verify it.
+
+Tie claims to concrete code references.
+
+Prefer minimal safe changes, but don’t preserve broken architecture.
+
+Thank you—please proceed with the full audit and the detailed review of the latest commits/changes.
