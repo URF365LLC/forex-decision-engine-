@@ -103,7 +103,14 @@ function isScanInProgress(strategyId: string): boolean {
 app.use(cors());
 app.use(express.json());
 app.use(requestIdMiddleware);
-app.use(express.static(path.join(__dirname, '../public')));
+// Disable caching for static files in development
+app.use(express.static(path.join(__dirname, '../public'), {
+  setHeaders: (res) => {
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+  }
+}));
 
 // Request logging with correlation ID
 app.use((req, res, next) => {

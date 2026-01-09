@@ -381,10 +381,13 @@ const UI = {
   },
 
   /**
-   * Render decision cards
+   * Render decision cards (legacy card-based view)
    */
   renderResults(decisions, filter = 'all') {
     const container = this.$('results-container');
+    
+    // Skip if container doesn't exist (new dashboard uses table view)
+    if (!container) return;
     
     if (!decisions || decisions.length === 0) {
       container.innerHTML = `
@@ -397,7 +400,7 @@ const UI = {
           </div>
           <h3 class="empty-title">No scan results yet</h3>
           <p class="empty-hint">Select symbols from your watchlist and run a scan to find trading opportunities</p>
-          <button class="btn btn-primary" id="go-to-watchlist-btn" onclick="App.switchScreen('manual-scan')">
+          <button class="btn btn-primary" id="go-to-watchlist-btn" onclick="App.switchScreen('dashboard')">
             Open Watchlist
           </button>
         </div>
@@ -445,6 +448,7 @@ const UI = {
    */
   renderSymbolGrid(containerId, symbols, selectedSymbols = [], metadata = {}) {
     const container = this.$(containerId);
+    if (!container) return;
     container.innerHTML = symbols.map(symbol => {
       const isSelected = selectedSymbols.includes(symbol);
       const displayName = metadata[symbol]?.displayName || symbol;
@@ -458,11 +462,183 @@ const UI = {
   },
 
   /**
+   * Render watchlist sidebar (Bloomberg style)
+   */
+  renderWatchlistSidebar(containerId, symbols, selectedSymbols = [], signals = {}) {
+    const container = this.$(containerId);
+    if (!container) return;
+    
+    container.innerHTML = symbols.map(symbol => {
+      const isSelected = selectedSymbols.includes(symbol);
+      const signal = signals[symbol];
+      const signalClass = signal ? (signal.direction === 'long' ? 'long' : 'short') : 'none';
+      
+      return `
+        <div class="watchlist-item-compact ${isSelected ? 'selected' : ''}" data-symbol="${symbol}">
+          <input type="checkbox" ${isSelected ? 'checked' : ''}>
+          <span class="symbol-name">${symbol}</span>
+          ${signal ? `<span class="signal-indicator" style="background:var(--${signalClass === 'long' ? 'positive' : 'negative'})"></span>` : ''}
+        </div>
+      `;
+    }).join('');
+  },
+
+  /**
+   * Render signals as Bloomberg-style data table
+   */
+  renderSignalsTable(decisions = [], filter = 'all') {
+    const tbody = this.$('signals-tbody');
+    if (!tbody) return;
+
+    let filtered = decisions;
+    switch (filter) {
+      case 'trades':
+        filtered = decisions.filter(d => d.grade !== 'no-trade');
+        break;
+      case 'a+':
+        filtered = decisions.filter(d => d.grade === 'A+');
+        break;
+    }
+
+    if (filtered.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="11" class="empty-cell">No signals found. Select instruments and scan.</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = filtered.map(d => {
+      const dirClass = d.direction === 'long' ? 'long' : 'short';
+      const gradeClass = d.grade.replace('+', '-plus').toLowerCase();
+      const tp1 = d.tieredExits?.tp1?.formatted || d.takeProfit?.formatted || '-';
+      const tp2 = d.tieredExits?.tp2?.formatted || '-';
+      const lots = d.positionSize?.recommendedLots || d.lotSize || '-';
+      const rr = d.riskReward ? d.riskReward.toFixed(1) : '-';
+      const stratName = d.strategyName || d.strategyId || '-';
+      const key = `${d.strategyId || 'default'}:${d.symbol}`;
+
+      return `
+        <tr data-key="${key}">
+          <td class="col-symbol">${d.symbol}</td>
+          <td class="col-direction ${dirClass}">${d.direction?.toUpperCase() || '-'}</td>
+          <td class="col-grade"><span class="grade-badge ${gradeClass}">${d.grade}</span></td>
+          <td class="col-price">${d.entry?.formatted || '-'}</td>
+          <td class="col-price">${d.stopLoss?.formatted || '-'}</td>
+          <td class="col-price">${tp1}</td>
+          <td class="col-price">${tp2}</td>
+          <td class="col-numeric">${lots}</td>
+          <td class="col-numeric">${rr}</td>
+          <td>${stratName}</td>
+          <td class="col-actions">
+            ${d.grade !== 'no-trade' ? `
+              <button class="table-btn primary" onclick="App.takeSignalTrade('${key}')">Take</button>
+              <button class="table-btn" onclick="App.copySignal('${key}')">Copy</button>
+            ` : ''}
+          </td>
+        </tr>
+      `;
+    }).join('');
+
+    // Update signal count
+    const signalCount = this.$('ticker-signals');
+    if (signalCount) signalCount.textContent = filtered.filter(d => d.grade !== 'no-trade').length;
+    
+    const metricSignals = this.$('metric-signals');
+    if (metricSignals) metricSignals.textContent = filtered.filter(d => d.grade !== 'no-trade').length;
+  },
+
+  /**
+   * Render journal entries as Bloomberg-style data table
+   */
+  renderJournalTable(entries = []) {
+    const tbody = this.$('journal-tbody');
+    if (!tbody) return;
+
+    if (entries.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="13" class="empty-cell">No trades logged yet</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = entries.map(e => {
+      const dirClass = e.direction === 'long' ? 'long' : 'short';
+      const date = new Date(e.entryDate || e.createdAt).toLocaleDateString();
+      const pnlClass = e.pnlDollars > 0 ? 'pnl-positive' : e.pnlDollars < 0 ? 'pnl-negative' : 'pnl-zero';
+      const pnlDisplay = e.pnlDollars != null ? `$${e.pnlDollars.toFixed(2)}` : '-';
+      const rDisplay = e.rMultiple != null ? `${e.rMultiple.toFixed(2)}R` : '-';
+      const statusClass = e.result === 'win' ? 'win' : e.result === 'loss' ? 'loss' : e.status;
+
+      return `
+        <tr data-id="${e.id}">
+          <td>${date}</td>
+          <td class="col-symbol">${e.symbol}</td>
+          <td class="col-direction ${dirClass}">${e.direction?.toUpperCase() || '-'}</td>
+          <td><span class="grade-badge ${(e.grade || '').replace('+', '-plus').toLowerCase()}">${e.grade || '-'}</span></td>
+          <td class="col-price">${e.entryPrice?.toFixed(5) || '-'}</td>
+          <td class="col-price">${e.stopLoss?.toFixed(5) || '-'}</td>
+          <td class="col-price">${e.takeProfit?.toFixed(5) || '-'}</td>
+          <td class="col-price">${e.exitPrice?.toFixed(5) || '-'}</td>
+          <td class="col-numeric">${e.lotSize || '-'}</td>
+          <td class="col-pnl ${pnlClass}">${pnlDisplay}</td>
+          <td class="col-numeric">${rDisplay}</td>
+          <td><span class="status-badge-inline ${statusClass}">${e.status}</span></td>
+          <td class="col-actions">
+            ${e.status === 'running' ? `<button class="table-btn" onclick="App.openCloseTrade('${e.id}')">Close</button>` : ''}
+            ${e.status === 'pending' ? `<button class="table-btn" onclick="App.fillPendingTrade('${e.id}')">Fill</button>` : ''}
+            <button class="table-btn danger" onclick="App.cancelTrade('${e.id}')">Del</button>
+          </td>
+        </tr>
+      `;
+    }).join('');
+  },
+
+  /**
+   * Render running trades in dashboard bottom panel
+   */
+  renderRunningTrades(entries = []) {
+    const tbody = this.$('running-trades-tbody');
+    if (!tbody) return;
+
+    const running = entries.filter(e => e.status === 'running' || e.status === 'pending');
+
+    if (running.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="8" class="empty-cell">No running trades</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = running.map(e => {
+      const dirClass = e.direction === 'long' ? 'long' : 'short';
+      const pnlClass = e.unrealizedPnl > 0 ? 'pnl-positive' : e.unrealizedPnl < 0 ? 'pnl-negative' : 'pnl-zero';
+
+      return `
+        <tr data-id="${e.id}">
+          <td class="col-symbol">${e.symbol}</td>
+          <td class="col-direction ${dirClass}">${e.direction?.toUpperCase() || '-'}</td>
+          <td class="col-price">${e.entryPrice?.toFixed(5) || '-'}</td>
+          <td class="col-price">${e.currentPrice?.toFixed(5) || '-'}</td>
+          <td class="col-pnl ${pnlClass}">${e.unrealizedPnl ? `$${e.unrealizedPnl.toFixed(2)}` : '-'}</td>
+          <td class="col-numeric">${e.lotSize || '-'}</td>
+          <td><span class="status-badge-inline ${e.status}">${e.status}</span></td>
+          <td class="col-actions">
+            ${e.status === 'running' ? `<button class="table-btn" onclick="App.openCloseTrade('${e.id}')">Close</button>` : ''}
+            ${e.status === 'pending' ? `<button class="table-btn" onclick="App.fillPendingTrade('${e.id}')">Fill</button>` : ''}
+          </td>
+        </tr>
+      `;
+    }).join('');
+
+    // Update position count
+    const metricPositions = this.$('metric-positions');
+    if (metricPositions) metricPositions.textContent = running.length;
+  },
+
+  /**
    * Update selection count
    */
   updateSelectionCount(count) {
-    this.$('selected-count').textContent = count;
-    this.$('scan-btn').disabled = count === 0;
+    const countEl = this.$('selected-count');
+    const scanBtn = this.$('scan-btn');
+    const scanEstimate = this.$('scan-estimate');
+    
+    if (countEl) countEl.textContent = count;
+    if (scanBtn) scanBtn.disabled = count === 0;
     
     // Estimate scan time
     const callsPerSymbol = 8;
@@ -470,11 +646,17 @@ const UI = {
     const totalCalls = count * callsPerSymbol;
     const estimatedSeconds = Math.ceil(totalCalls / callsPerSecond);
     
-    if (count > 0) {
-      this.$('scan-estimate').textContent = `~${estimatedSeconds}s scan time`;
-    } else {
-      this.$('scan-estimate').textContent = '';
+    if (scanEstimate) {
+      if (count > 0) {
+        scanEstimate.textContent = `~${estimatedSeconds}s scan time`;
+      } else {
+        scanEstimate.textContent = '';
+      }
     }
+    
+    // Update dashboard selection count if present
+    const dashboardCount = this.$('dashboard-selected-count');
+    if (dashboardCount) dashboardCount.textContent = count;
   },
   
   createSentimentBadge(sentiment) {

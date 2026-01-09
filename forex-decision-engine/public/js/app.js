@@ -28,7 +28,7 @@ const App = {
       this.showWelcome();
     } else {
       UI.hide('welcome-screen');
-      UI.show('manual-scan-screen');
+      UI.show('dashboard-screen');
     }
 
     // Load universe
@@ -237,15 +237,67 @@ const App = {
       };
       this.metadata = data.metadata || {};
       
-      // Render symbol grids for all 5 asset classes (with displayNames from metadata)
+      // Render legacy symbol grids (if containers exist)
       UI.renderSymbolGrid('forex-symbols', this.universe.forex, this.selectedSymbols, this.metadata);
       UI.renderSymbolGrid('metals-symbols', this.universe.metals, this.selectedSymbols, this.metadata);
       UI.renderSymbolGrid('indices-symbols', this.universe.indices, this.selectedSymbols, this.metadata);
       UI.renderSymbolGrid('commodities-symbols', this.universe.commodities, this.selectedSymbols, this.metadata);
       UI.renderSymbolGrid('crypto-symbols', this.universe.crypto, this.selectedSymbols, this.metadata);
+      
+      // Render new Bloomberg-style watchlist sidebar
+      this.renderDashboardWatchlist();
     } catch (error) {
       console.error('Failed to load universe:', error);
       UI.toast('Failed to load symbols', 'error');
+    }
+  },
+  
+  /**
+   * Render dashboard watchlist sidebar
+   */
+  renderDashboardWatchlist() {
+    // Build signal map from current results
+    const signalMap = {};
+    for (const decision of this.results) {
+      if (decision.grade !== 'no-trade') {
+        signalMap[decision.symbol] = decision;
+      }
+    }
+    
+    // Render each asset class
+    UI.renderWatchlistSidebar('forex-watchlist', this.universe.forex, this.selectedSymbols, signalMap);
+    UI.renderWatchlistSidebar('metals-watchlist', this.universe.metals, this.selectedSymbols, signalMap);
+    UI.renderWatchlistSidebar('indices-watchlist', this.universe.indices, this.selectedSymbols, signalMap);
+    UI.renderWatchlistSidebar('commodities-watchlist', this.universe.commodities, this.selectedSymbols, signalMap);
+    UI.renderWatchlistSidebar('crypto-watchlist', this.universe.crypto, this.selectedSymbols, signalMap);
+    
+    // Add event listeners for watchlist items
+    this.setupWatchlistEventListeners();
+  },
+  
+  /**
+   * Setup watchlist item event listeners
+   */
+  setupWatchlistEventListeners() {
+    const containers = ['forex-watchlist', 'metals-watchlist', 'indices-watchlist', 'commodities-watchlist', 'crypto-watchlist'];
+    
+    for (const containerId of containers) {
+      const container = UI.$(containerId);
+      if (!container) continue;
+      
+      container.addEventListener('click', (e) => {
+        const item = e.target.closest('.watchlist-item-compact');
+        if (!item) return;
+        
+        const symbol = item.dataset.symbol;
+        const checkbox = item.querySelector('input[type="checkbox"]');
+        
+        if (checkbox) {
+          checkbox.checked = !checkbox.checked;
+          this.toggleSymbol(symbol);
+          item.classList.toggle('selected', checkbox.checked);
+        }
+      });
     }
   },
 
@@ -255,9 +307,14 @@ const App = {
   loadSettings() {
     const settings = Storage.getSettings();
     
-    UI.$('account-size').value = settings.accountSize;
-    UI.$('risk-percent').value = settings.riskPercent;
-    UI.$('timezone').value = settings.timezone;
+    // Update form inputs if they exist
+    const accountSizeInput = UI.$('account-size');
+    const riskPercentInput = UI.$('risk-percent');
+    const timezoneInput = UI.$('timezone');
+    
+    if (accountSizeInput) accountSizeInput.value = settings.accountSize;
+    if (riskPercentInput) riskPercentInput.value = settings.riskPercent;
+    if (timezoneInput) timezoneInput.value = settings.timezone;
     
     // Set trading mode radio
     const tradingModeRadio = document.querySelector(`input[name="trading-mode"][value="${settings.paperTrading ? 'paper' : 'live'}"]`);
@@ -268,6 +325,26 @@ const App = {
     if (styleRadio) styleRadio.checked = true;
 
     this.updateRiskHint();
+    
+    // Update ticker bar with account info
+    this.updateTickerBar(settings);
+  },
+  
+  /**
+   * Update ticker bar with account info and stats
+   */
+  updateTickerBar(settings) {
+    const tickerBalance = UI.$('ticker-balance');
+    const tickerRisk = UI.$('ticker-risk');
+    const tickerDailyLimit = UI.$('metric-daily-limit');
+    const tickerMaxDD = UI.$('metric-max-dd');
+    
+    if (tickerBalance) tickerBalance.textContent = `$${settings.accountSize.toLocaleString()}`;
+    if (tickerRisk) tickerRisk.textContent = `${settings.riskPercent}%`;
+    
+    // E8 Markets limits: 4% daily, 6% max drawdown
+    if (tickerDailyLimit) tickerDailyLimit.textContent = `$${(settings.accountSize * 0.04).toFixed(0)}`;
+    if (tickerMaxDD) tickerMaxDD.textContent = `$${(settings.accountSize * 0.06).toFixed(0)}`;
   },
 
   /**
@@ -486,8 +563,10 @@ const App = {
       // Update UI
       UI.$('last-scan-time').textContent = `Last scan: ${new Date().toLocaleString()}`;
       
-      // Switch to results screen
-      UI.switchScreen('manual-scan');
+      // Update signals table (Bloomberg style)
+      UI.switchScreen('dashboard');
+      UI.renderSignalsTable(this.results, this.currentFilter);
+      // Also update legacy results if container exists
       UI.renderResults(this.results, this.currentFilter);
       
       // Load market sentiment overview
@@ -813,10 +892,6 @@ const App = {
    * Load journal entries
    */
   async loadJournal() {
-    // Show skeleton loaders while fetching
-    UI.showSkeletons('journal-container', 3, 'card');
-    UI.showSkeletons('journal-stats', 4, 'stat');
-    
     try {
       const [entriesRes, statsRes] = await Promise.all([
         API.getJournalEntries(),
@@ -826,17 +901,17 @@ const App = {
       this.journalEntries = entriesRes.entries || [];
       this.renderJournal();
       this.renderJournalStats(statsRes.stats);
+      
+      // Also update running trades in dashboard
+      UI.renderRunningTrades(this.journalEntries);
     } catch (error) {
       console.error('Failed to load journal:', error);
       UI.toast('Failed to load journal', 'error');
-      // Show empty state on error
-      UI.$('journal-container').innerHTML = `
-        <div class="empty-state">
-          <div class="empty-icon">⚠️</div>
-          <p>Failed to load journal</p>
-          <button class="btn btn-primary" onclick="App.loadJournal()">Retry</button>
-        </div>
-      `;
+      // Show empty state on error in table
+      const tbody = UI.$('journal-tbody');
+      if (tbody) {
+        tbody.innerHTML = '<tr><td colspan="13" class="empty-cell">Failed to load journal. <a href="#" onclick="App.loadJournal();return false;">Retry</a></td></tr>';
+      }
     }
   },
 
@@ -844,17 +919,32 @@ const App = {
    * Render journal stats
    */
   renderJournalStats(stats) {
-    UI.$('stat-taken').textContent = stats.totalTaken;
-    UI.$('stat-winrate').textContent = `${stats.winRate.toFixed(1)}%`;
-    UI.$('stat-avgr').textContent = `${stats.avgR.toFixed(2)}R`;
-    UI.$('stat-pnl').textContent = `$${stats.totalPnlDollars.toFixed(0)}`;
+    // Update journal stats
+    const taken = UI.$('stat-taken');
+    const winrate = UI.$('stat-winrate');
+    const avgr = UI.$('stat-avgr');
+    const pnl = UI.$('stat-pnl');
+    
+    if (taken) taken.textContent = stats.totalTaken;
+    if (winrate) winrate.textContent = `${stats.winRate.toFixed(1)}%`;
+    if (avgr) avgr.textContent = `${stats.avgR.toFixed(2)}R`;
+    if (pnl) pnl.textContent = `$${stats.totalPnlDollars.toFixed(0)}`;
+    
+    // Also update ticker bar stats
+    const tickerWinrate = UI.$('ticker-winrate');
+    if (tickerWinrate) tickerWinrate.textContent = `${stats.winRate.toFixed(1)}%`;
+    
+    const metricWinrate = UI.$('metric-winrate');
+    if (metricWinrate) metricWinrate.textContent = `${stats.winRate.toFixed(1)}%`;
+    
+    const metricAvgR = UI.$('metric-avgr');
+    if (metricAvgR) metricAvgR.textContent = `${stats.avgR.toFixed(2)}R`;
   },
 
   /**
    * Render journal entries
    */
   renderJournal() {
-    const container = UI.$('journal-container');
     let entries = this.journalEntries;
 
     switch (this.journalFilter) {
@@ -872,6 +962,13 @@ const App = {
         break;
     }
 
+    // Render using Bloomberg-style table
+    UI.renderJournalTable(entries);
+    
+    // Keep legacy container for backward compatibility
+    const container = UI.$('journal-container');
+    if (!container) return;
+
     if (entries.length === 0) {
       const isFiltered = this.journalFilter !== 'all';
       container.innerHTML = `
@@ -884,7 +981,7 @@ const App = {
           </div>
           <h3 class="empty-title">${isFiltered ? 'No matching trades' : 'Your trading journal is empty'}</h3>
           <p class="empty-hint">${isFiltered ? 'Try adjusting your filter to see more trades' : 'Start logging trades from your scan results to track your performance and build your trading history'}</p>
-          ${!isFiltered ? `<button class="btn btn-primary" onclick="App.switchScreen('manual-scan')">View Scan Results</button>` : ''}
+          ${!isFiltered ? `<button class="btn btn-primary" onclick="App.switchScreen('dashboard')">View Scan Results</button>` : ''}
         </div>
       `;
       return;
@@ -1132,12 +1229,26 @@ const App = {
     // Welcome screen
     UI.$('get-started-btn')?.addEventListener('click', () => this.completeOnboarding());
 
-    // Settings form
-    UI.$('settings-form')?.addEventListener('submit', (e) => {
-      e.preventDefault();
-      if (this.saveSettings()) {
-        UI.switchScreen('manual-scan');
-      }
+    // Settings form - prevent duplicate handlers
+    const settingsForm = UI.$('settings-form');
+    if (settingsForm && !settingsForm._hasListener) {
+      settingsForm._hasListener = true;
+      settingsForm.addEventListener('submit', (e) => {
+        e.preventDefault();
+        if (this.saveSettings()) {
+          UI.switchScreen('dashboard');
+        }
+      });
+    }
+    
+    // Signal table filter buttons (dashboard)
+    UI.$$('.panel-actions .filter-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        UI.$$('.panel-actions .filter-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        this.currentFilter = btn.dataset.filter;
+        UI.renderSignalsTable(this.results, this.currentFilter);
+      });
     });
 
     // Risk hint update
@@ -1256,7 +1367,7 @@ const App = {
       if (document.activeElement.tagName !== 'INPUT' && 
           document.activeElement.tagName !== 'TEXTAREA' &&
           document.activeElement.tagName !== 'SELECT') {
-        const screens = ['manual-scan', 'auto-scan', 'journal', 'settings'];
+        const screens = ['dashboard', 'auto-scan', 'journal', 'settings'];
         const keyNum = parseInt(e.key);
         
         if (keyNum >= 1 && keyNum <= screens.length) {

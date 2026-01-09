@@ -21,12 +21,45 @@
         <h1>Forex Decision Engine</h1>
       </div>
       <nav class="header-nav" role="navigation" aria-label="Main navigation">
-        <button class="nav-btn active" data-screen="manual-scan" aria-current="page" aria-label="Manual scanning">Scan</button>
+        <button class="nav-btn active" data-screen="dashboard" aria-current="page" aria-label="Dashboard">Dashboard</button>
         <button class="nav-btn" data-screen="auto-scan" aria-label="Auto-scan">Auto <span class="nav-badge hidden" id="detections-badge">0</span></button>
         <button class="nav-btn" data-screen="journal" aria-label="View trade journal">Journal</button>
         <button class="nav-btn" data-screen="settings" aria-label="Configure settings">Settings</button>
       </nav>
     </header>
+    
+    <!-- Status Ticker Bar -->
+    <div class="status-ticker" role="status" aria-label="System status">
+      <div class="ticker-item">
+        <span class="ticker-dot" id="connection-status"></span>
+        <span class="ticker-label">API</span>
+        <span class="ticker-value" id="api-status">Connected</span>
+      </div>
+      <div class="ticker-item">
+        <span class="ticker-label">Account</span>
+        <span class="ticker-value" id="ticker-account">$10,000</span>
+      </div>
+      <div class="ticker-item">
+        <span class="ticker-label">Risk</span>
+        <span class="ticker-value" id="ticker-risk">0.5%</span>
+      </div>
+      <div class="ticker-item">
+        <span class="ticker-label">Open P&L</span>
+        <span class="ticker-value positive" id="ticker-pnl">$0.00</span>
+      </div>
+      <div class="ticker-item">
+        <span class="ticker-label">Win Rate</span>
+        <span class="ticker-value" id="ticker-winrate">--</span>
+      </div>
+      <div class="ticker-item">
+        <span class="ticker-label">Signals</span>
+        <span class="ticker-value" id="ticker-signals">0</span>
+      </div>
+      <div class="ticker-item">
+        <span class="ticker-label">Auto-Scan</span>
+        <span class="ticker-value" id="ticker-autoscan">OFF</span>
+      </div>
+    </div>
 
     <!-- Main Content -->
     <main class="main" id="main-content" role="main">
@@ -153,103 +186,159 @@
         </div>
       </section>
 
-      <!-- Manual Scan Screen (Combined Watchlist + Results) -->
-      <section id="manual-scan-screen" class="screen">
-        <div class="screen-header">
-          <h2>Manual Scan</h2>
-          <div class="screen-header-actions">
-            <select id="strategy-select" class="strategy-dropdown">
-              <option value="ema-pullback-intra">EMA Pullback (50% WR)</option>
-            </select>
-          </div>
-        </div>
-        
-        <div class="manual-scan-layout">
-          <!-- Left Panel: Symbol Selection -->
-          <div class="symbol-picker-panel">
+      <!-- Dashboard Screen (Bloomberg-style grid layout) -->
+      <section id="dashboard-screen" class="screen">
+        <div class="dashboard-grid">
+          <!-- Left Sidebar: Watchlist & Scan -->
+          <div class="panel sidebar-panel">
             <div class="panel-header">
-              <h3>Select Instruments</h3>
-              <input type="text" id="symbol-search" placeholder="Search..." class="symbol-search-input">
+              <h3>Instruments</h3>
+              <select id="strategy-select" class="strategy-dropdown-compact">
+                <option value="ema-pullback-intra">EMA Pullback</option>
+              </select>
             </div>
-            
-            <div class="watchlist-container compact">
-              <div class="symbol-section">
-                <div class="section-header">
-                  <h4>Forex (28)</h4>
-                  <button class="btn btn-tiny" data-select="forex">All</button>
+            <div class="panel-content">
+              <div class="watchlist-sections" id="watchlist-sections">
+                <div class="watchlist-section">
+                  <div class="watchlist-section-header" data-section="forex">
+                    <h4>Forex</h4><span class="count">28</span>
+                  </div>
+                  <div class="watchlist-items" id="forex-watchlist"></div>
                 </div>
-                <div class="symbol-grid compact" id="forex-symbols"></div>
-              </div>
-              
-              <div class="symbol-section">
-                <div class="section-header">
-                  <h4>Metals (2)</h4>
-                  <button class="btn btn-tiny" data-select="metals">All</button>
+                <div class="watchlist-section">
+                  <div class="watchlist-section-header" data-section="metals">
+                    <h4>Metals</h4><span class="count">2</span>
+                  </div>
+                  <div class="watchlist-items" id="metals-watchlist"></div>
                 </div>
-                <div class="symbol-grid compact" id="metals-symbols"></div>
-              </div>
-              
-              <div class="symbol-section">
-                <div class="section-header">
-                  <h4>Indices (6)</h4>
-                  <button class="btn btn-tiny" data-select="indices">All</button>
+                <div class="watchlist-section">
+                  <div class="watchlist-section-header" data-section="indices">
+                    <h4>Indices</h4><span class="count">6</span>
+                  </div>
+                  <div class="watchlist-items" id="indices-watchlist"></div>
                 </div>
-                <div class="symbol-grid compact" id="indices-symbols"></div>
-              </div>
-              
-              <div class="symbol-section">
-                <div class="section-header">
-                  <h4>Commodities (2)</h4>
-                  <button class="btn btn-tiny" data-select="commodities">All</button>
+                <div class="watchlist-section">
+                  <div class="watchlist-section-header" data-section="commodities">
+                    <h4>Commodities</h4><span class="count">2</span>
+                  </div>
+                  <div class="watchlist-items" id="commodities-watchlist"></div>
                 </div>
-                <div class="symbol-grid compact" id="commodities-symbols"></div>
-              </div>
-              
-              <div class="symbol-section">
-                <div class="section-header">
-                  <h4>Crypto (8)</h4>
-                  <button class="btn btn-tiny" data-select="crypto">All</button>
+                <div class="watchlist-section">
+                  <div class="watchlist-section-header" data-section="crypto">
+                    <h4>Crypto</h4><span class="count">8</span>
+                  </div>
+                  <div class="watchlist-items" id="crypto-watchlist"></div>
                 </div>
-                <div class="symbol-grid compact" id="crypto-symbols"></div>
               </div>
             </div>
-            
             <div class="scan-footer">
-              <div class="selection-info">
-                <span id="selected-count">0</span> selected
-                <span class="scan-estimate" id="scan-estimate"></span>
+              <span id="selected-count">0</span> selected
+              <button class="btn btn-primary btn-small" id="scan-btn" disabled>Scan</button>
+            </div>
+          </div>
+          
+          <!-- Main Panel: Signals Table -->
+          <div class="panel main-panel">
+            <div class="panel-header">
+              <h3>Signals</h3>
+              <div class="panel-actions">
+                <button class="filter-btn active" data-filter="all">All</button>
+                <button class="filter-btn" data-filter="trades">Trades</button>
+                <button class="filter-btn" data-filter="a+">A+</button>
+                <span class="scan-time" id="last-scan-time"></span>
               </div>
-              <div class="scan-actions">
-                <button class="btn btn-small btn-secondary" id="clear-selection-btn">Clear</button>
-                <button class="btn btn-primary" id="scan-btn" disabled>Scan</button>
+            </div>
+            <div class="panel-content">
+              <table class="data-table" id="signals-table">
+                <thead>
+                  <tr>
+                    <th class="sortable" data-sort="symbol">Symbol</th>
+                    <th class="sortable" data-sort="direction">Dir</th>
+                    <th class="sortable" data-sort="grade">Grade</th>
+                    <th class="col-price">Entry</th>
+                    <th class="col-price">SL</th>
+                    <th class="col-price">TP1</th>
+                    <th class="col-price">TP2</th>
+                    <th class="col-numeric">Lots</th>
+                    <th class="col-numeric">R:R</th>
+                    <th>Strategy</th>
+                    <th class="col-actions">Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="signals-tbody">
+                  <tr><td colspan="11" class="empty-cell">Select instruments and scan for signals</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+          
+          <!-- Right Sidebar: Metrics -->
+          <div class="panel metrics-panel">
+            <div class="panel-header">
+              <h3>Portfolio</h3>
+            </div>
+            <div class="panel-content">
+              <div class="metric-card">
+                <div class="metric-label">Account Balance</div>
+                <div class="metric-value" id="metric-balance">$10,000</div>
+              </div>
+              <div class="metric-card">
+                <div class="metric-label">Open P&L</div>
+                <div class="metric-value positive" id="metric-open-pnl">$0.00</div>
+              </div>
+              <div class="metric-card">
+                <div class="metric-label">Daily P&L</div>
+                <div class="metric-value" id="metric-daily-pnl">$0.00</div>
+                <div class="metric-subtext">Limit: -$400 (4%)</div>
+              </div>
+              <div class="metric-card">
+                <div class="metric-label">Max Drawdown</div>
+                <div class="metric-value" id="metric-drawdown">0.00%</div>
+                <div class="metric-subtext">Limit: 6%</div>
+              </div>
+              <div class="metric-card">
+                <div class="metric-label">Win Rate</div>
+                <div class="metric-value" id="metric-winrate">--</div>
+              </div>
+              <div class="metric-card">
+                <div class="metric-label">Avg R-Multiple</div>
+                <div class="metric-value" id="metric-avgr">--</div>
+              </div>
+              <div class="metric-card">
+                <div class="metric-label">Open Positions</div>
+                <div class="metric-value" id="metric-positions">0</div>
+              </div>
+              <div class="metric-card">
+                <div class="metric-label">Active Signals</div>
+                <div class="metric-value" id="metric-signals">0</div>
               </div>
             </div>
           </div>
           
-          <!-- Right Panel: Scan Results -->
-          <div class="results-panel">
+          <!-- Bottom Panel: Running Trades (mini journal) -->
+          <div class="panel journal-panel">
             <div class="panel-header">
-              <h3>Results</h3>
-              <div class="results-meta">
-                <span id="last-scan-time">No scans yet</span>
-              </div>
+              <h3>Running Trades</h3>
+              <button class="table-btn" onclick="UI.switchScreen('journal')">View All</button>
             </div>
-            
-            <div class="results-filters">
-              <button class="filter-btn active" data-filter="all">All</button>
-              <button class="filter-btn" data-filter="trades">Trades</button>
-              <button class="filter-btn" data-filter="a+">A+ Only</button>
-            </div>
-            
-            <div class="results-container" id="results-container">
-              <div class="empty-state">
-                <div class="empty-icon">Select instruments and click Scan</div>
-              </div>
-            </div>
-            
-            <div class="results-footer hidden" id="results-footer">
-              <button class="btn btn-small btn-secondary" id="export-btn">Export JSON</button>
-              <button class="btn btn-small btn-secondary" id="copy-summary-btn">Copy Summary</button>
+            <div class="panel-content">
+              <table class="data-table" id="running-trades-table">
+                <thead>
+                  <tr>
+                    <th>Symbol</th>
+                    <th>Dir</th>
+                    <th class="col-price">Entry</th>
+                    <th class="col-price">Current</th>
+                    <th class="col-pnl">P&L</th>
+                    <th class="col-numeric">Lots</th>
+                    <th>Status</th>
+                    <th class="col-actions">Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="running-trades-tbody">
+                  <tr><td colspan="8" class="empty-cell">No running trades</td></tr>
+                </tbody>
+              </table>
             </div>
           </div>
         </div>
@@ -502,48 +591,62 @@
 
     <!-- Journal Screen (add to nav later) -->
     <section id="journal-screen" class="screen hidden">
-      <div class="screen-header">
-        <h2>📓 Trading Journal</h2>
-        <button class="btn btn-small btn-primary" onclick="App.openManualTradeModal()">+ Manual Trade</button>
-      </div>
-      
-      <div class="journal-stats" id="journal-stats">
-        <div class="stat-card">
-          <span class="stat-value" id="stat-taken">0</span>
-          <span class="stat-label">Trades Taken</span>
+      <div class="journal-layout">
+        <!-- Stats Header -->
+        <div class="journal-header">
+          <div class="metrics-row">
+            <div class="metric-card">
+              <div class="metric-label">Trades</div>
+              <div class="metric-value" id="stat-taken">0</div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-label">Win Rate</div>
+              <div class="metric-value" id="stat-winrate">--</div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-label">Avg R</div>
+              <div class="metric-value" id="stat-avgr">--</div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-label">Total P&L</div>
+              <div class="metric-value" id="stat-pnl">$0</div>
+            </div>
+          </div>
+          <div class="journal-actions">
+            <button class="filter-btn active" data-journal-filter="all">All</button>
+            <button class="filter-btn" data-journal-filter="pending">Pending</button>
+            <button class="filter-btn" data-journal-filter="running">Running</button>
+            <button class="filter-btn" data-journal-filter="closed">Closed</button>
+            <button class="btn btn-small btn-primary" onclick="App.openManualTradeModal()">+ Trade</button>
+            <a href="/api/journal/export" class="table-btn" download>Export</a>
+          </div>
         </div>
-        <div class="stat-card">
-          <span class="stat-value" id="stat-winrate">0%</span>
-          <span class="stat-label">Win Rate</span>
+        
+        <!-- Journal Table -->
+        <div class="journal-table-container">
+          <table class="data-table" id="journal-table">
+            <thead>
+              <tr>
+                <th class="sortable" data-sort="date">Date</th>
+                <th class="sortable" data-sort="symbol">Symbol</th>
+                <th>Dir</th>
+                <th>Grade</th>
+                <th class="col-price">Entry</th>
+                <th class="col-price">SL</th>
+                <th class="col-price">TP</th>
+                <th class="col-price">Exit</th>
+                <th class="col-numeric">Lots</th>
+                <th class="col-pnl">P&L</th>
+                <th class="col-numeric">R</th>
+                <th>Status</th>
+                <th class="col-actions">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="journal-tbody">
+              <tr><td colspan="13" class="empty-cell">No trades logged yet</td></tr>
+            </tbody>
+          </table>
         </div>
-        <div class="stat-card">
-          <span class="stat-value" id="stat-avgr">0R</span>
-          <span class="stat-label">Avg R</span>
-        </div>
-        <div class="stat-card">
-          <span class="stat-value" id="stat-pnl">$0</span>
-          <span class="stat-label">Total P&L</span>
-        </div>
-      </div>
-      
-      <div class="journal-filters">
-        <button class="filter-btn active" data-journal-filter="all">All</button>
-        <button class="filter-btn" data-journal-filter="taken">Taken</button>
-        <button class="filter-btn" data-journal-filter="pending">Pending</button>
-        <button class="filter-btn" data-journal-filter="running">Running</button>
-        <button class="filter-btn" data-journal-filter="closed">Closed</button>
-      </div>
-      
-      <div class="journal-container" id="journal-container">
-        <div class="empty-state">
-          <div class="empty-icon">📓</div>
-          <p>No trades logged yet</p>
-          <p class="empty-hint">Log trades from your scan results</p>
-        </div>
-      </div>
-      
-      <div class="journal-footer">
-        <a href="/api/journal/export" class="btn btn-secondary" download>📥 Export CSV</a>
       </div>
     </section>
   </div>

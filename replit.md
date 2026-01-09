@@ -66,6 +66,13 @@ Core API endpoints cover system health, symbol retrieval, signal analysis and sc
 
 ## Recent Changes (2026-01-09)
 
+### Bloomberg Terminal UI Implementation
+1. **Dashboard Redesign**: Converted main screen from "manual-scan" to "dashboard" with Bloomberg Terminal-inspired aesthetic
+2. **Status Ticker Bar**: Real-time display of API status, account balance, risk percentage, open P&L, win rate, signals count, and auto-scan status
+3. **Table-Based Rendering**: New Bloomberg-style functions for signals table, journal table, running trades, and watchlist sidebar
+4. **Null Safety**: Added comprehensive null checks throughout UI.js to prevent errors when DOM elements don't exist
+5. **Cache Control**: Server now sends no-cache headers for static files to prevent browser caching issues in development
+
 ### Quantitative Audit Implementation
 1. **Portfolio Risk Manager** (`src/services/portfolioRiskManager.ts`): New service tracking currency exposure across positions to prevent correlated losses. Supports all 46 instruments with asset-class-aware currency extraction.
 2. **Stale Data Prevention**: Removed backfill logic from indicator alignment; added bar timestamp freshness validation in SignalQualityGate pre-flight.
