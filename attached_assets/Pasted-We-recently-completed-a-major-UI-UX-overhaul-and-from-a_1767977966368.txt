@@ -1,0 +1,200 @@
+We recently completed a major UI/UX overhaul, and from a visual and design standpoint the platform looks excellent. However, before moving forward, I need a deep, senior-level, enterprise-grade audit to ensure that functionality, data integrity, and strategy execution are fully aligned with the new design.
+
+This audit should cover frontend behavior, backend logic, data flow, and strategy execution end-to-end, with a strong focus on identifying bugs, inconsistencies, and areas for improvement—without unnecessary over-engineering.
+
+Primary Objectives
+
+UI/UX Functional Validation
+
+Verify that all settings are functioning correctly, especially:
+
+Account size registration
+
+Persistence of settings
+
+Correct propagation of account size into trade sizing and execution logic
+
+Ensure that UI state changes accurately reflect backend state and vice versa.
+
+Trade Interaction & Auto Scan Issues
+
+Investigate and fix the issue where Auto Scan trades cannot be manually dismissed:
+
+Identify why dismiss actions are erroring
+
+Confirm correct state transitions (visible → dismissed → ignored)
+
+Add a “Trade Taken” button that:
+
+Registers the trade exactly as presented to the user
+
+Automatically pushes the trade into the journal
+
+Preserves all metadata (strategy, instrument, timeframe, confidence, etc.)
+
+Trade Journal & Strategy Attribution
+
+Implement tiered execution tracking, so that:
+
+Partial fills or tiered entries are recorded correctly
+
+All executions are linked back to the originating strategy
+
+Ensure the journal supports per-strategy performance analysis, enabling accurate comparison of which strategies perform best over time.
+
+Dashboard & Sidebar Bug (Instruments List)
+
+Investigate the sidebar instrument selector bug where:
+
+The instrument count starts at a fixed number (e.g., 19)
+
+Clicking instruments causes inconsistent add/remove behavior
+
+Identify whether this is caused by:
+
+UI state desync
+
+Incorrect list mutation
+
+Index/key mismatches
+
+Backend response inconsistencies
+
+Provide a clear fix and prevention strategy.
+
+End-to-End Platform Audit
+Conduct a full audit of:
+
+Frontend architecture
+
+State management
+
+Component responsibilities
+
+UI → API → response flow
+
+Backend architecture
+
+Strategy engine
+
+Trade lifecycle handling
+
+Journaling and persistence
+
+Data flow integrity
+
+From user input → strategy evaluation → signal generation → execution → journaling
+
+Ensure no silent failures, stale data, or mismatched assumptions
+
+Auto Scan vs Manual Scan parity
+
+Confirm both paths behave consistently and share the same core logic
+
+Strategy-Level Deep Dive
+
+Audit each strategy individually:
+
+Verify it is isolated and not leaking state into others
+
+Confirm correct interaction with the strategy engine
+
+Evaluate whether the strategy is:
+
+mathematically sound
+
+implemented as intended
+
+at its “best possible” version given its hypothesis
+
+Identify targeted, high-impact improvements where appropriate:
+
+No unnecessary complexity
+
+No overfitting
+
+Preserve the original intent of each strategy
+
+Required Deliverables
+
+A) Executive Summary
+
+High-level platform health
+
+Key blockers and risks
+
+Production readiness assessment
+
+B) UI/UX Functional Findings
+
+What works
+
+What’s broken
+
+Why it’s broken
+
+How to fix it
+
+C) Trade & Journal System Review
+
+Dismiss logic
+
+Trade Taken flow
+
+Tiered execution handling
+
+Strategy attribution correctness
+
+D) Strategy Audit Report
+
+One section per strategy:
+
+Purpose
+
+Strengths
+
+Weaknesses
+
+Integration quality
+
+Recommended improvements (if any)
+
+E) Data Flow & Architecture Map
+
+Clear explanation of how frontend, backend, and strategy engine interact
+
+Identification of fragile or error-prone links
+
+F) Fix & Improvement Plan
+
+Prioritized roadmap:
+
+Immediate bug fixes
+
+Short-term stability improvements
+
+Medium-term strategy and architecture enhancements
+
+Acceptance criteria for each item
+
+Constraints & Expectations
+
+Do not assume correctness—validate with code.
+
+Tie findings to concrete evidence (files, functions, data paths).
+
+Prefer clarity, correctness, and robustness over feature expansion.
+
+Treat this as an enterprise readiness review, not a cosmetic pass.
+
+Final Goal
+
+The goal is to walk away with complete confidence in:
+
+the UI/UX behaving exactly as intended,
+
+the backend enforcing correct logic and data integrity,
+
+the strategy engine being well-isolated, measurable, and optimizable,
+
+and the platform being truly ready for production-scale usage.
