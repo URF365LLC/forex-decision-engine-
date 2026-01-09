@@ -115,6 +115,7 @@ Core API endpoints cover system health, symbol retrieval, signal analysis and sc
 14. **Rate Limiter Timeout Handle Leak Fix**: Added cleanup logic in `tryAcquire()` to prevent timer leaks when promises resolve.
 15. **Cooldown Service Initialization Guards**: Added `isReady()`, `isDegraded()` methods with graceful degraded mode when DB unavailable.
 16. **Detection Filtering Fix**: API `/api/detections` now defaults to active statuses only (cooling_down, eligible), excluding dismissed/executed/expired detections from the display.
+17. **Auto-Scan Interval Increase**: Changed default scan interval from 5 minutes to 10 minutes to stay within 610 API calls/minute rate limit with 46 symbols × 11 strategies.
 
 ## External Dependencies
 

@@ -212,9 +212,9 @@ class AutoScanService {
   constructor() {
     this.config = {
       enabled: false,
-      intervalMs: 5 * 60 * 1000,
+      intervalMs: 10 * 60 * 1000, // 10 minutes - balanced for 610 API calls/min limit
       symbols: WATCHLIST_PRESETS['majors-gold'].symbols,
-      strategies: this.buildDefaultSchedules(5 * 60 * 1000),
+      strategies: this.buildDefaultSchedules(10 * 60 * 1000),
       minGrade: 'B',
       watchlistPreset: 'majors-gold',
       customSymbols: [],
@@ -427,7 +427,7 @@ class AutoScanService {
     
     const normalized: StrategyScheduleConfig[] = [];
     const seen = new Set<string>();
-    const defaultInterval = this.config.intervalMs || 5 * 60 * 1000;
+    const defaultInterval = this.config.intervalMs || 10 * 60 * 1000;
 
     for (const item of provided) {
       if (typeof item === 'string') {

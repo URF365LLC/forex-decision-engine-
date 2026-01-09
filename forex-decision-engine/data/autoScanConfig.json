@@ -1,6 +1,6 @@
 {
   "enabled": true,
-  "intervalMs": 300000,
+  "intervalMs": 600000,
   "symbols": [
     "EURUSD",
     "GBPUSD",
@@ -52,47 +52,47 @@
   "strategies": [
     {
       "strategyId": "rsi-bounce",
-      "intervalMs": 300000
+      "intervalMs": 600000
     },
     {
       "strategyId": "rsi-oversold",
-      "intervalMs": 300000
+      "intervalMs": 600000
     },
     {
       "strategyId": "stoch-oversold",
-      "intervalMs": 300000
+      "intervalMs": 600000
     },
     {
       "strategyId": "bollinger-mr",
-      "intervalMs": 300000
+      "intervalMs": 600000
     },
     {
       "strategyId": "williams-ema",
-      "intervalMs": 300000
+      "intervalMs": 600000
     },
     {
       "strategyId": "triple-ema",
-      "intervalMs": 300000
+      "intervalMs": 600000
     },
     {
       "strategyId": "break-retest-intra",
-      "intervalMs": 300000
+      "intervalMs": 600000
     },
     {
       "strategyId": "cci-zero",
-      "intervalMs": 300000
+      "intervalMs": 600000
     },
     {
       "strategyId": "ema-pullback-intra",
-      "intervalMs": 300000
+      "intervalMs": 600000
     },
     {
       "strategyId": "multi-oscillator-momentum",
-      "intervalMs": 300000
+      "intervalMs": 600000
     },
     {
       "strategyId": "liquidity-sweep",
-      "intervalMs": 300000
+      "intervalMs": 600000
     }
   ],
   "minGrade": "A",
