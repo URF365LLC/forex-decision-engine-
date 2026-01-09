@@ -66,6 +66,12 @@ Core API endpoints cover system health, symbol retrieval, signal analysis and sc
 
 ## Recent Changes (2026-01-09)
 
+### UI/UX Stability Fixes
+1. **Null Reference Prevention**: Added comprehensive null checks to `saveSettings()`, `updateRiskHint()`, `runScan()`, `openTradeModal()`, `editJournalEntry()`, and `saveTradeEntry()` functions in app.js.
+2. **Navigation Badge Fix**: Fixed conflicting `.nav-badge` CSS rules (duplicate inline-flex rule was overriding absolute positioning), added `:has()` selector for dynamic button padding.
+3. **Detection JSON Parsing**: Added `safeJsonParse()` helper in detectionStore.ts to handle cases where database returns objects instead of JSON strings.
+4. **Error Logging Improvement**: Changed error logging to use `error.message` for better visibility.
+
 ### Enterprise Platform Audit Fixes
 1. **DB Initialization Timing Fix**: Moved `startCooldownChecker()` from module-level to inside `startServer()` after database initialization, eliminating "Failed to list detections from DB" errors.
 2. **Trade Taken Flow Enhancement**: Enhanced `/api/detections/:id/execute` endpoint to atomically mark detection as 'executed' AND create linked journal entry with full strategy attribution (strategyId, strategyName, confidence, grade).

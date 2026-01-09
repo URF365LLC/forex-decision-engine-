@@ -348,16 +348,23 @@ const App = {
    * Save settings
    */
   async saveSettings() {
-    const submitBtn = UI.$('settings-form').querySelector('button[type="submit"]');
+    const settingsForm = UI.$('settings-form');
+    if (!settingsForm) return false;
+    
+    const submitBtn = settingsForm.querySelector('button[type="submit"]');
     UI.setButtonLoading(submitBtn, true);
     
     try {
       const tradingMode = document.querySelector('input[name="trading-mode"]:checked')?.value || 'paper';
+      const accountSizeEl = UI.$('account-size');
+      const riskPercentEl = UI.$('risk-percent');
+      const timezoneEl = UI.$('timezone');
+      
       const settings = {
-        accountSize: parseFloat(UI.$('account-size').value) || 10000,
-        riskPercent: parseFloat(UI.$('risk-percent').value) || 0.5,
+        accountSize: accountSizeEl ? parseFloat(accountSizeEl.value) || 10000 : 10000,
+        riskPercent: riskPercentEl ? parseFloat(riskPercentEl.value) || 0.5 : 0.5,
         style: document.querySelector('input[name="style"]:checked')?.value || 'intraday',
-        timezone: UI.$('timezone').value || 'America/Chicago',
+        timezone: timezoneEl ? timezoneEl.value || 'America/Chicago' : 'America/Chicago',
         paperTrading: tradingMode === 'paper',
       };
 
@@ -383,10 +390,16 @@ const App = {
    * Update risk amount hint
    */
   updateRiskHint() {
-    const accountSize = parseFloat(UI.$('account-size').value) || 10000;
-    const riskPercent = parseFloat(UI.$('risk-percent').value) || 0.5;
+    const accountSizeEl = UI.$('account-size');
+    const riskPercentEl = UI.$('risk-percent');
+    const hintEl = UI.$('risk-amount-hint');
+    
+    if (!accountSizeEl || !riskPercentEl || !hintEl) return;
+    
+    const accountSize = parseFloat(accountSizeEl.value) || 10000;
+    const riskPercent = parseFloat(riskPercentEl.value) || 0.5;
     const riskAmount = (accountSize * riskPercent / 100).toFixed(0);
-    UI.$('risk-amount-hint').textContent = `Risk: $${riskAmount} per trade`;
+    hintEl.textContent = `Risk: $${riskAmount} per trade`;
   },
 
   /**
@@ -571,7 +584,8 @@ const App = {
       UI.toast(successMsg, 'success');
 
       // Update UI
-      UI.$('last-scan-time').textContent = `Last scan: ${new Date().toLocaleString()}`;
+      const lastScanEl = UI.$('last-scan-time');
+      if (lastScanEl) lastScanEl.textContent = `Last scan: ${new Date().toLocaleString()}`;
       
       // Update signals table (Bloomberg style)
       UI.switchScreen('dashboard');
@@ -588,7 +602,7 @@ const App = {
     } finally {
       this.isScanning = false;
       UI.setButtonLoading(scanBtn, false);
-      scanBtn.disabled = this.selectedSymbols.length === 0;
+      if (scanBtn) scanBtn.disabled = this.selectedSymbols.length === 0;
       if (refreshBtn) refreshBtn.disabled = this.results.length === 0;
       UI.hideLoading();
     }
@@ -872,18 +886,28 @@ const App = {
   openTradeModal(decision) {
     this.currentTradeData = decision;
 
-    UI.$('trade-modal-title').textContent = `Log Trade: ${decision.displayName} ${decision.direction.toUpperCase()}`;
-    UI.$('trade-symbol').value = decision.symbol;
-    UI.$('trade-action').value = 'taken';
+    const titleEl = UI.$('trade-modal-title');
+    const symbolEl = UI.$('trade-symbol');
+    const actionEl = UI.$('trade-action');
+    const entryPriceEl = UI.$('trade-entry-price');
+    const lotsEl = UI.$('trade-lots');
+    const stopLossEl = UI.$('trade-stop-loss');
+    const takeProfitEl = UI.$('trade-take-profit');
+    const notesEl = UI.$('trade-notes');
+
+    if (titleEl) titleEl.textContent = `Log Trade: ${decision.displayName} ${decision.direction.toUpperCase()}`;
+    if (symbolEl) symbolEl.value = decision.symbol;
+    if (actionEl) actionEl.value = 'taken';
     
     const entryMid = decision.entryZone ? (decision.entryZone.low + decision.entryZone.high) / 2 : 0;
-    UI.$('trade-entry-price').value = entryMid.toFixed(5);
-    UI.$('trade-lots').value = decision.position?.lots || 0.1;
-    UI.$('trade-stop-loss').value = decision.stopLoss?.price?.toFixed(5) || '';
-    UI.$('trade-take-profit').value = decision.takeProfit?.price?.toFixed(5) || '';
-    UI.$('trade-notes').value = '';
+    if (entryPriceEl) entryPriceEl.value = entryMid.toFixed(5);
+    if (lotsEl) lotsEl.value = decision.position?.lots || 0.1;
+    if (stopLossEl) stopLossEl.value = decision.stopLoss?.price?.toFixed(5) || '';
+    if (takeProfitEl) takeProfitEl.value = decision.takeProfit?.price?.toFixed(5) || '';
+    if (notesEl) notesEl.value = '';
 
-    document.querySelector('input[name="trade-status"][value="running"]').checked = true;
+    const statusRadio = document.querySelector('input[name="trade-status"][value="running"]');
+    if (statusRadio) statusRadio.checked = true;
     UI.hide('trade-closed-fields');
 
     UI.show('trade-modal');
@@ -1082,21 +1106,31 @@ const App = {
     this.currentEditId = id;
     this.currentTradeData = null;
 
-    UI.$('trade-modal-title').textContent = `Edit Trade: ${entry.symbol} ${entry.direction.toUpperCase()}`;
-    UI.$('trade-symbol').value = entry.symbol;
-    UI.$('trade-action').value = entry.action || 'taken';
-    UI.$('trade-entry-price').value = entry.entryPrice;
-    UI.$('trade-lots').value = entry.lots;
-    UI.$('trade-stop-loss').value = entry.stopLoss || '';
-    UI.$('trade-take-profit').value = entry.takeProfit || '';
-    UI.$('trade-notes').value = entry.notes || '';
+    const titleEl = UI.$('trade-modal-title');
+    const symbolEl = UI.$('trade-symbol');
+    const actionEl = UI.$('trade-action');
+    const entryPriceEl = UI.$('trade-entry-price');
+    const lotsEl = UI.$('trade-lots');
+    const stopLossEl = UI.$('trade-stop-loss');
+    const takeProfitEl = UI.$('trade-take-profit');
+    const notesEl = UI.$('trade-notes');
+
+    if (titleEl) titleEl.textContent = `Edit Trade: ${entry.symbol} ${entry.direction.toUpperCase()}`;
+    if (symbolEl) symbolEl.value = entry.symbol;
+    if (actionEl) actionEl.value = entry.action || 'taken';
+    if (entryPriceEl) entryPriceEl.value = entry.entryPrice;
+    if (lotsEl) lotsEl.value = entry.lots;
+    if (stopLossEl) stopLossEl.value = entry.stopLoss || '';
+    if (takeProfitEl) takeProfitEl.value = entry.takeProfit || '';
+    if (notesEl) notesEl.value = entry.notes || '';
 
     const statusRadio = document.querySelector(`input[name="trade-status"][value="${entry.status}"]`);
     if (statusRadio) statusRadio.checked = true;
 
     if (entry.status === 'closed') {
       UI.show('trade-closed-fields');
-      UI.$('trade-exit-price').value = entry.exitPrice || '';
+      const exitPriceEl = UI.$('trade-exit-price');
+      if (exitPriceEl) exitPriceEl.value = entry.exitPrice || '';
       const resultRadio = document.querySelector(`input[name="trade-result"][value="${entry.result}"]`);
       if (resultRadio) resultRadio.checked = true;
     } else {
@@ -1114,18 +1148,25 @@ const App = {
     
     const status = document.querySelector('input[name="trade-status"]:checked')?.value || 'running';
     
+    const entryPriceEl = UI.$('trade-entry-price');
+    const stopLossEl = UI.$('trade-stop-loss');
+    const takeProfitEl = UI.$('trade-take-profit');
+    const lotsEl = UI.$('trade-lots');
+    const notesEl = UI.$('trade-notes');
+    const exitPriceEl = UI.$('trade-exit-price');
+    
     try {
       const updates = {
-        entryPrice: parseFloat(UI.$('trade-entry-price').value),
-        stopLoss: parseFloat(UI.$('trade-stop-loss').value),
-        takeProfit: parseFloat(UI.$('trade-take-profit').value),
-        lots: parseFloat(UI.$('trade-lots').value),
+        entryPrice: entryPriceEl ? parseFloat(entryPriceEl.value) : 0,
+        stopLoss: stopLossEl ? parseFloat(stopLossEl.value) : 0,
+        takeProfit: takeProfitEl ? parseFloat(takeProfitEl.value) : 0,
+        lots: lotsEl ? parseFloat(lotsEl.value) : 0,
         status: status,
-        notes: UI.$('trade-notes').value || undefined,
+        notes: notesEl ? notesEl.value || undefined : undefined,
       };
 
       if (status === 'closed') {
-        updates.exitPrice = parseFloat(UI.$('trade-exit-price').value);
+        updates.exitPrice = exitPriceEl ? parseFloat(exitPriceEl.value) : 0;
         updates.result = document.querySelector('input[name="trade-result"]:checked')?.value;
       }
 
@@ -1325,7 +1366,8 @@ const App = {
       this.results = [];
       Storage.saveResults([]);
       UI.renderResults([], this.currentFilter);
-      UI.$('refresh-btn').disabled = true;
+      const refreshBtn = UI.$('refresh-btn');
+      if (refreshBtn) refreshBtn.disabled = true;
       UI.toast(`Strategy changed to ${e.target.options[e.target.selectedIndex].text}`, 'info');
     });
 
@@ -1438,7 +1480,8 @@ const App = {
       this.updateAutoScanUI(status);
       
       if (status.isRunning) {
-        UI.$('autoscan-toggle').checked = true;
+        const autoscanToggle = UI.$('autoscan-toggle');
+        if (autoscanToggle) autoscanToggle.checked = true;
         UI.show('autoscan-config');
       }
     } catch (error) {
@@ -1454,7 +1497,8 @@ const App = {
     const respectMarketHours = UI.$('autoscan-market-hours')?.checked !== false;
     
     if (!email || !email.includes('@')) {
-      UI.$('autoscan-toggle').checked = false;
+      const autoscanToggle = UI.$('autoscan-toggle');
+      if (autoscanToggle) autoscanToggle.checked = false;
       UI.toast('Please enter a valid email address for alerts', 'error');
       UI.$('autoscan-email')?.focus();
       return;
@@ -1476,11 +1520,13 @@ const App = {
         
         this.autoScanInterval = setInterval(() => this.loadAutoScanStatus(), 60000);
       } else {
-        UI.$('autoscan-toggle').checked = false;
+        const autoscanToggle = UI.$('autoscan-toggle');
+      if (autoscanToggle) autoscanToggle.checked = false;
         UI.toast(data.error || 'Failed to start auto-scan', 'error');
       }
     } catch (error) {
-      UI.$('autoscan-toggle').checked = false;
+      const autoscanToggle = UI.$('autoscan-toggle');
+      if (autoscanToggle) autoscanToggle.checked = false;
       UI.toast('Failed to start auto-scan', 'error');
     }
   },

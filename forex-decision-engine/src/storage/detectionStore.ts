@@ -416,6 +416,23 @@ export async function getDetectionSummary(): Promise<DetectionSummary> {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// HELPER: Safe JSON parse (handles already-parsed objects)
+// ═══════════════════════════════════════════════════════════════
+
+function safeJsonParse<T>(value: unknown, defaultValue: T): T {
+  if (value === null || value === undefined) return defaultValue;
+  if (typeof value === 'object') return value as T;
+  if (typeof value === 'string') {
+    try {
+      return JSON.parse(value) as T;
+    } catch {
+      return defaultValue;
+    }
+  }
+  return defaultValue;
+}
+
+// ═══════════════════════════════════════════════════════════════
 // HELPER: Row to Detection
 // ═══════════════════════════════════════════════════════════════
 
@@ -440,7 +457,7 @@ function rowToDetection(row: Record<string, unknown>): DetectedTrade {
       : null,
     lotSize: row.lot_size != null ? Number(row.lot_size) : null,
     riskAmount: row.risk_amount != null ? Number(row.risk_amount) : null,
-    tieredExits: row.tiered_exits ? JSON.parse(String(row.tiered_exits)) : null,
+    tieredExits: safeJsonParse(row.tiered_exits, null),
     firstDetectedAt: String(row.first_detected_at),
     lastDetectedAt: String(row.last_detected_at),
     detectionCount: Number(row.detection_count || 1),
@@ -448,7 +465,7 @@ function rowToDetection(row: Record<string, unknown>): DetectedTrade {
     barExpiresAt: row.bar_expires_at ? String(row.bar_expires_at) : null,
     status: row.status as DetectionStatus,
     reason: String(row.reason || ''),
-    triggers: row.triggers ? JSON.parse(String(row.triggers)) : [],
+    triggers: safeJsonParse(row.triggers, []),
     createdAt: String(row.created_at),
     updatedAt: String(row.updated_at),
   };

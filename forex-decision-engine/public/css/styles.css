@@ -198,6 +198,11 @@ body {
   position: relative;
 }
 
+/* Extra right padding when button has a visible badge */
+.nav-btn:has(.nav-badge:not(.hidden)) {
+  padding-right: calc(var(--spacing-xl) + 18px);
+}
+
 .nav-btn:hover {
   color: var(--text-secondary);
   background: var(--bg-hover);
@@ -210,14 +215,21 @@ body {
 
 .nav-badge {
   position: absolute;
-  top: 2px;
-  right: 4px;
+  top: 50%;
+  right: 6px;
+  transform: translateY(-50%);
   background: var(--negative);
   color: white;
   font-size: 9px;
-  padding: 1px 4px;
+  padding: 2px 5px;
   border-radius: 8px;
   font-weight: 600;
+  min-width: 16px;
+  text-align: center;
+}
+
+.nav-badge.hidden {
+  display: none !important;
 }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -2630,25 +2642,7 @@ textarea:focus {
    DETECTIONS (Auto-Scan Detected Trades Cache)
    ═══════════════════════════════════════════════════════════════ */
 
-/* Navigation badge */
-.nav-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 18px;
-  height: 18px;
-  padding: 0 5px;
-  margin-left: 6px;
-  font-size: 0.7rem;
-  font-weight: 600;
-  color: white;
-  background: var(--accent-primary);
-  border-radius: 10px;
-}
-
-.nav-badge.hidden {
-  display: none;
-}
+/* Navigation badge - uses absolute positioning from header styles */
 
 /* Detection summary stats */
 .detections-summary {
