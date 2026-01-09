@@ -22,7 +22,6 @@
       </div>
       <nav class="header-nav" role="navigation" aria-label="Main navigation">
         <button class="nav-btn active" data-screen="results" aria-current="page" aria-label="View trading results">Results</button>
-        <button class="nav-btn" data-screen="detections" aria-label="View detected trades">Detections <span class="nav-badge hidden" id="detections-badge">0</span></button>
         <button class="nav-btn" data-screen="watchlist" aria-label="Manage watchlist">Watchlist</button>
         <button class="nav-btn" data-screen="journal" aria-label="View trade journal">Journal</button>
         <button class="nav-btn" data-screen="settings" aria-label="Configure settings">Settings</button>
@@ -318,48 +317,6 @@
               </div>
             </div>
           </div>
-        </div>
-      </section>
-
-      <!-- Detections Screen (Auto-Scan Detected Trades Cache) -->
-      <section id="detections-screen" class="screen hidden">
-        <div class="screen-header">
-          <h2>🔍 Detected Trades</h2>
-          <button class="btn btn-small" id="refresh-detections-btn">↻ Refresh</button>
-        </div>
-
-        <div class="detections-summary" id="detections-summary">
-          <div class="stat-card cooling">
-            <span class="stat-value" id="stat-cooling">0</span>
-            <span class="stat-label">Cooling Down</span>
-          </div>
-          <div class="stat-card eligible">
-            <span class="stat-value" id="stat-eligible">0</span>
-            <span class="stat-label">Eligible</span>
-          </div>
-          <div class="stat-card total">
-            <span class="stat-value" id="stat-total-detections">0</span>
-            <span class="stat-label">Total Active</span>
-          </div>
-        </div>
-
-        <div class="detections-filters">
-          <button class="filter-btn active" data-detection-filter="all">All</button>
-          <button class="filter-btn" data-detection-filter="cooling_down">Cooling Down</button>
-          <button class="filter-btn" data-detection-filter="eligible">Eligible</button>
-        </div>
-
-        <div class="detections-container" id="detections-container">
-          <div class="empty-state">
-            <div class="empty-icon">🔍</div>
-            <p>No detected trades yet</p>
-            <p class="empty-hint">Start auto-scan to detect trading opportunities</p>
-            <button class="btn btn-primary" id="go-to-autoscan-btn">Configure Auto-Scan</button>
-          </div>
-        </div>
-
-        <div class="detections-info">
-          <p>ℹ️ Detected trades are held in a 60-minute cooldown before becoming eligible for action. This ensures signal persistence and reduces false positives.</p>
         </div>
       </section>
 
