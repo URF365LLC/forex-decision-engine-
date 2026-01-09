@@ -84,8 +84,6 @@ export interface StyleConfig {
   entryTimeframe: string;      // Lower timeframe for entry
   refreshMinutes: number;      // How often to refresh
   validCandles: number;        // How many candles signal is valid
-  avInterval: string;          // Alpha Vantage interval param
-  avTrendInterval: string;     // Alpha Vantage interval for trend TF
 }
 
 export const STYLE_PRESETS: Record<TradingStyle, StyleConfig> = {
@@ -95,8 +93,6 @@ export const STYLE_PRESETS: Record<TradingStyle, StyleConfig> = {
     entryTimeframe: 'H1',      // 60min for entry triggers
     refreshMinutes: 5,
     validCandles: 4,           // Signal valid for ~4 hours
-    avInterval: '60min',       // Alpha Vantage interval for entry TF
-    avTrendInterval: 'daily',  // Alpha Vantage interval for trend TF
   },
   swing: {
     name: 'Swing',
@@ -104,8 +100,6 @@ export const STYLE_PRESETS: Record<TradingStyle, StyleConfig> = {
     entryTimeframe: 'H4',      // 4-hour for entry (aggregated from 60min)
     refreshMinutes: 15,
     validCandles: 6,           // Signal valid for ~24 hours
-    avInterval: '60min',       // We aggregate 60min bars to H4
-    avTrendInterval: 'daily',  // Alpha Vantage daily endpoint
   },
 };
 

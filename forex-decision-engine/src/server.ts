@@ -5,7 +5,6 @@
  * GET  /api/health          - Health check
  * GET  /api/universe        - Get available symbols
  * GET  /api/status          - Cache and rate limiter status
- * POST /api/analyze         - Analyze single symbol
  * POST /api/scan            - Scan multiple symbols
  * GET  /api/signals         - Get signal history
  * PUT  /api/signals/:id     - Update signal result
@@ -53,6 +52,7 @@ import { z } from 'zod';
 import * as detectionService from './services/detectionService.js';
 import { DetectionFilters } from './types/detection.js';
 import { initDb, runMigrations, isDbAvailable } from './db/client.js';
+import { signalCooldown } from './services/signalCooldown.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -288,23 +288,6 @@ app.get('/api/strategies', (req, res) => {
     style: s.style,
     timeframes: s.timeframes,
   })));
-});
-
-/**
- * Analyze single symbol
- * DEPRECATED: Use POST /api/scan with strategyId instead (V1.1 - 2026-01-02)
- */
-app.post('/api/analyze', async (req, res) => {
-  logger.warn('DEPRECATED: /api/analyze called - this route is disabled in V1.1');
-  return res.status(410).json({
-    error: 'legacy_endpoint_disabled',
-    message: 'POST /api/analyze is deprecated. Use POST /api/scan with strategyId parameter.',
-    migration: {
-      newEndpoint: 'POST /api/scan',
-      requiredParams: { symbols: ['SYMBOL'], strategyId: 'rsi-bounce' },
-      documentationUrl: '/api/strategies'
-    }
-  });
 });
 
 /**
@@ -1186,6 +1169,9 @@ async function startServer() {
     logger.error(`Database initialization failed: ${dbError}`);
     logger.warn('Continuing with fallback storage (JSON files)');
   }
+
+  // Load cooldowns from database AFTER DB is initialized
+  await signalCooldown.loadFromDatabase();
 
   // Start cooldown checker AFTER DB is initialized
   detectionService.startCooldownChecker(60000);

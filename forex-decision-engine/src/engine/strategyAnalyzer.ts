@@ -389,7 +389,7 @@ export async function analyzeWithStrategy(
     // 5. RECORD SIGNAL IN COOLDOWN (only if not blocked by volatility or cooldown)
     // CRITICAL: Pass strategyId to ensure per-strategy cooldown isolation
     if (!isBlocked && grade !== 'no-trade') {
-      signalCooldown.record(
+      await signalCooldown.record(
         symbol,
         settings.style,
         direction,

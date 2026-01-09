@@ -19,7 +19,3 @@ export async function getIndicators(
   logger.debug(`Routing ${symbol} to Twelve-only indicator service`);
   return fetchIndicators(symbol, style);
 }
-
-export function isCryptoData(_data: AnyIndicatorData): _data is AnyIndicatorData {
-  return false;
-}

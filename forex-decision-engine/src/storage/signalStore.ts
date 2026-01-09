@@ -1,6 +1,7 @@
 /**
  * Signal Store
  * Hybrid storage: PostgreSQL when available, JSON file fallback
+ * Uses async write queue to avoid blocking the event loop
  */
 
 import { Decision } from '../strategies/types.js';
@@ -8,6 +9,7 @@ import { createLogger } from '../services/logger.js';
 import { getDb, isDbAvailable } from '../db/client.js';
 import { randomUUID } from 'crypto';
 import fs from 'fs';
+import fsPromises from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -17,6 +19,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const MAX_SIGNAL_ENTRIES = 5000;
 const SIGNAL_ARCHIVE_DIR = path.join(__dirname, '../../data/archive');
+const WRITE_DEBOUNCE_MS = 500;
 
 // ═══════════════════════════════════════════════════════════════
 // TYPES
@@ -52,12 +55,15 @@ class SignalStore {
   private signals: StoredSignal[] = [];
   private nextId: number = 1;
   private filePath: string;
+  private writeTimer: NodeJS.Timeout | null = null;
+  private writePending: boolean = false;
+  private writeInProgress: boolean = false;
 
   constructor(filePath?: string) {
     this.filePath = filePath || path.join(__dirname, '../../data/signals.json');
     this.load();
   }
-  
+
   private archiveOverflow(): void {
     if (this.signals.length <= MAX_SIGNAL_ENTRIES) return;
     
@@ -98,7 +104,78 @@ class SignalStore {
     }
   }
 
-  private persist(): void {
+  /**
+   * Schedule an async persist with debouncing to avoid blocking the event loop
+   * Multiple rapid changes are coalesced into a single write
+   */
+  private schedulePersist(): void {
+    this.writePending = true;
+    
+    if (this.writeTimer) {
+      clearTimeout(this.writeTimer);
+    }
+    
+    this.writeTimer = setTimeout(() => {
+      this.writeTimer = null;
+      this.persistAsync();
+    }, WRITE_DEBOUNCE_MS);
+  }
+
+  /**
+   * Async file write - non-blocking, atomic (temp file + rename)
+   */
+  private async persistAsync(): Promise<void> {
+    if (this.writeInProgress) {
+      this.schedulePersist();
+      return;
+    }
+    
+    this.writeInProgress = true;
+    this.writePending = false;
+    const tempPath = `${this.filePath}.tmp`;
+    
+    try {
+      this.archiveOverflow();
+      const dir = path.dirname(this.filePath);
+      
+      try {
+        await fsPromises.access(dir);
+      } catch {
+        await fsPromises.mkdir(dir, { recursive: true });
+      }
+      
+      const data = JSON.stringify({
+        signals: this.signals,
+        nextId: this.nextId,
+      }, null, 2);
+      
+      await fsPromises.writeFile(tempPath, data);
+      await fsPromises.rename(tempPath, this.filePath);
+      
+      logger.debug('Signals persisted to file asynchronously');
+    } catch (e) {
+      logger.error('Failed to save signals', e);
+      try {
+        await fsPromises.unlink(tempPath);
+      } catch {}
+    } finally {
+      this.writeInProgress = false;
+      
+      if (this.writePending) {
+        this.persistAsync();
+      }
+    }
+  }
+
+  /**
+   * Sync persist for shutdown - blocks but ensures data is saved
+   */
+  private persistSync(): void {
+    if (this.writeTimer) {
+      clearTimeout(this.writeTimer);
+      this.writeTimer = null;
+    }
+    
     const tempPath = `${this.filePath}.tmp`;
     try {
       this.archiveOverflow();
@@ -112,7 +189,7 @@ class SignalStore {
       }, null, 2));
       fs.renameSync(tempPath, this.filePath);
     } catch (e) {
-      logger.error('Failed to save signals', e);
+      logger.error('Failed to save signals on shutdown', e);
       if (fs.existsSync(tempPath)) {
         try { fs.unlinkSync(tempPath); } catch {}
       }
@@ -207,7 +284,7 @@ class SignalStore {
     }
 
     this.signals.push(signal);
-    this.persist();
+    this.schedulePersist();
 
     logger.debug(`Saved signal ${signal.id} for ${decision.symbol}`);
     return signalId;
@@ -260,7 +337,7 @@ class SignalStore {
 
     signal.result = result;
     signal.result_notes = notes ?? null;
-    this.persist();
+    this.schedulePersist();
     return true;
   }
 
@@ -430,17 +507,17 @@ class SignalStore {
     );
     const removed = before - this.signals.length;
     if (removed > 0) {
-      this.persist();
+      this.schedulePersist();
       logger.info(`Cleaned up ${removed} old signals`);
     }
     return removed;
   }
 
   /**
-   * Close (save and cleanup)
+   * Close (save and cleanup) - uses sync write to ensure data is saved before shutdown
    */
   close(): void {
-    this.persist();
+    this.persistSync();
     logger.info('Signal store closed');
   }
 }

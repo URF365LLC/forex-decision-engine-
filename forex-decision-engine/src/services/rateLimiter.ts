@@ -1,6 +1,7 @@
 /**
  * Rate Limiter Service
  * Token bucket algorithm for Twelve Data API (610 calls/min on $99 plan)
+ * Uses graceful backpressure instead of fatal errors on queue overflow
  */
 
 import { createLogger } from './logger.js';
@@ -8,6 +9,7 @@ import { createLogger } from './logger.js';
 const logger = createLogger('RateLimiter');
 
 const MAX_QUEUE_SIZE = 200;
+const BACKPRESSURE_THRESHOLD = 150;
 
 interface RateLimiterConfig {
   maxTokens: number;
@@ -20,6 +22,13 @@ interface QueuedRequest {
   reject: (error: Error) => void;
   timeout: NodeJS.Timeout;
   addedAt: number;
+}
+
+export interface AcquireResult {
+  acquired: boolean;
+  backpressure: boolean;
+  queueDepth: number;
+  error?: string;
 }
 
 class TokenBucketRateLimiter {
@@ -89,33 +98,101 @@ class TokenBucketRateLimiter {
   }
 
   /**
+   * Check if backpressure is active (queue approaching capacity)
+   */
+  isBackpressureActive(): boolean {
+    return this.queue.length >= BACKPRESSURE_THRESHOLD;
+  }
+
+  /**
    * Acquire a token (wait if necessary)
+   * Returns graceful result instead of throwing on overflow
    */
   async acquire(timeoutMs: number = 60000): Promise<void> {
-    if (this.queue.length >= MAX_QUEUE_SIZE) {
-      throw new Error(`FATAL: Rate limit queue overflow (${this.queue.length} requests) - aborting`);
+    const result = await this.tryAcquire(timeoutMs);
+    if (!result.acquired) {
+      throw new Error(result.error || 'Rate limit acquisition failed');
+    }
+  }
+
+  /**
+   * Try to acquire a token with graceful backpressure handling
+   * Returns structured result instead of throwing on queue overflow
+   */
+  async tryAcquire(timeoutMs: number = 60000): Promise<AcquireResult> {
+    const queueDepth = this.queue.length;
+    const backpressure = queueDepth >= BACKPRESSURE_THRESHOLD;
+
+    if (queueDepth >= MAX_QUEUE_SIZE) {
+      logger.warn(`Rate limiter queue full (${queueDepth}/${MAX_QUEUE_SIZE}) - rejecting request gracefully`);
+      return {
+        acquired: false,
+        backpressure: true,
+        queueDepth,
+        error: `Rate limit queue full (${queueDepth} pending requests) - try again later`,
+      };
+    }
+
+    if (backpressure) {
+      logger.warn(`Rate limiter backpressure active (${queueDepth}/${MAX_QUEUE_SIZE})`);
     }
 
     this.refill();
     
     if (this.tokens >= 1) {
       this.tokens -= 1;
-      return;
+      return { acquired: true, backpressure, queueDepth };
     }
     
-    return new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        const index = this.queue.findIndex(r => r.resolve === resolve);
+    return new Promise((resolve) => {
+      let timeoutHandle: NodeJS.Timeout | null = null;
+      let resolved = false;
+
+      const cleanup = () => {
+        if (timeoutHandle) {
+          clearTimeout(timeoutHandle);
+          timeoutHandle = null;
+        }
+      };
+
+      timeoutHandle = setTimeout(() => {
+        if (resolved) return;
+        resolved = true;
+        const index = this.queue.findIndex(r => r.timeout === timeoutHandle);
         if (index !== -1) {
           this.queue.splice(index, 1);
         }
-        reject(new Error('Rate limit queue timeout'));
+        resolve({
+          acquired: false,
+          backpressure: true,
+          queueDepth: this.queue.length,
+          error: 'Rate limit queue timeout',
+        });
       }, timeoutMs);
 
+      const queuedResolve = () => {
+        if (resolved) return;
+        resolved = true;
+        cleanup();
+        resolve({ acquired: true, backpressure, queueDepth: this.queue.length });
+      };
+
+      const queuedReject = (error: Error) => {
+        if (resolved) return;
+        resolved = true;
+        cleanup();
+        resolve({
+          acquired: false,
+          backpressure: true,
+          queueDepth: this.queue.length,
+          error: error.message,
+        });
+      };
+
       this.queue.push({
-        resolve,
-        reject,
-        timeout,
+        resolve: queuedResolve,
+        reject: queuedReject,
+        timeout: timeoutHandle,
         addedAt: Date.now(),
       });
 

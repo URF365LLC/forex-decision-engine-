@@ -107,6 +107,10 @@ Core API endpoints cover system health, symbol retrieval, signal analysis and sc
 6. **Request Timeout**: Added 30-second timeout to Twelve Data API calls using AbortController to prevent hung requests.
 7. **Centralized SSE Broadcaster**: Created `sseBroadcaster.ts` module for centralized Server-Sent Events management across services.
 8. **Detection Error Surfacing**: Auto-scan now broadcasts detection persistence errors via SSE for frontend visibility.
+9. **Async Signal Store Writes**: Converted blocking `writeFileSync` to async write queue with debouncing to avoid blocking event loop.
+10. **Rate Limiter Graceful Backpressure**: Queue overflow now returns structured error instead of throwing FATAL - prevents system crashes.
+11. **Cooldown Database Persistence**: Cooldowns now persist to PostgreSQL and survive server restarts via `loadFromDatabase()`.
+12. **Dead Code Removal**: Removed `/api/analyze` endpoint, `isCryptoData()`, `toE8Symbol()`, `getSessionAdjustment()`, and Alpha Vantage config fields.
 
 ## External Dependencies
 

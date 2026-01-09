@@ -456,11 +456,6 @@ function detectRegime(h4Trend: H4TrendResult | undefined, atrPercent: number): R
   return { regime: 'range', allowTrend: false, allowMeanReversion: true, reason: `Range (ADX=${adx.toFixed(1)})` };
 }
 
-function getSessionAdjustment(): number {
-  // DEPRECATED: Use checkSession() instead
-  return 0;
-}
-
 // ═══════════════════════════════════════════════════════════════════════════
 // MAIN PRE-FLIGHT FUNCTION
 // ═══════════════════════════════════════════════════════════════════════════

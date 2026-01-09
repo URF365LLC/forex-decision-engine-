@@ -206,10 +206,6 @@ export function toDataSymbol(e8Symbol: string): string | undefined {
   return INSTRUMENT_MAP.get(e8Symbol)?.dataSymbol;
 }
 
-export function toE8Symbol(dataSymbol: string): string | undefined {
-  return DATA_SYMBOL_MAP.get(dataSymbol)?.symbol;
-}
-
 export function getAssetType(symbol: string): AssetType | undefined {
   return getInstrumentSpec(symbol)?.type;
 }
