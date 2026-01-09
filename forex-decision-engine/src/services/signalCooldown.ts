@@ -24,6 +24,7 @@ const logger = createLogger('Cooldown');
 interface CooldownEntry {
   symbol: string;
   style: TradingStyle;
+  strategyId: string;  // Added: Strategy-specific cooldowns
   direction: 'long' | 'short';
   grade: Grade;
   createdAt: number;
@@ -71,26 +72,30 @@ class SignalCooldownService {
 
   /**
    * Generate unique key for signal
+   * CRITICAL: Key must include strategyId to prevent cross-strategy blocking
+   * Without strategyId, a signal from RsiBounce would block BreakRetest, etc.
    */
-  private makeKey(symbol: string, style: TradingStyle): string {
-    return `${symbol}:${style}`;
+  private makeKey(symbol: string, style: TradingStyle, strategyId: string): string {
+    return `${symbol}:${style}:${strategyId}`;
   }
 
   /**
    * Check if a new signal is allowed
+   * Now requires strategyId for per-strategy cooldown isolation
    */
   check(
     symbol: string,
     style: TradingStyle,
     direction: 'long' | 'short' | 'none',
-    grade: Grade
+    grade: Grade,
+    strategyId: string  // REQUIRED: Ensures strategy-specific cooldowns
   ): CooldownCheck {
     // No-trade signals don't trigger cooldown
     if (direction === 'none' || grade === 'no-trade') {
       return { allowed: true, reason: 'No-trade signals bypass cooldown' };
     }
 
-    const key = this.makeKey(symbol, style);
+    const key = this.makeKey(symbol, style, strategyId);
     const existing = this.entries.get(key);
 
     // No existing signal - allow
@@ -142,24 +147,26 @@ class SignalCooldownService {
 
   /**
    * Record a new signal (starts cooldown)
+   * Now requires strategyId for per-strategy cooldown isolation
    */
   record(
     symbol: string,
     style: TradingStyle,
     direction: 'long' | 'short',
     grade: Grade,
+    strategyId: string,  // REQUIRED: Ensures strategy-specific cooldowns
     validUntil?: string
   ): void {
-    const key = this.makeKey(symbol, style);
+    const key = this.makeKey(symbol, style, strategyId);
     const now = Date.now();
-    
+
     // Use validUntil if provided, otherwise use default cooldown
     let expiresAt: number;
     if (validUntil) {
       expiresAt = new Date(validUntil).getTime();
     } else {
-      const cooldownMs = style === 'intraday' 
-        ? COOLDOWN_CONFIG.intraday 
+      const cooldownMs = style === 'intraday'
+        ? COOLDOWN_CONFIG.intraday
         : COOLDOWN_CONFIG.swing;
       expiresAt = now + cooldownMs;
     }
@@ -167,6 +174,7 @@ class SignalCooldownService {
     const entry: CooldownEntry = {
       symbol,
       style,
+      strategyId,  // Store strategyId with entry
       direction,
       grade,
       createdAt: now,
@@ -174,16 +182,17 @@ class SignalCooldownService {
     };
 
     this.entries.set(key, entry);
-    logger.debug(`Cooldown recorded: ${symbol} ${style} ${direction} ${grade}`);
+    logger.debug(`Cooldown recorded: ${symbol} ${style} ${strategyId} ${direction} ${grade}`);
   }
 
   /**
-   * Clear cooldown for a symbol
+   * Clear cooldown for a symbol and strategy
+   * Now requires strategyId for per-strategy cooldown isolation
    */
-  clear(symbol: string, style: TradingStyle): void {
-    const key = this.makeKey(symbol, style);
+  clear(symbol: string, style: TradingStyle, strategyId: string): void {
+    const key = this.makeKey(symbol, style, strategyId);
     this.entries.delete(key);
-    logger.debug(`Cooldown cleared: ${symbol} ${style}`);
+    logger.debug(`Cooldown cleared: ${symbol} ${style} ${strategyId}`);
   }
 
   /**
