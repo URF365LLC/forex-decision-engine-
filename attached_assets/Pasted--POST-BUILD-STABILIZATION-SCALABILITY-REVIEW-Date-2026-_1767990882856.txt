@@ -1,0 +1,979 @@
+# POST-BUILD STABILIZATION & SCALABILITY REVIEW
+
+ 
+
+**Date:** 2026-01-09
+
+**Scope:** Principal Systems Architect / Platform Engineer Assessment
+
+**Focus:** Stabilization, Data Pipeline Integrity, Long-term Correctness
+
+ 
+
+---
+
+ 
+
+## A) EXECUTIVE ARCHITECTURE ASSESSMENT
+
+ 
+
+### Current System Maturity: **6.5/10 - Functional but Fragile**
+
+ 
+
+The Forex Decision Engine is architecturally sound at the conceptual level but exhibits classic "first build" characteristics: working code with implicit assumptions, multi-store complexity, and incomplete abstractions. The system **works**, but success relies on happy-path conditions.
+
+ 
+
+### Maturity Assessment by Subsystem
+
+ 
+
+| Subsystem | Maturity | Concern Level |
+
+|-----------|----------|---------------|
+
+| **Strategy Engine** | 8/10 | Low - Well-architected, proper gating |
+
+| **Risk Management** | 9/10 | Low - Fail-closed, production-grade |
+
+| **Data Ingestion** | 5/10 | High - Sequential bottleneck, queue issues |
+
+| **Storage Layer** | 4/10 | Critical - Multi-store inconsistency |
+
+| **Schema Contracts** | 4/10 | High - Validation gaps, type drift |
+
+| **Cache Coherence** | 5/10 | Medium - TTL fragmentation |
+
+| **Frontend State** | 4/10 | High - Race conditions, no state manager |
+
+ 
+
+### Key Stabilization Risks
+
+ 
+
+1. **Multi-Store Write Inconsistency** - Signal saved to 3+ stores without transaction boundaries
+
+2. **Sequential Symbol Processing** - O(N × 100ms) bottleneck in auto-scan
+
+3. **Cooldown State Split** - In-memory cooldowns lost on restart, DB detections orphaned
+
+4. **Schema Drift** - 3 different field names for account size, passthrough schemas
+
+5. **Blocking I/O** - Synchronous file writes on event loop
+
+ 
+
+### Readiness for Scale
+
+ 
+
+| Scale Dimension | Current Limit | Bottleneck |
+
+|-----------------|---------------|------------|
+
+| **Symbols** | ~50 practical | Sequential scan (4.6s per strategy) |
+
+| **Strategies** | 11 | Staggered scheduling works well |
+
+| **Concurrent Users** | ~10-20 | SSE broadcast O(N), no backpressure |
+
+| **Request Rate** | 610/min | Twelve Data API limit (hard cap) |
+
+| **Data History** | 5000 signals | Archive threshold, then JSON files |
+
+ 
+
+---
+
+ 
+
+## B) DATA PIPELINE & BOTTLENECK REPORT
+
+ 
+
+### End-to-End Pipeline Map
+
+ 
+
+```
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+
+│                         DATA INGESTION LAYER                                 │
+
+│                                                                              │
+
+│  ┌──────────────────┐    ┌──────────────────┐    ┌──────────────────────┐  │
+
+│  │   API Request    │───▶│   Rate Limiter   │───▶│   Circuit Breaker    │  │
+
+│  │  (Twelve Data)   │    │   (Token Bucket) │    │   (5 fail threshold) │  │
+
+│  └──────────────────┘    │   610 calls/min  │    └──────────┬───────────┘  │
+
+│                          │   ⚠️ FATAL on     │               │              │
+
+│                          │   queue overflow  │               ▼              │
+
+│                          └──────────────────┘    ┌──────────────────────┐  │
+
+│                                                  │   In-Memory Cache    │  │
+
+│                                                  │   TTL: 5-240 min     │  │
+
+│                                                  │   ⚠️ No invalidation  │  │
+
+│                                                  └──────────┬───────────┘  │
+
+└─────────────────────────────────────────────────────────────┼───────────────┘
+
+                                                              │
+
+┌─────────────────────────────────────────────────────────────▼───────────────┐
+
+│                         PROCESSING PIPELINE                                  │
+
+│                                                                              │
+
+│  ┌──────────────────┐    ┌──────────────────┐    ┌──────────────────────┐  │
+
+│  │   Indicator      │───▶│   Strategy       │───▶│   Safety Gates       │  │
+
+│  │   Calculation    │    │   Analysis       │    │   (Vol + Cooldown)   │  │
+
+│  │   ⚠️ Two-wave    │    │   11 strategies  │    │   ⚠️ Double gating   │  │
+
+│  │   fetch pattern  │    │   per symbol     │    │   state inconsist.   │  │
+
+│  └──────────────────┘    └──────────────────┘    └──────────┬───────────┘  │
+
+│                                                              │              │
+
+│  ⚠️ BOTTLENECK: Sequential symbol processing (N × 100ms)    │              │
+
+│                                                              │              │
+
+└─────────────────────────────────────────────────────────────┼───────────────┘
+
+                                                              │
+
+┌─────────────────────────────────────────────────────────────▼───────────────┐
+
+│                         STORAGE PIPELINE (⚠️ CRITICAL)                      │
+
+│                                                                              │
+
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+
+│  │                    TRIPLE WRITE PATTERN                              │   │
+
+│  │                    (No Transaction Boundary!)                        │   │
+
+│  │                                                                      │   │
+
+│  │   ┌────────────┐    ┌────────────┐    ┌────────────────────────┐   │   │
+
+│  │   │  Signal    │    │ Detection  │    │      Cooldown          │   │   │
+
+│  │   │  Store     │    │   Store    │    │      (In-Memory)       │   │   │
+
+│  │   │  (JSON)    │    │   (DB)     │    │   ⚠️ Lost on restart   │   │   │
+
+│  │   └──────┬─────┘    └─────┬──────┘    └────────────────────────┘   │   │
+
+│  │          │                │                                         │   │
+
+│  │          │                ▼                                         │   │
+
+│  │          │    ┌──────────────────────────────────────┐             │   │
+
+│  │          │    │  In-Memory Fallback (if DB fails)    │             │   │
+
+│  │          │    │  ⚠️ Can diverge from DB              │             │   │
+
+│  │          │    └──────────────────────────────────────┘             │   │
+
+│  │          │                                                          │   │
+
+│  │          ▼                                                          │   │
+
+│  │   ┌────────────────────────────────────────────┐                   │   │
+
+│  │   │      signals.json (Sync Write)             │                   │   │
+
+│  │   │      ⚠️ BLOCKS EVENT LOOP                  │                   │   │
+
+│  │   │      ⚠️ No atomic write (temp+rename)      │                   │   │
+
+│  │   └────────────────────────────────────────────┘                   │   │
+
+│  └─────────────────────────────────────────────────────────────────────┘   │
+
+│                                                                              │
+
+└──────────────────────────────────────────────────────────────────────────────┘
+
+                                                              │
+
+┌─────────────────────────────────────────────────────────────▼───────────────┐
+
+│                         DISPLAY PIPELINE                                     │
+
+│                                                                              │
+
+│  ┌──────────────────┐    ┌──────────────────┐    ┌──────────────────────┐  │
+
+│  │   REST API       │    │   SSE Stream     │    │   Frontend (Vanilla)  │  │
+
+│  │   40+ endpoints  │    │   Broadcast      │    │   No state manager    │  │
+
+│  │   ⚠️ 31 without  │    │   ⚠️ No back-   │    │   ⚠️ Race conditions │  │
+
+│  │   validation     │    │   pressure       │    │   on concurrent ops   │  │
+
+│  └──────────────────┘    └──────────────────┘    └──────────────────────┘  │
+
+│                                                                              │
+
+└──────────────────────────────────────────────────────────────────────────────┘
+
+```
+
+ 
+
+### Critical Bottlenecks Identified
+
+ 
+
+| # | Bottleneck | Location | Impact | Severity |
+
+|---|------------|----------|--------|----------|
+
+| B1 | **Sequential Symbol Scan** | `autoScanService.ts:532-627` | 46 symbols × 100ms = 4.6s minimum per strategy | **CRITICAL** |
+
+| B2 | **Two-Wave Indicator Fetch** | `indicatorService.ts:292-467` | Cannot parallelize secondary until primary complete | HIGH |
+
+| B3 | **Sync File Write** | `signalStore.ts:109,113` | Blocks Node.js event loop during save | HIGH |
+
+| B4 | **Serial Queue Processing** | `rateLimiter.ts:64-82` | One request at a time despite async capability | MEDIUM |
+
+| B5 | **SSE Broadcast Loop** | `server.ts:734-739` | O(N) clients, no parallelism | LOW |
+
+ 
+
+### Failure Points & Silent Errors
+
+ 
+
+| # | Failure Point | Location | Current Behavior | Impact |
+
+|---|---------------|----------|------------------|--------|
+
+| F1 | Queue overflow | `rateLimiter.ts:96` | **FATAL ERROR** (throws) | System crash |
+
+| F2 | Detection persist fail | `autoScanService.ts:601-604` | Log warning, continue | Silent data loss |
+
+| F3 | DB write fail | `detectionStore.ts:112-114` | Fall back to in-memory | Store divergence |
+
+| F4 | SSE write fail | `server.ts:738` | Silent delete from set | Client dropped |
+
+| F5 | Config file corrupt | `autoScanService.ts:702-710` | Log error, use defaults | Config lost |
+
+ 
+
+### Recommended Pipeline Rewiring
+
+ 
+
+**Phase 1: Eliminate Blocking Operations**
+
+```
+
+Current:  signalStore.save() → fs.writeFileSync() → BLOCK → continue
+
+Proposed: signalStore.save() → queue.push() → async worker → fs.writeFile()
+
+```
+
+ 
+
+**Phase 2: Parallelize Symbol Processing**
+
+```
+
+Current:  for symbol in symbols: await analyze(symbol) → 100ms delay
+
+Proposed: chunk(symbols, 5).map(batch => Promise.all(batch.map(analyze)))
+
+```
+
+ 
+
+**Phase 3: Unify Storage with Transaction**
+
+```
+
+Current:  signalStore.save() → detectionStore.save() → (cooldown record)
+
+Proposed: transaction { signalStore + detectionStore + cooldown } → commit/rollback
+
+```
+
+ 
+
+---
+
+ 
+
+## C) SCHEMA & CONTRACT REVIEW
+
+ 
+
+### Schema Inconsistencies
+
+ 
+
+| Issue | Severity | Files | Description |
+
+|-------|----------|-------|-------------|
+
+| **Dual Entry Price** | HIGH | `types.ts:248-252`, `signalStore.ts:152` | Both `entryPrice` and `entry.price` exist; fallback chains everywhere |
+
+| **Triple Account Name** | HIGH | `schemas.ts:3-8` | `accountSize`, `accountBalance`, `equity` all accepted |
+
+| **Passthrough Schemas** | MEDIUM | `schemas.ts:16,65,83` | `.passthrough()` allows unknown fields |
+
+| **SMA20 Not Provided** | HIGH | `batchDataService.ts:36-53` | RsiBounce requires sma20; batch never returns it |
+
+| **Status as String** | MEDIUM | `db/types.ts:49` | DB stores status as string, not enum constrained |
+
+ 
+
+### Cross-Module Mismatches
+
+ 
+
+```
+
+┌─────────────────────────────────────────────────────────────────────────┐
+
+│                    ENTRY PRICE FIELD MISMATCH                            │
+
+│                                                                          │
+
+│  Decision (types.ts)        SignalStore           DetectionService      │
+
+│  ┌────────────────────┐    ┌────────────────┐    ┌──────────────────┐  │
+
+│  │ entryPrice: number │───▶│ Uses fallback: │───▶│ Uses fallback:   │  │
+
+│  │ entry: {           │    │ entry?.price   │    │ entry?.price     │  │
+
+│  │   price: number    │    │   ?? entryPrice│    │   ?? entryPrice  │  │
+
+│  │ }                  │    │   ?? 0         │    │   ?? 0           │  │
+
+│  └────────────────────┘    └────────────────┘    └──────────────────┘  │
+
+│                                                                          │
+
+│  PROBLEM: Which is authoritative? Both written, consumed inconsistently │
+
+└─────────────────────────────────────────────────────────────────────────┘
+
+```
+
+ 
+
+### Validation Gap Analysis
+
+ 
+
+**31 Endpoints Without Zod Validation:**
+
+```
+
+GET   /api/health
+
+GET   /api/ready
+
+GET   /api/metrics
+
+GET   /api/universe
+
+GET   /api/status
+
+GET   /api/settings/defaults
+
+GET   /api/strategies            ← query.style unvalidated
+
+GET   /api/signals               ← query.limit, grade, symbol unvalidated
+
+GET   /api/signals/stats
+
+GET   /api/journal               ← CRITICAL: complex filters cast as any
+
+GET   /api/journal/stats         ← dateFrom, dateTo unvalidated
+
+GET   /api/journal/export
+
+GET   /api/journal/:id
+
+DELETE /api/journal/:id
+
+GET   /api/upgrades/stream
+
+GET   /api/upgrades/recent       ← query.minutes unvalidated
+
+GET   /api/autoscan/presets
+
+POST  /api/autoscan/stop
+
+GET   /api/autoscan/status
+
+GET   /api/sentiment/status
+
+GET   /api/sentiment/:symbol
+
+GET   /api/sentiment/:symbol/aggregated  ← query.samples unvalidated
+
+GET   /api/sentiment/:symbol/history
+
+GET   /api/sentiment/overview
+
+GET   /api/detections            ← CRITICAL: status filtering unvalidated
+
+GET   /api/detections/summary
+
+GET   /api/detections/:id
+
+POST  /api/detections/:id/execute  ← body not validated
+
+POST  /api/detections/:id/dismiss  ← body not validated
+
+```
+
+ 
+
+### Proposed Schema Improvements
+
+ 
+
+**1. Eliminate Dual Fields:**
+
+```typescript
+
+// BEFORE: Two representations
+
+interface Decision {
+
+  entryPrice: number;      // DELETE THIS
+
+  entry: { price: number; formatted: string };
+
+}
+
+ 
+
+// AFTER: Single source of truth
+
+interface Decision {
+
+  entry: { price: number; formatted: string };
+
+}
+
+```
+
+ 
+
+**2. Strict Account Schema:**
+
+```typescript
+
+// BEFORE: Three optional names
+
+export const SettingsSchema = z.object({
+
+  accountSize: z.number().optional(),
+
+  accountBalance: z.number().optional(),  // DELETE
+
+  equity: z.number().optional(),          // DELETE
+
+});
+
+ 
+
+// AFTER: One required field
+
+export const SettingsSchema = z.object({
+
+  accountSize: z.number().min(100).max(10000000),
+
+});
+
+```
+
+ 
+
+**3. Database Enum Constraints:**
+
+```sql
+
+-- Add CHECK constraint to detections.status
+
+ALTER TABLE detections ADD CONSTRAINT chk_detection_status
+
+  CHECK (status IN ('cooling_down', 'eligible', 'executed', 'dismissed', 'expired', 'invalidated'));
+
+```
+
+ 
+
+---
+
+ 
+
+## D) LEGACY & TECHNICAL DEBT INVENTORY
+
+ 
+
+### Safe to Remove Immediately
+
+ 
+
+| Item | File | Lines | Justification |
+
+|------|------|-------|---------------|
+
+| `POST /api/analyze` | `server.ts` | 293-308 | Returns 410, disabled since v1.1 |
+
+| `isCryptoData()` | `indicatorFactory.ts` | 23-25 | Stub returning false, never used |
+
+| `toE8Symbol()` | `e8InstrumentSpecs.ts` | 209-211 | Exported but never called |
+
+| `getSessionAdjustment()` | `SignalQualityGate.ts` | 459-462 | Dead stub, always returns 0 |
+
+| `avInterval`, `avTrendInterval` | `config/strategy.ts` | 87-109 | Alpha Vantage config, API removed |
+
+ 
+
+### Must Be Refactored
+
+ 
+
+| Item | File | Issue | Action |
+
+|------|------|-------|--------|
+
+| **Triple account names** | `schemas.ts:3-8` | Migration debt | Pick one, migrate, deprecate others |
+
+| **Legacy API response wrapper** | `server.ts:221-242` | Duplicated `legacy:{}` | Remove after client migration |
+
+| **Entry price duality** | `types.ts:248-252` | Semantic confusion | Consolidate to single field |
+
+| **Unused indicator types** | `types.ts:97-101` | Never populated | Remove `ema8`, `ema21`, `ema55`, `obv` |
+
+ 
+
+### Should Be Rewritten
+
+ 
+
+| Component | Current State | Problem | Proposed Solution |
+
+|-----------|---------------|---------|-------------------|
+
+| **SignalStore file I/O** | Sync writes | Blocks event loop | Async write with queue |
+
+| **Multi-store save** | Sequential, no tx | Inconsistent state | Transaction wrapper |
+
+| **Cooldown tracking** | In-memory only | Lost on restart | Persist to DB |
+
+| **Auto-scan loop** | Sequential N×100ms | Performance ceiling | Batch parallelization |
+
+ 
+
+### Preservation Justified
+
+ 
+
+| Component | Why Keep |
+
+|-----------|----------|
+
+| **Hybrid DB/In-Memory Storage** | Legitimate resilience pattern; DB unavailable shouldn't block |
+
+| **JSON File Fallback** | Provides cold-start data recovery, valuable for debugging |
+
+| **Signal Archival System** | Necessary for data growth control; archive threshold appropriate |
+
+| **Circuit Breaker** | Correct pattern for external API resilience |
+
+ 
+
+---
+
+ 
+
+## E) BACKEND CLEANUP & REFACTOR PLAN
+
+ 
+
+### High-Impact Cleanup Opportunities
+
+ 
+
+| Priority | Target | Impact | Effort | Risk |
+
+|----------|--------|--------|--------|------|
+
+| P0 | Async file writes | Unblock event loop | Low | Low |
+
+| P0 | Unified storage transaction | Data integrity | Medium | Medium |
+
+| P1 | Add endpoint validation | Security, correctness | Medium | Low |
+
+| P1 | Remove dead code | Clarity, size reduction | Low | Low |
+
+| P1 | Consolidate account field | API clarity | Low | Medium |
+
+| P2 | Parallel symbol scanning | 5-10x faster scans | Medium | Medium |
+
+| P2 | SSE backpressure | Memory safety | Low | Low |
+
+ 
+
+### Suggested Architectural Adjustments
+
+ 
+
+**1. Introduce Storage Transaction Layer**
+
+```
+
+Current Architecture:
+
+  server.ts → signalStore.save() → detectionStore.save() → (independent writes)
+
+ 
+
+Proposed Architecture:
+
+  server.ts → storageTransaction.execute([
+
+    { store: 'signal', action: 'save', data },
+
+    { store: 'detection', action: 'save', data },
+
+    { store: 'cooldown', action: 'record', data }
+
+  ]) → all-or-nothing commit
+
+```
+
+ 
+
+**2. Event-Driven Storage Updates**
+
+```
+
+Current: Direct store.save() calls scattered in server.ts
+
+ 
+
+Proposed:
+
+  emit('signal:detected', decision)
+
+  → signalStore.onSignalDetected()
+
+  → detectionStore.onSignalDetected()
+
+  → cooldownService.onSignalDetected()
+
+```
+
+ 
+
+**3. Centralized Schema Registry**
+
+```
+
+Current: Types scattered across types.ts, detection.ts, db/types.ts, schemas.ts
+
+ 
+
+Proposed:
+
+  src/schemas/
+
+    ├── api/          # Zod schemas for all endpoints
+
+    ├── domain/       # Core business types
+
+    ├── database/     # DB column types
+
+    └── index.ts      # Re-exports with validation
+
+```
+
+ 
+
+### Risk Assessment Per Change
+
+ 
+
+| Change | Technical Risk | Business Risk | Mitigation |
+
+|--------|---------------|---------------|------------|
+
+| Async file I/O | Low - Node native | None | Add queue size limit |
+
+| Storage transaction | Medium - new abstraction | Low | Feature flag, gradual rollout |
+
+| Remove `/api/analyze` | None - already 410 | Low - clients warned | Monitor 410 error rate first |
+
+| Consolidate account field | Low | Medium - API change | Version header, deprecation period |
+
+| Parallel scanning | Medium - concurrency | Low | Progressive batch size increase |
+
+ 
+
+---
+
+ 
+
+## F) STABILIZATION & EXPANSION ROADMAP
+
+ 
+
+### Phase 0: Immediate Stabilization (0-1 week)
+
+*Focus: Correctness & Data Integrity*
+
+ 
+
+| Task | Files | Acceptance Criteria |
+
+|------|-------|---------------------|
+
+| Convert sync file writes to async | `signalStore.ts:109,113` | No blocking writes on event loop |
+
+| Fix queue overflow handling | `rateLimiter.ts:96` | Graceful backpressure instead of fatal |
+
+| Persist cooldowns to DB | `signalCooldown.ts:65`, `db/client.ts` | Cooldowns survive restart |
+
+| Add SSE client cleanup | `server.ts:738` | Call `res.end()` on write failure |
+
+| Fix detection persistence error surfacing | `autoScanService.ts:601-604` | Errors visible to user |
+
+ 
+
+**Testing Requirements:**
+
+- [ ] Restart server with active cooldowns → verify restored
+
+- [ ] Kill SSE client mid-stream → verify memory freed
+
+- [ ] Fill rate limiter queue → verify graceful degradation
+
+ 
+
+### Phase 1: Structural Cleanup (1-3 weeks)
+
+*Focus: Rewiring & Debt Removal*
+
+ 
+
+| Task | Files | Acceptance Criteria |
+
+|------|-------|---------------------|
+
+| Remove dead code | Multiple | Zero dead exports, no deprecated stubs |
+
+| Add Zod validation to 31 endpoints | `server.ts`, `schemas.ts` | All query/body params validated |
+
+| Consolidate account field | `schemas.ts`, `types.ts` | Single `accountSize` field |
+
+| Remove legacy API response | `server.ts:221-242` | No `legacy:{}` wrapper |
+
+| Unify entry price field | `types.ts`, `signalStore.ts` | Single `entry.price` source |
+
+| Add storage transaction layer | New: `storage/transaction.ts` | Atomic multi-store writes |
+
+ 
+
+**Testing Requirements:**
+
+- [ ] Integration tests for all validated endpoints
+
+- [ ] Storage transaction rollback on partial failure
+
+- [ ] API backward compatibility tests
+
+ 
+
+### Phase 2: Expansion-Ready Architecture (3-6 weeks)
+
+*Focus: Scale & Observability*
+
+ 
+
+| Task | Files | Acceptance Criteria |
+
+|------|-------|---------------------|
+
+| Parallelize symbol scanning | `autoScanService.ts` | 5-10x faster scans (batch of 5) |
+
+| Add structured metrics | New: `services/metrics.ts` | Prometheus /metrics endpoint |
+
+| Implement event bus | New: `services/eventBus.ts` | Decoupled storage updates |
+
+| Add request tracing | Middleware | Request ID in all logs |
+
+| Frontend state manager | `public/js/state.js` | No race conditions |
+
+| Database query optimization | `db/client.ts` | Index coverage analysis |
+
+ 
+
+**Metrics to Track:**
+
+- Scan latency P50/P95/P99
+
+- Cache hit rate by data type
+
+- DB connection pool utilization
+
+- SSE client count and memory
+
+- Rate limiter queue depth
+
+ 
+
+---
+
+ 
+
+## APPENDIX: FILES REQUIRING MODIFICATION
+
+ 
+
+### Phase 0 Files
+
+```
+
+src/services/rateLimiter.ts      # Queue backpressure
+
+src/services/signalCooldown.ts   # DB persistence
+
+src/storage/signalStore.ts       # Async writes
+
+src/services/autoScanService.ts  # Error surfacing
+
+src/server.ts                    # SSE cleanup
+
+src/db/client.ts                 # Cooldowns table
+
+```
+
+ 
+
+### Phase 1 Files
+
+```
+
+src/server.ts                    # Validation, remove legacy
+
+src/validation/schemas.ts        # Add 31 schemas
+
+src/strategies/types.ts          # Entry field consolidation
+
+src/types/detection.ts           # Entry field consolidation
+
+src/storage/signalStore.ts       # Entry field update
+
+src/config/e8InstrumentSpecs.ts  # Remove toE8Symbol
+
+src/engine/indicatorFactory.ts   # Remove isCryptoData
+
+src/strategies/SignalQualityGate.ts  # Remove dead function
+
+src/config/strategy.ts           # Remove AV fields
+
+NEW: src/storage/transaction.ts  # Transaction layer
+
+```
+
+ 
+
+### Phase 2 Files
+
+```
+
+src/services/autoScanService.ts  # Parallel scanning
+
+NEW: src/services/metrics.ts     # Prometheus metrics
+
+NEW: src/services/eventBus.ts    # Event-driven updates
+
+src/middleware/requestId.ts      # Tracing enhancement
+
+NEW: public/js/state.js          # Frontend state manager
+
+public/js/app.js                 # Use state manager
+
+```
+
+ 
+
+---
+
+ 
+
+## CONCLUSION
+
+ 
+
+The Forex Decision Engine has a solid foundation but requires stabilization before scaling. The primary concerns are:
+
+ 
+
+1. **Data Integrity** - Multi-store writes without transactions create inconsistency risk
+
+2. **Performance** - Sequential processing limits throughput
+
+3. **Resilience** - Cooldown state loss on restart, blocking I/O
+
+ 
+
+The recommended approach is to stabilize first (Phase 0), then clean up technical debt (Phase 1), and finally prepare for scale (Phase 2). This sequence ensures the system is correct before it is fast.
+
+ 
+
+**Key Metrics for Success:**
+
+- Zero silent failures in storage pipeline
+
+- Sub-1-second scan latency for single symbol
+
+- 100% endpoint validation coverage
+
+- No blocking writes on event loop
+
+ 
+
+---
+
+ 
+
+**Report Completed:** 2026-01-09
+
+**Auditor:** Claude (Opus 4.5)
+
+**Classification:** Principal Architecture Review
