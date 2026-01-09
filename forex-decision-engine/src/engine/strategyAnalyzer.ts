@@ -322,10 +322,9 @@ export async function analyzeWithStrategy(
     }
     
     // 2. COOLDOWN CHECK (only if we have a trade signal)
-    // CRITICAL: Pass strategyId to ensure per-strategy cooldown isolation
     let cooldownCheck: CooldownCheck = { allowed: true, reason: '' };
     if (grade !== 'no-trade' && !options.skipCooldown) {
-      cooldownCheck = signalCooldown.check(symbol, settings.style, direction, grade, strategyId);
+      cooldownCheck = signalCooldown.check(symbol, settings.style, direction, grade);
     }
     
     // 3. BUILD GATING INFO
@@ -354,14 +353,12 @@ export async function analyzeWithStrategy(
     }
     
     // 5. RECORD SIGNAL IN COOLDOWN (only if not blocked by volatility or cooldown)
-    // CRITICAL: Pass strategyId to ensure per-strategy cooldown isolation
     if (!isBlocked && grade !== 'no-trade') {
       signalCooldown.record(
         symbol,
         settings.style,
         direction,
         grade,
-        strategyId,  // Per-strategy cooldown
         decision.validUntil
       );
     }

@@ -39,9 +39,9 @@ import { alertService } from './services/alertService.js';
 import { grokSentimentService } from './services/grokSentimentService.js';
 import { validateBody, validateQuery } from './middleware/validate.js';
 import { requestIdMiddleware } from './middleware/requestId.js';
-import {
-  ScanRequestSchema,
-  JournalUpdateSchema,
+import { 
+  ScanRequestSchema, 
+  JournalUpdateSchema, 
   SignalUpdateSchema,
   PaginationSchema,
   AutoScanStartSchema,
@@ -50,8 +50,6 @@ import {
   BatchSentimentSchema,
 } from './validation/schemas.js';
 import { z } from 'zod';
-import * as detectionService from './services/detectionService.js';
-import { DetectionFilters } from './types/detection.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -950,142 +948,6 @@ app.get('/api/sentiment/overview', (req, res) => {
   const overview = grokSentimentService.getMarketOverview();
   res.json(overview);
 });
-
-// ═══════════════════════════════════════════════════════════════
-// DETECTION ENDPOINTS (Auto-Scan Detected Trades Cache)
-// ═══════════════════════════════════════════════════════════════
-
-/**
- * List detected trades with optional filtering
- */
-app.get('/api/detections', async (req, res) => {
-  try {
-    const filters: DetectionFilters = {};
-
-    if (req.query.status) {
-      const statusParam = req.query.status as string;
-      filters.status = statusParam.includes(',')
-        ? statusParam.split(',') as any
-        : statusParam as any;
-    }
-    if (req.query.strategyId) filters.strategyId = req.query.strategyId as string;
-    if (req.query.symbol) filters.symbol = req.query.symbol as string;
-    if (req.query.grade) filters.grade = req.query.grade as string;
-    if (req.query.limit) filters.limit = parseInt(req.query.limit as string);
-    if (req.query.offset) filters.offset = parseInt(req.query.offset as string);
-
-    const detections = await detectionService.listDetections(filters);
-    const summary = await detectionService.getSummary();
-
-    res.json({
-      success: true,
-      count: detections.length,
-      summary: {
-        coolingDown: summary.coolingDown,
-        eligible: summary.eligible,
-        total: summary.total,
-      },
-      detections,
-    });
-  } catch (error) {
-    logger.error('List detections error', { error });
-    res.status(500).json({
-      error: error instanceof Error ? error.message : 'Failed to list detections',
-    });
-  }
-});
-
-/**
- * Get detection summary/stats
- */
-app.get('/api/detections/summary', async (req, res) => {
-  try {
-    const summary = await detectionService.getSummary();
-    res.json({ success: true, summary });
-  } catch (error) {
-    logger.error('Get detection summary error', { error });
-    res.status(500).json({
-      error: error instanceof Error ? error.message : 'Failed to get summary',
-    });
-  }
-});
-
-/**
- * Get single detection by ID
- */
-app.get('/api/detections/:id', async (req, res) => {
-  try {
-    const detection = await detectionService.getDetection(req.params.id);
-
-    if (!detection) {
-      return res.status(404).json({ error: 'Detection not found' });
-    }
-
-    res.json({ success: true, detection });
-  } catch (error) {
-    logger.error('Get detection error', { error });
-    res.status(500).json({
-      error: error instanceof Error ? error.message : 'Failed to get detection',
-    });
-  }
-});
-
-/**
- * Execute a detection (user took the trade)
- */
-app.post('/api/detections/:id/execute', async (req, res) => {
-  try {
-    const { notes } = req.body || {};
-    const detection = await detectionService.executeDetection(req.params.id, notes);
-
-    if (!detection) {
-      return res.status(404).json({ error: 'Detection not found or not eligible' });
-    }
-
-    // Broadcast status change via SSE
-    broadcastUpgrade({
-      type: 'detection_executed',
-      detection,
-    });
-
-    res.json({ success: true, detection });
-  } catch (error) {
-    logger.error('Execute detection error', { error });
-    res.status(500).json({
-      error: error instanceof Error ? error.message : 'Failed to execute detection',
-    });
-  }
-});
-
-/**
- * Dismiss a detection (user decided not to take it)
- */
-app.post('/api/detections/:id/dismiss', async (req, res) => {
-  try {
-    const { reason } = req.body || {};
-    const detection = await detectionService.dismissDetection(req.params.id, reason);
-
-    if (!detection) {
-      return res.status(404).json({ error: 'Detection not found or cannot be dismissed' });
-    }
-
-    // Broadcast status change via SSE
-    broadcastUpgrade({
-      type: 'detection_dismissed',
-      detection,
-    });
-
-    res.json({ success: true, detection });
-  } catch (error) {
-    logger.error('Dismiss detection error', { error });
-    res.status(500).json({
-      error: error instanceof Error ? error.message : 'Failed to dismiss detection',
-    });
-  }
-});
-
-// Start cooldown checker on server start
-detectionService.startCooldownChecker(60000);
 
 // ═══════════════════════════════════════════════════════════════
 // SERVE FRONTEND
