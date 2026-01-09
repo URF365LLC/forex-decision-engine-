@@ -14,6 +14,7 @@ const logger = createLogger('TwelveData');
 
 const MAX_RETRIES = 3;
 const BASE_DELAY_MS = 1000;
+const REQUEST_TIMEOUT_MS = 30000; // 30-second timeout for API calls
 const DEFAULT_CRYPTO_EXCHANGE = process.env.TWELVE_DATA_CRYPTO_EXCHANGE || 'Binance';
 
 export interface OHLCVBar {
@@ -128,8 +129,11 @@ class TwelveDataClient {
       logger.debug(`Fetching: ${path} for ${params.symbol || 'N/A'}`);
 
       for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+        
         try {
-          const response = await fetch(url.toString());
+          const response = await fetch(url.toString(), { signal: controller.signal });
 
           if (!response.ok) {
             throw new Error(`API error: ${response.status} ${response.statusText}`);
@@ -143,6 +147,9 @@ class TwelveDataClient {
 
           return data as T;
         } catch (error) {
+          if (error instanceof Error && error.name === 'AbortError') {
+            throw new Error(`Request timeout after ${REQUEST_TIMEOUT_MS / 1000}s`);
+          }
           if (isTransientError(error) && attempt < MAX_RETRIES) {
             const delay = BASE_DELAY_MS * Math.pow(2, attempt - 1);
             logger.warn(`Transient error, retrying in ${delay}ms (attempt ${attempt}/${MAX_RETRIES})`);
@@ -150,6 +157,8 @@ class TwelveDataClient {
             continue;
           }
           throw error;
+        } finally {
+          clearTimeout(timeoutId);
         }
       }
 

@@ -22,6 +22,7 @@ import { isNewSignal, trackSignal } from '../storage/signalFreshnessTracker.js';
 import { strategyRegistry } from '../strategies/registry.js';
 import { gradeTracker } from './gradeTracker.js';
 import { processAutoScanDecision, invalidateOnConditionChange } from './detectionService.js';
+import { broadcastDetectionError } from './sseBroadcaster.js';
 import { UserSettings, Decision, SignalGrade } from '../strategies/types.js';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -600,7 +601,9 @@ class AutoScanService {
             };
             await processAutoScanDecision(enrichedDecision);
           } catch (detectionError) {
-            logger.warn(`AUTO_SCAN: Failed to persist detection for ${symbol}: ${detectionError instanceof Error ? detectionError.message : 'Unknown'}`);
+            const errorMsg = detectionError instanceof Error ? detectionError.message : 'Unknown error';
+            logger.warn(`AUTO_SCAN: Failed to persist detection for ${symbol}: ${errorMsg}`);
+            broadcastDetectionError(symbol, errorMsg);
           }
 
           if (this.shouldNotify(decision, isNew)) {

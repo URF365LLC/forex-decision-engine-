@@ -702,7 +702,7 @@ app.delete('/api/journal/:id', async (req, res) => {
 // GRADE UPGRADE SSE ENDPOINT
 // ═══════════════════════════════════════════════════════════════
 
-const sseClients = new Set<express.Response>();
+import { addSSEClient, removeSSEClient, getSSEClientCount, broadcastSSE } from './services/sseBroadcaster.js';
 
 /**
  * SSE endpoint for real-time grade upgrade notifications
@@ -715,8 +715,7 @@ app.get('/api/upgrades/stream', (req, res) => {
   
   res.write('data: {"type":"connected"}\n\n');
   
-  sseClients.add(res);
-  logger.debug(`SSE client connected (${sseClients.size} total)`);
+  addSSEClient(res);
   
   const heartbeat = setInterval(() => {
     res.write('data: {"type":"heartbeat"}\n\n');
@@ -724,21 +723,12 @@ app.get('/api/upgrades/stream', (req, res) => {
   
   req.on('close', () => {
     clearInterval(heartbeat);
-    sseClients.delete(res);
-    logger.debug(`SSE client disconnected (${sseClients.size} remaining)`);
+    removeSSEClient(res);
   });
 });
 
 gradeTracker.onUpgrade((upgrade) => {
-  const data = JSON.stringify({ type: 'upgrade', upgrade });
-  for (const client of sseClients) {
-    try {
-      client.write(`data: ${data}\n\n`);
-    } catch (e) {
-      sseClients.delete(client);
-      try { client.end(); } catch {}
-    }
-  }
+  broadcastSSE('upgrade', { upgrade });
 });
 
 /**
@@ -867,15 +857,7 @@ app.put('/api/autoscan/config', validateBody(AutoScanConfigSchema), (req, res) =
 });
 
 function broadcastUpgrade(data: any): void {
-  const message = JSON.stringify(data);
-  for (const client of sseClients) {
-    try {
-      client.write(`data: ${message}\n\n`);
-    } catch (e) {
-      sseClients.delete(client);
-      try { client.end(); } catch {}
-    }
-  }
+  broadcastSSE(data.type || 'signal', data);
 }
 
 // ═══════════════════════════════════════════════════════════════
