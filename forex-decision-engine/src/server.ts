@@ -52,6 +52,7 @@ import {
 import { z } from 'zod';
 import * as detectionService from './services/detectionService.js';
 import { DetectionFilters } from './types/detection.js';
+import { initDb, runMigrations, isDbAvailable } from './db/client.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1109,16 +1110,32 @@ app.use((err: Error, req: express.Request, res: express.Response, next: express.
 // START SERVER
 // ═══════════════════════════════════════════════════════════════
 
-app.listen(PORT, () => {
+async function startServer() {
+  // Initialize database if available
   try {
-    validateInstrumentSpecs();
-  } catch (e) {
-    logger.error(`Instrument spec validation failed: ${e}`);
-    process.exit(1);
+    if (process.env.DATABASE_URL) {
+      await initDb();
+      await runMigrations();
+      logger.info('Database connected and migrations completed');
+    } else {
+      logger.warn('DATABASE_URL not set - using in-memory/file storage');
+    }
+  } catch (dbError) {
+    logger.error(`Database initialization failed: ${dbError}`);
+    logger.warn('Continuing with fallback storage (JSON files)');
   }
-  
-  logger.info(`🎯 Forex Decision Engine v2.0.0`);
-  logger.info(`📡 Server running on port ${PORT}`);
+
+  app.listen(PORT, () => {
+    try {
+      validateInstrumentSpecs();
+    } catch (e) {
+      logger.error(`Instrument spec validation failed: ${e}`);
+      process.exit(1);
+    }
+    
+    logger.info(`🎯 Forex Decision Engine v2.0.0`);
+    logger.info(`📡 Server running on port ${PORT}`);
+    logger.info(`💾 Database: ${isDbAvailable() ? 'Connected' : 'Using fallback storage'}`);
   logger.info(`🔑 API Key: ${process.env.TWELVE_DATA_API_KEY ? 'Configured' : 'NOT CONFIGURED'}`);
   logger.info(`📊 Instruments: ${FOREX_SPECS.length} forex, ${METAL_SPECS.length} metals, ${CRYPTO_SPECS.length} crypto, ${INDEX_SPECS.length} indices, ${COMMODITY_SPECS.length} commodities (${ALL_INSTRUMENTS.length} total)`);
   
@@ -1142,6 +1159,13 @@ app.listen(PORT, () => {
   if (!alertService.isConfigured()) {
     logger.warn('RESEND_API_KEY not set - email alerts disabled system-wide');
   }
+  });
+}
+
+// Start the server
+startServer().catch(err => {
+  logger.error(`Failed to start server: ${err}`);
+  process.exit(1);
 });
 
 // Graceful shutdown

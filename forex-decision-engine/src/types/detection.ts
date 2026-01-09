@@ -21,6 +21,16 @@ export type DetectionStatus =
 // DETECTED TRADE (for UI/API)
 // ═══════════════════════════════════════════════════════════════
 
+export interface TieredExitInfo {
+  level: number;
+  price: number;
+  pips: number;
+  rr: number;
+  formatted: string;
+  action: string;
+  description: string;
+}
+
 export interface DetectedTrade {
   id: string;
   symbol: string;
@@ -44,11 +54,21 @@ export interface DetectedTrade {
     formatted: string;
   } | null;
 
+  // Position sizing
+  lotSize: number | null;
+  riskAmount: number | null;  // Dollar risk
+
+  // Tiered exit management (TP1, TP2, runner)
+  tieredExits: TieredExitInfo[] | null;
+
   // Detection lifecycle
   firstDetectedAt: string;  // ISO timestamp
   lastDetectedAt: string;   // ISO timestamp
   detectionCount: number;   // How many scans confirmed this signal
   cooldownEndsAt: string;   // ISO timestamp
+
+  // Data freshness - when the current bar closes
+  barExpiresAt: string | null;  // ISO timestamp of current candle close
 
   // Status
   status: DetectionStatus;
@@ -84,6 +104,13 @@ export interface CreateDetectionInput {
   reason: string;
   triggers: string[];
   cooldownMinutes?: number;  // Default: 60
+  // Position sizing
+  lotSize?: number | null;
+  riskAmount?: number | null;
+  // Tiered exits
+  tieredExits?: TieredExitInfo[] | null;
+  // Data freshness
+  barExpiresAt?: string | null;
 }
 
 export interface UpdateDetectionInput {
@@ -119,6 +146,20 @@ export function convertDecisionToDetection(
   const now = new Date();
   const cooldownEndsAt = new Date(now.getTime() + cooldownMinutes * 60 * 1000);
 
+  // Extract tiered exits from exit management
+  const tieredExits: TieredExitInfo[] | null = decision.exitManagement?.tieredExits?.map(te => ({
+    level: te.level,
+    price: te.price,
+    pips: te.pips,
+    rr: te.rr,
+    formatted: te.formatted,
+    action: te.action,
+    description: te.description,
+  })) ?? null;
+
+  // Calculate bar expiration (next hour boundary for H1 timeframe)
+  const barExpiresAt = calculateBarExpiration('1h');
+
   return {
     symbol: decision.symbol,
     strategyId: decision.strategyId,
@@ -135,7 +176,41 @@ export function convertDecisionToDetection(
     reason: decision.reason,
     triggers: decision.triggers,
     cooldownMinutes,
+    // Position sizing from decision
+    lotSize: decision.position?.lots ?? null,
+    riskAmount: decision.position?.riskAmount ?? null,
+    // Tiered exits
+    tieredExits,
+    // Bar expiration for data freshness
+    barExpiresAt,
   };
+}
+
+function calculateBarExpiration(timeframe: string): string {
+  const now = new Date();
+  
+  switch (timeframe) {
+    case '1h':
+      // Next hour boundary
+      const nextHour = new Date(now);
+      nextHour.setMinutes(0, 0, 0);
+      nextHour.setHours(nextHour.getHours() + 1);
+      return nextHour.toISOString();
+    case '4h':
+      // Next 4-hour boundary (0, 4, 8, 12, 16, 20)
+      const next4h = new Date(now);
+      next4h.setMinutes(0, 0, 0);
+      const currentHour = next4h.getHours();
+      const next4hHour = Math.ceil((currentHour + 1) / 4) * 4;
+      next4h.setHours(next4hHour);
+      return next4h.toISOString();
+    default:
+      // Default to next hour
+      const defaultNext = new Date(now);
+      defaultNext.setMinutes(0, 0, 0);
+      defaultNext.setHours(defaultNext.getHours() + 1);
+      return defaultNext.toISOString();
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════

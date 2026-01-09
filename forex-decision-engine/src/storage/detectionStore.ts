@@ -63,10 +63,14 @@ export async function createDetection(input: CreateDetectionInput): Promise<Dete
     takeProfit: input.takeProfit
       ? { price: input.takeProfit, formatted: input.takeProfitFormatted || String(input.takeProfit) }
       : null,
+    lotSize: input.lotSize ?? null,
+    riskAmount: input.riskAmount ?? null,
+    tieredExits: input.tieredExits ?? null,
     firstDetectedAt: now,
     lastDetectedAt: now,
     detectionCount: 1,
     cooldownEndsAt,
+    barExpiresAt: input.barExpiresAt ?? null,
     status: 'cooling_down',
     reason: input.reason,
     triggers: input.triggers,
@@ -90,12 +94,16 @@ export async function createDetection(input: CreateDetectionInput): Promise<Dete
           entry_price: detection.entry.price,
           stop_loss: detection.stopLoss?.price ?? null,
           take_profit: detection.takeProfit?.price ?? null,
+          lot_size: detection.lotSize,
+          risk_amount: detection.riskAmount,
+          tiered_exits: detection.tieredExits ? JSON.stringify(detection.tieredExits) : null,
           reason: detection.reason,
           triggers: JSON.stringify(detection.triggers),
           first_detected_at: detection.firstDetectedAt,
           last_detected_at: detection.lastDetectedAt,
           detection_count: detection.detectionCount,
           cooldown_ends_at: detection.cooldownEndsAt,
+          bar_expires_at: detection.barExpiresAt,
           status: detection.status,
         })
         .execute();
@@ -429,10 +437,14 @@ function rowToDetection(row: Record<string, unknown>): DetectedTrade {
     takeProfit: row.take_profit
       ? { price: Number(row.take_profit), formatted: String(row.take_profit) }
       : null,
+    lotSize: row.lot_size != null ? Number(row.lot_size) : null,
+    riskAmount: row.risk_amount != null ? Number(row.risk_amount) : null,
+    tieredExits: row.tiered_exits ? JSON.parse(String(row.tiered_exits)) : null,
     firstDetectedAt: String(row.first_detected_at),
     lastDetectedAt: String(row.last_detected_at),
     detectionCount: Number(row.detection_count || 1),
     cooldownEndsAt: String(row.cooldown_ends_at || ''),
+    barExpiresAt: row.bar_expires_at ? String(row.bar_expires_at) : null,
     status: row.status as DetectionStatus,
     reason: String(row.reason || ''),
     triggers: row.triggers ? JSON.parse(String(row.triggers)) : [],

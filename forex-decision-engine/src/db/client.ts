@@ -119,6 +119,10 @@ export async function runMigrations(): Promise<void> {
     )
     .addColumn('detection_count', 'integer', (col) => col.defaultTo(1))
     .addColumn('cooldown_ends_at', 'timestamptz')
+    .addColumn('lot_size', 'numeric')
+    .addColumn('risk_amount', 'numeric')
+    .addColumn('tiered_exits', 'jsonb')
+    .addColumn('bar_expires_at', 'timestamptz')
     .addColumn('status', 'varchar(20)', (col) => col.defaultTo('cooling_down'))
     .addColumn('created_at', 'timestamptz', (col) => col.defaultTo(sql`NOW()`))
     .addColumn('updated_at', 'timestamptz', (col) => col.defaultTo(sql`NOW()`))
@@ -211,6 +215,12 @@ export async function runMigrations(): Promise<void> {
   await addColumnIfNotExists('journal_entries', 'distance_to_tp_at_mfe', 'numeric');
   await addColumnIfNotExists('journal_entries', 'mfe_timestamp', 'timestamptz');
   await addColumnIfNotExists('journal_entries', 'extras', 'jsonb');
+
+  // Add new columns to detections if table already exists
+  await addColumnIfNotExists('detections', 'lot_size', 'numeric');
+  await addColumnIfNotExists('detections', 'risk_amount', 'numeric');
+  await addColumnIfNotExists('detections', 'tiered_exits', 'jsonb');
+  await addColumnIfNotExists('detections', 'bar_expires_at', 'timestamptz');
 
   // Create cooldowns table
   await database.schema

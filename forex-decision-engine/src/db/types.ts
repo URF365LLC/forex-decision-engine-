@@ -35,11 +35,17 @@ export interface DetectionsTable {
   reason: string | null;
   triggers: string | null;  // JSON string array
 
+  // Position sizing
+  lot_size: number | null;
+  risk_amount: number | null;
+  tiered_exits: string | null;  // JSON array of tiered exit targets
+
   // Detection lifecycle
   first_detected_at: string;
   last_detected_at: string;
   detection_count: Generated<number>;
   cooldown_ends_at: string | null;
+  bar_expires_at: string | null;  // When current candle closes
   status: Generated<string>;
 
   // Metadata
