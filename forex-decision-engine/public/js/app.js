@@ -503,18 +503,21 @@ const App = {
    * Load results from storage
    */
   loadResults() {
-    // Show skeleton while loading from storage
-    UI.showSkeletons('results-container', 2, 'card');
-    
     // Brief delay to show skeleton (storage is sync but this helps UX)
     setTimeout(() => {
       this.results = Storage.getResults();
+      
+      // Render using new table view if available
+      UI.renderSignalsTable(this.results, this.currentFilter);
+      // Also render legacy view if container exists
       UI.renderResults(this.results, this.currentFilter);
       
       if (this.results.length > 0) {
         const lastScan = new Date(this.results[0].timestamp);
-        UI.$('last-scan-time').textContent = `Last scan: ${lastScan.toLocaleString()}`;
-        UI.$('refresh-btn').disabled = false;
+        const lastScanTime = UI.$('last-scan-time');
+        const refreshBtn = UI.$('refresh-btn');
+        if (lastScanTime) lastScanTime.textContent = `Last scan: ${lastScan.toLocaleString()}`;
+        if (refreshBtn) refreshBtn.disabled = false;
       }
     }, 100);
   },
