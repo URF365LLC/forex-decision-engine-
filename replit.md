@@ -11,6 +11,14 @@ Preferred communication style: Simple, everyday language.
 ### UI/UX Decisions
 The frontend is built with Vanilla JavaScript, uses a mobile-first dark theme, and provides real-time notifications via Server-Sent Events (SSE). It includes `isScanning` guards, API error displays, and accessible touch targets.
 
+**Navigation Structure (4 tabs):**
+- **Scan**: Manual symbol scanning with two-panel layout (symbol picker + results)
+- **Auto**: Auto-scan configuration with detected trades display (configuration + detections)
+- **Journal**: Trade journaling with P&L tracking
+- **Settings**: Risk parameters and email alert configuration
+
+**Detection Cards display:** Lot sizes, tiered exit targets (TP1/TP2), and bar expiration countdown for setup freshness.
+
 ### Technical Implementations
 
 #### Backend (Express + TypeScript)
