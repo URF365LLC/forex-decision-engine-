@@ -483,6 +483,9 @@ const App = {
       // Switch to results screen
       UI.switchScreen('results');
       UI.renderResults(this.results, this.currentFilter);
+      
+      // Load market sentiment overview
+      this.loadMarketOverview();
 
     } catch (error) {
       console.error('Scan error:', error);
@@ -1434,6 +1437,28 @@ const App = {
     if (typeof status.config?.respectMarketHours !== 'undefined') {
       const marketHoursEl = UI.$('autoscan-market-hours');
       if (marketHoursEl) marketHoursEl.checked = status.config.respectMarketHours;
+    }
+  },
+  
+  async loadMarketOverview() {
+    try {
+      const response = await fetch('/api/sentiment/overview');
+      if (!response.ok) return;
+      
+      const overview = await response.json();
+      if (!overview) return;
+      
+      const sidebarContainer = UI.$('market-sidebar-container');
+      if (sidebarContainer) {
+        sidebarContainer.innerHTML = UI.createMarketSidebar(overview);
+        if (overview.symbols && overview.symbols.length > 0) {
+          sidebarContainer.classList.add('visible');
+        } else {
+          sidebarContainer.classList.remove('visible');
+        }
+      }
+    } catch (error) {
+      console.error('Failed to load market overview:', error);
     }
   },
 };

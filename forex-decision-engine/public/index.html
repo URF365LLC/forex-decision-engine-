@@ -337,13 +337,17 @@
           <button class="filter-btn" data-filter="no-trade">No Trade</button>
         </div>
         
-        <div class="results-container" id="results-container">
-          <div class="empty-state">
-            <div class="empty-icon">📋</div>
-            <p>No results yet</p>
-            <p class="empty-hint">Go to Watchlist and scan some symbols</p>
-            <button class="btn btn-primary" id="go-to-watchlist-btn">Open Watchlist</button>
+        <div class="results-with-sidebar">
+          <div class="results-container" id="results-container">
+            <div class="empty-state">
+              <div class="empty-icon">📋</div>
+              <p>No results yet</p>
+              <p class="empty-hint">Go to Watchlist and scan some symbols</p>
+              <button class="btn btn-primary" id="go-to-watchlist-btn">Open Watchlist</button>
+            </div>
           </div>
+          
+          <div id="market-sidebar-container"></div>
         </div>
         
         <div class="results-footer hidden" id="results-footer">

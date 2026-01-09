@@ -539,15 +539,28 @@ const UI = {
       consensusHTML = `<span class="consensus-indicator ${consensusClass}" title="Consensus: ${consensusLevel}%">C:${consensusLevel}%</span>`;
     }
     
+    const sparklineHTML = sentiment.history && sentiment.history.length >= 2
+      ? `<div class="sparkline-container">
+          <span class="sparkline-label">Trend</span>
+          ${this.createSparkline(sentiment.history)}
+        </div>`
+      : '';
+    
+    const varianceHTML = sentiment.variance !== undefined
+      ? `<span class="variance-indicator" title="Score variance across samples">±${sentiment.variance}</span>`
+      : '';
+    
     return `
       <div class="sentiment-badge ${ratingClass}">
         <div class="sentiment-header">
           <span class="sentiment-icon">${ratingEmoji}</span>
           <span class="sentiment-rating">${ratingLabel}</span>
           <span class="sentiment-score">${scoreDisplay}</span>
+          ${varianceHTML}
           ${consensusHTML}
         </div>
         ${sentiment.summary ? `<div class="sentiment-summary">${sentiment.summary}</div>` : ''}
+        ${sparklineHTML}
         ${biasHTML}
         ${contrarianHTML}
       </div>
@@ -563,6 +576,90 @@ const UI = {
     if (ratingNorm.includes('slightly_bearish') || ratingNorm.includes('slightly bearish')) return 'sentiment-slightly-bearish';
     if (ratingNorm.includes('bearish')) return 'sentiment-bearish';
     return 'sentiment-neutral';
+  },
+  
+  createSparkline(history, width = 80, height = 24) {
+    if (!history || history.length < 2) {
+      return '<span class="sparkline-empty">--</span>';
+    }
+    
+    const scores = history.map(h => h.score);
+    const min = Math.min(...scores);
+    const max = Math.max(...scores);
+    const range = max - min || 1;
+    
+    const points = scores.map((score, i) => {
+      const x = (i / (scores.length - 1)) * width;
+      const y = height - ((score - min) / range) * height;
+      return `${x},${y}`;
+    }).join(' ');
+    
+    const lastScore = scores[scores.length - 1];
+    const strokeColor = lastScore > 15 ? 'var(--success)' : lastScore < -15 ? 'var(--danger)' : 'var(--text-muted)';
+    
+    return `
+      <svg class="sparkline" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
+        <polyline fill="none" stroke="${strokeColor}" stroke-width="1.5" points="${points}" />
+      </svg>
+    `;
+  },
+  
+  createMarketSidebar(overview) {
+    if (!overview || overview.symbols.length === 0) {
+      return `
+        <div class="market-sidebar">
+          <h3 class="sidebar-title">Market Sentiment</h3>
+          <p class="sidebar-empty">No sentiment data available. Fetch sentiment for symbols to see market overview.</p>
+        </div>
+      `;
+    }
+    
+    const skew = overview.avgScore > 15 ? 'Bullish' : overview.avgScore < -15 ? 'Bearish' : 'Neutral';
+    const skewClass = overview.avgScore > 15 ? 'skew-bullish' : overview.avgScore < -15 ? 'skew-bearish' : 'skew-neutral';
+    
+    const moversHTML = (overview.topMovers || []).map(m => {
+      const changeClass = m.change > 0 ? 'mover-up' : m.change < 0 ? 'mover-down' : 'mover-flat';
+      const arrow = m.change > 0 ? '↑' : m.change < 0 ? '↓' : '→';
+      return `
+        <div class="mover-item ${changeClass}">
+          <span class="mover-symbol">${m.symbol}</span>
+          <span class="mover-change">${arrow} ${Math.abs(m.change)}</span>
+        </div>
+      `;
+    }).join('');
+    
+    return `
+      <div class="market-sidebar">
+        <h3 class="sidebar-title">Market Sentiment</h3>
+        
+        <div class="sidebar-stat">
+          <span class="stat-label">Overall Skew</span>
+          <span class="stat-value ${skewClass}">${skew} (${overview.avgScore > 0 ? '+' : ''}${overview.avgScore})</span>
+        </div>
+        
+        <div class="sidebar-stat">
+          <span class="stat-label">Bullish</span>
+          <span class="stat-value text-success">${overview.bullishCount} symbols</span>
+        </div>
+        
+        <div class="sidebar-stat">
+          <span class="stat-label">Bearish</span>
+          <span class="stat-value text-danger">${overview.bearishCount} symbols</span>
+        </div>
+        
+        <div class="sidebar-section">
+          <h4 class="section-title">Top Movers</h4>
+          ${moversHTML || '<p class="sidebar-empty">No significant moves</p>'}
+        </div>
+      </div>
+    `;
+  },
+  
+  updateMarketSidebar(overview) {
+    const container = this.$('market-sidebar-container');
+    if (container) {
+      container.innerHTML = this.createMarketSidebar(overview);
+    }
   },
 };
 

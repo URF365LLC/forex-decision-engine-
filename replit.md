@@ -127,12 +127,19 @@ Core API endpoints facilitate system health checks, symbol retrieval, signal ana
 -   **Metrics Endpoint**: `/api/metrics` returns uptime, cache hit ratio, rate limit utilization, signal stats.
 -   **Batch Sentiment**: Parallelized with bounded concurrency (3 concurrent) for performance.
 
-### Phase 3: Sentiment & Accessibility (In Progress)
+### Phase 3: Sentiment & Accessibility (Completed)
 -   **7-Tier Sentiment Scale**: Enhanced from 4-tier to 7-tier (extremely_bullish through extremely_bearish).
 -   **Time-Horizon Split**: Separate short-term (intraday) and long-term (swing) bias analysis.
 -   **Contrarian Detection**: Crowded trade warnings (crowded_long, crowded_short, capitulation, euphoria).
 -   **Consensus Level**: 0-100% indicator showing how one-sided sentiment is (high = reversal risk).
 -   **Enhanced Grok Prompt**: Institutional-grade analysis with contrarian detection rules.
+-   **Multi-Sample Aggregation**: Temperature variance sampling (0.3, 0.7, 1.0) with score averaging and variance calculation for bias reduction.
+-   **Sentiment Sparklines**: SVG-based trend visualization showing historical sentiment scores per symbol.
+-   **Market Sentiment Sidebar**: Aggregate market overview with overall skew, bullish/bearish counts, and top movers.
+-   **New API Endpoints**:
+    -   `GET /api/sentiment/:symbol/aggregated` - Multi-sample aggregated sentiment
+    -   `GET /api/sentiment/:symbol/history` - Historical sentiment data
+    -   `GET /api/sentiment/overview` - Market-wide sentiment summary
 -   **Accessibility Improvements**:
     -   Skip link for keyboard navigation
     -   ARIA labels on navigation, toasts, and alerts

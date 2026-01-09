@@ -161,20 +161,20 @@ app.get('/api/metrics', (req, res) => {
     uptime: process.uptime(),
     timestamp: new Date().toISOString(),
     cache: {
-      size: cacheStats.size,
-      hitRate: cacheStats.hitCount / (cacheStats.hitCount + cacheStats.missCount) || 0,
+      size: cacheStats.totalEntries,
+      hitRate: cacheStats.hitRate,
       hits: cacheStats.hitCount,
       misses: cacheStats.missCount,
     },
     rateLimit: {
-      tokens: rateLimitState.tokens,
+      tokens: rateLimitState.availableTokens,
       maxTokens: rateLimitState.maxTokens,
-      utilization: 1 - (rateLimitState.tokens / rateLimitState.maxTokens),
+      utilization: 1 - (rateLimitState.availableTokens / rateLimitState.maxTokens),
     },
     signals: {
       total: signalStats.total,
       byGrade: signalStats.byGrade,
-      winRate: signalStats.resultStats?.winRate || 0,
+      winRate: signalStats.winRate || 0,
     },
     autoScan: {
       enabled: autoScanService.getStatus().config.enabled,
@@ -902,6 +902,50 @@ app.post('/api/sentiment/batch', validateBody(BatchSentimentSchema), async (req,
     logger.error(`Batch sentiment error: ${error}`);
     res.status(500).json({ error: 'Failed to fetch batch sentiment' });
   }
+});
+
+app.get('/api/sentiment/:symbol/aggregated', async (req, res) => {
+  const { symbol } = req.params;
+  const samples = Math.min(5, Math.max(2, parseInt(req.query.samples as string) || 3));
+  
+  if (!grokSentimentService.isEnabled()) {
+    return res.status(503).json({ 
+      error: 'Sentiment analysis not configured'
+    });
+  }
+  
+  try {
+    const sentiment = await grokSentimentService.getAggregatedSentiment(symbol.toUpperCase(), samples);
+    
+    if (!sentiment) {
+      return res.status(404).json({ 
+        error: 'Aggregated sentiment unavailable',
+        symbol 
+      });
+    }
+    
+    res.json(sentiment);
+  } catch (error) {
+    logger.error(`Aggregated sentiment error: ${error}`);
+    res.status(500).json({ error: 'Failed to fetch aggregated sentiment' });
+  }
+});
+
+app.get('/api/sentiment/:symbol/history', (req, res) => {
+  const { symbol } = req.params;
+  const history = grokSentimentService.getHistory(symbol.toUpperCase());
+  res.json({ symbol: symbol.toUpperCase(), history });
+});
+
+app.get('/api/sentiment/overview', (req, res) => {
+  if (!grokSentimentService.isEnabled()) {
+    return res.status(503).json({ 
+      error: 'Sentiment analysis not configured'
+    });
+  }
+  
+  const overview = grokSentimentService.getMarketOverview();
+  res.json(overview);
 });
 
 // ═══════════════════════════════════════════════════════════════
