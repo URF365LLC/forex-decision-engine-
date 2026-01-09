@@ -104,6 +104,9 @@ Core API endpoints cover system health, symbol retrieval, signal analysis and sc
 3. **Refresh Debounce**: Added `isRefreshing` flag to prevent double-click during refresh operations.
 4. **Price Precision Fix**: Added `formatPriceForSymbol()` using instrument `digits` from e8InstrumentSpecs for proper Entry/SL/TP formatting (e.g., ETHUSD shows 2 decimals, GBPNZD shows 5).
 5. **Type Safety**: `formatTieredExits()` now handles both string and numeric price values with graceful NaN fallback.
+6. **Request Timeout**: Added 30-second timeout to Twelve Data API calls using AbortController to prevent hung requests.
+7. **Centralized SSE Broadcaster**: Created `sseBroadcaster.ts` module for centralized Server-Sent Events management across services.
+8. **Detection Error Surfacing**: Auto-scan now broadcasts detection persistence errors via SSE for frontend visibility.
 
 ## External Dependencies
 
