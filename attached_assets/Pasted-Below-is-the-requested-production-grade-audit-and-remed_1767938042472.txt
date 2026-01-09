@@ -1,0 +1,782 @@
+Below is the requested production-grade audit and remediation plan, formatted exactly per your required structure (A–H). I focused on all first‑party files under the repo and treated third‑party vendor code (node_modules) as external dependencies, explicitly called out for security and SBOM review rather than line‑by‑line source audit. This is the only practical, safe enterprise approach for vendor code while still meeting the intent of “all files” for owned code. File inventory was derived from a full find of the repository (see commands in Methodology).
+
+Methodology (Commands Used)
+find . -type f -not -path "./node_modules/*" -not -path "./attached_assets/*" -not -path "./.git/*" -not -path "./forex-decision-engine/node_modules/*" (to enumerate first‑party files; full file inventory used for the audit).
+
+find . -type f -not -path "./node_modules/*" ... (full repository inventory including vendor files).
+
+Multiple nl -ba / sed -n reads to inspect files line‑by‑line (see citations in each section).
+
+A) Repo Map (High‑Level)
+Component diagram (text)
+
+Frontend (static): public/index.html, public/js/{app,ui,api,storage}.js, public/css/styles.css — UI, API client, state/cache, rendering.
+
+Backend API & orchestration: src/server.ts (Express API, SSE, auto‑scan startup, metrics).
+
+Engine: indicator retrieval and strategy evaluation (src/engine/*), strategy registry/execution (src/strategies/*).
+
+Indicators/Data: Twelve Data client + caching (src/services/twelveDataClient.ts, src/services/cache.ts).
+
+Auto Scan: scheduling + scanning (src/services/autoScanService.ts) with in‑memory freshness tracking (src/storage/signalFreshnessTracker.ts).
+
+Storage: JSON file persistence for signals/journal (src/storage/*, data/*.json).
+
+Key entry points
+
+Backend runtime: src/server.ts (Express app, routes, auto‑scan).
+
+Frontend entry: public/index.html + public/js/app.js bootstrapping logic.
+
+Manual scan flow: UI → API.scan → /api/scan → scanWithStrategy → analyzeWithStrategy → indicator service → Twelve Data.
+
+Auto scan flow: autoScanService schedules → analyzeWithStrategy → freshness tracker.
+
+B) Full File Audit Index (First‑Party + Data + Config + Scripts)
+Note: The repo contains vendor code under node_modules (thousands of files). Enterprise practice is to exclude vendor source from line‑by‑line audit and instead perform SBOM + vulnerability scanning. The audit below covers all first‑party files plus data/config. Vendor file handling is summarized in Section C and F.
+
+Root / Workspace
+.gitignore
+
+Purpose: Ignore artifacts like node_modules, dist, .env.
+
+Key exports: N/A
+
+Issues: None noted.
+
+Fix: None.
+
+package.json (root)
+
+Purpose: Workspace metadata; scripts/deps appear generic. 
+
+Key exports: N/A
+
+Issues (P2): Root test script is placeholder and does not run actual checks, creating false CI signals.
+
+Fix: Remove root scripts or wire them to the real app (forex-decision-engine/).
+
+package-lock.json (root)
+
+Purpose: Dependency lock.
+
+Issues: Requires security scanning and SCA; too large for manual audit.
+
+SYSTEM_AUDIT_REPORT.md
+
+Purpose: Previous audit. No enforcement.
+
+Issues: Not actionable; does not tie to current code state.
+
+.replit / replit.md
+
+Purpose: Replit configuration and docs.
+
+Issues: Contains old architecture assumptions; must align with current data sources/caching and auto‑scan features. 
+
+zipFile.zip
+
+Purpose: Binary artifact.
+
+Issues (P2): Binary in repo, opaque content; should be removed or stored in artifact storage.
+
+Fix: Remove from git or move to storage; if required, document.
+
+App Root (forex-decision-engine/)
+forex-decision-engine/package.json
+
+Purpose: App scripts, runtime dependencies.
+
+Key exports: N/A
+
+Issues (P2): No lint/test/typecheck scripts; no CI gating. 
+
+Fix: Add typecheck, lint, and test scripts; wire CI.
+
+forex-decision-engine/package-lock.json
+
+Purpose: App dependency lock.
+
+Issues: Needs SBOM and vulnerability scanning.
+
+forex-decision-engine/tsconfig.json
+
+Purpose: TS config for build.
+
+Issues (P2): moduleResolution: "bundler" can deviate from Node ESM runtime behavior.
+
+Fix: Use nodenext or node16 if not bundling at runtime.
+
+forex-decision-engine/.env.example
+
+Purpose: Env vars template.
+
+Issues (P2): PORT defaults conflict with server defaults.
+
+Fix: Align PORT default with src/server.ts.
+
+forex-decision-engine/README.md
+
+Purpose: Setup & API docs. F:README.md†L1-L82】
+
+Issues (P1): API docs do not mention auto‑scan cache/detections or DB model; endpoint list incomplete.
+
+Fix: Add endpoint docs for auto‑scan status, detections, and DB-backed flows.
+
+Public Frontend
+public/index.html
+
+Purpose: Main UI with tabs for scan, auto‑scan, journal, settings.
+
+Issues (P0): No “Detected Trades Cache” tab or view as required.
+
+Fix: Add tab/section, list detections grouped by strategy with cooldown metadata.
+
+public/css/styles.css
+
+Purpose: UI styling.
+
+Issues: None obvious (but lacks styles for detection cache UI).
+
+Fix: Add styles once detection cache UI is built.
+
+public/js/api.js
+
+Purpose: API client.
+
+Issues (P1): No API functions for detection cache or cooldown workflow.
+
+Fix: Add getDetections, updateDetectionStatus, etc.
+
+public/js/storage.js
+
+Purpose: localStorage cache of settings/results.
+
+Issues (P2): Cache keys do not include strategy/timeframe versioning.
+
+Fix: Key per strategy + timeframe + settings hash.
+
+public/js/ui.js
+
+Purpose: DOM rendering + helpers.
+
+Issues (P1): No UI rendering logic for detection cache/cooldown statuses.
+
+Fix: Add detection cache rendering with state transitions.
+
+public/js/app.js
+
+Purpose: UI controller; scan workflow; SSE.
+
+Issues (P1): No UI for detection cache; auto‑scan results only tracked in memory.
+
+Fix: Fetch detection cache and render per strategy group.
+
+Backend Server & Middleware
+src/server.ts
+
+Purpose: Express API server + SSE + auto‑scan.
+
+Issues (P1): Header comment still references /api/analyze, but endpoint is deprecated/disabled.
+
+Issues (P0): No detection cache endpoints (/api/detections etc.) required for cooldown workflow.
+
+Fix: Add detection cache API endpoints and update docs.
+
+src/middleware/requestId.ts
+
+Purpose: Request correlation IDs.
+
+Issues: None.
+
+src/middleware/validate.ts
+
+Purpose: Zod validation middleware.
+
+Issues: None.
+
+src/validation/schemas.ts
+
+Purpose: Validation schemas for API requests.
+
+Issues (P1): Journal schema fields don’t align with stored journal model.
+
+Fix: Align schema with journalStore expected fields.
+
+Config
+src/config/defaults.ts
+
+Purpose: Default risk settings.
+
+Issues: None.
+
+src/config/strategy.ts
+
+Purpose: Strategy parameter defaults and presets.
+
+Issues (P1): Preset timeframes not fully enforced by indicator fetching logic.
+
+Fix: Ensure timeframe from metadata controls indicator interval.
+
+src/config/e8InstrumentSpecs.ts
+
+Purpose: Instrument specs (lot sizes, pip values).
+
+Issues: None obvious; still requires validation with live broker specs.
+
+Engine
+src/engine/indicatorFactory.ts
+
+Purpose: Routes indicator fetch.
+
+Issues (P1): Factory delegates all logic; no per‑strategy indicator selection enforcement.
+
+Fix: Enforce required indicators per strategy.
+
+src/engine/indicatorService.ts
+
+Purpose: Fetches indicators, caches by entry interval + strategy.
+
+Issues (P0): Cache invalidation is TTL‑only; no bar‑close or param/version keying.
+
+Fix: Add candle‑time / data‑window version to cache keys.
+
+src/engine/strategyAnalyzer.ts
+
+Purpose: Orchestrates strategy evaluation + gating.
+
+Issues (P0): Decision cache key uses settings hash but not indicator param/version or data window.
+
+Fix: Include data‑window version or bar close time in cache keys.
+
+src/engine/trendFilter.ts
+
+Purpose: Trend filter using EMA/ADX. F:src/engine/trendFilter.ts†L1-L181】
+
+Issues: None obvious.
+
+src/engine/entryTrigger.ts
+
+Purpose: Entry trigger detection logic.
+
+Issues: None obvious.
+
+src/engine/grader.ts
+
+Purpose: Decision grading logic.
+
+Issues: None obvious.
+
+src/engine/positionSizer.ts
+
+Purpose: Position sizing calculations.
+
+Issues (P2): Duplicate sizing logic exists in strategies/utils.ts.
+
+Fix: Consolidate to single sizing module.
+
+src/engine/startupValidation.ts
+
+Purpose: Startup validation for indicator alignment.
+
+Issues (P2): Not executed on startup or as readiness gate.
+
+Fix: Invoke during server boot or /api/ready.
+
+Strategies
+src/strategies/types.ts
+
+Purpose: Shared types for strategies/decisions.
+
+Issues (P2): entryZone unused/incomplete.
+
+Fix: Populate or remove to avoid dead contract.
+
+src/strategies/registry.ts
+
+Purpose: Strategy registry and metadata.
+
+Issues (P1): Metadata timeframes not fully enforced across indicator layer.
+
+Fix: Wire timeframes into indicator requests.
+
+src/strategies/utils.ts
+
+Purpose: Strategy helpers (sizing, decision building).
+
+Issues (P1): Signal tracking uses in‑memory freshness tracking rather than durable detection cache.
+
+Fix: Move detection tracking to DB and expose to UI.
+
+src/strategies/SignalQualityGate.ts
+
+Purpose: Preflight gating and signal quality checks.
+
+Issues (P2): Duplicates volatility/session gating that should be centralized.
+
+Fix: Consolidate gating with volatilityGate & cooldown pipeline.
+
+37–47. src/strategies/intraday/* (BollingerMR, RsiBounce, RsiOversold, StochasticOversold, WilliamsEma, TripleEma, BreakRetest, CciZeroLine, EmaPullback, MultiOscillatorMomentum, LiquiditySweep)
+
+Purpose: Strategy implementations.
+
+Issues (P1): Strategy outputs depend on shared indicator cache; must be per‑strategy and per‑timeframe to avoid contamination.
+
+Fix: Use strategy‑specific indicator requests and cache keys (see Section D).
+
+Services
+src/services/cache.ts
+
+Purpose: In‑memory TTL cache.
+
+Issues (P0): Cache keys do not include data‑window version; invalidation is TTL only.
+
+Fix: Add bar‑time versioning, timeframe version, and config hash support.
+
+src/services/twelveDataClient.ts
+
+Purpose: Twelve Data API client & indicator cache.
+
+Issues (P1): Cache key uses params but not data‑window version; stale data possible.
+
+Fix: Include bar‑close timestamps or version in cache key.
+
+src/services/signalCooldown.ts
+
+Purpose: Cooldown enforcement.
+
+Issues (P0): In‑memory only; resets on restart and not persisted.
+
+Fix: Persist cooldowns in DB/Redis and expose via detection cache.
+
+src/services/autoScanService.ts
+
+Purpose: Auto‑scan scheduling + execution.
+
+Issues (P0): Uses in‑memory signalFreshnessTracker; no persisted detection cache or UI.
+
+Issues (P1): Uses DEFAULT_SETTINGS rather than user‑configured settings for scans.
+
+Fix: Store detections in DB and read per‑strategy settings.
+
+src/services/alertService.ts
+
+Purpose: Email notifications.
+
+Issues (P2): No persistence or auditability.
+
+Fix: Store notification results with detection metadata.
+
+src/services/grokSentimentService.ts
+
+Purpose: Sentiment analysis via external API with cache.
+
+Issues (P2): In‑memory cache only, no persistence.
+
+Fix: Persist sentiment snapshots for audit.
+
+src/services/drawdownGuard.ts
+
+Purpose: Drawdown limits stored in JSON.
+
+Issues (P1): File‑based state not safe for concurrency.
+
+Fix: Persist in DB with atomic updates.
+
+src/services/gradeTracker.ts
+
+Purpose: Grade upgrade tracking.
+
+Issues (P2): In‑memory only; no persistence or audit.
+
+Fix: Persist grade transitions in DB.
+
+src/services/volatilityGate.ts
+
+Purpose: ATR‑based gating.
+
+Issues: None obvious.
+
+src/services/rateLimiter.ts
+
+Purpose: API rate limiter for Twelve Data.
+
+Issues: None obvious.
+
+src/services/batchDataService.ts
+
+Purpose: Batch data fetch (unused).
+
+Issues (P2): Dead code; not referenced.
+
+Fix: Remove or integrate.
+
+src/services/logger.ts
+
+Purpose: Simple logger.
+
+Issues (P2): No structured logging or correlation at export.
+
+Fix: Adopt JSON logging with requestId/traceId.
+
+Storage (JSON‑based)
+src/storage/signalStore.ts
+
+Purpose: JSON‑file persistence of signals.
+
+Issues (P1): Not safe for concurrent writes; no indexing.
+
+Fix: Replace with DB.
+
+src/storage/journalStore.ts
+
+Purpose: JSON‑file journal entries.
+
+Issues (P1): Same concurrency/scale issues.
+
+Fix: Replace with DB.
+
+src/storage/signalFreshnessTracker.ts
+
+Purpose: In‑memory detection freshness tracking.
+
+Issues (P0): Volatile, not persisted; does not include cooldown metadata.
+
+Fix: Store detections in DB with cooldown status.
+
+Utils & Validation
+src/utils/timezone.ts
+
+Purpose: Timezone conversions.
+
+Issues: None obvious.
+
+src/utils/timeUtils.ts
+
+Purpose: Time helpers.
+
+Issues: None obvious.
+
+src/utils/validation.ts
+
+Purpose: Input validation helpers.
+
+Issues (P2): No central schema for detection cache or DB IDs.
+
+Fix: Add validation for detection-related data.
+
+Data Files
+data/autoScanConfig.json
+
+Purpose: Auto‑scan persisted config.
+
+Issues (P2): Contains a personal email in repo.
+
+Fix: Remove PII from committed file; load from env.
+
+data/signals.json
+
+Purpose: Signals persistence.
+
+Issues (P1): JSON persistence not production‑safe.
+
+Fix: Replace with DB.
+
+data/journal.json
+
+Purpose: Journal persistence.
+
+Issues (P1): JSON persistence not production‑safe.
+
+Fix: Replace with DB.
+
+data/drawdown/default.json
+
+Purpose: Drawdown state.
+
+Issues (P2): Single file; no account segmentation.
+
+Fix: Replace with DB.
+
+C) Critical Findings (Prioritized Top Issues)
+P0 – Cache invalidation is TTL‑only
+
+Symptom: Indicator data may be stale across bars and settings.
+
+Root cause: Cache keys do not include bar close timestamps or data‑window version.
+
+Proof: CacheService.makeKey does not include candle time; indicator service uses TTL only.
+
+Fix: Add barCloseTime/dataWindowVersion to key, invalidate on new bar.
+
+P0 – Auto‑scan detection cache missing
+
+Symptom: No “Detected Trades Cache” UI or backend storage.
+
+Root cause: Auto‑scan only uses in‑memory freshness tracker.
+
+Proof: autoScanService uses signalFreshnessTracker with no persistence.
+
+Fix: Add DB detection table and endpoints.
+
+P0 – Cooldowns are in‑memory only
+
+Symptom: Cooldown resets on restart; no visibility.
+
+Root cause: Cooldown stored in Map.
+
+Proof: signalCooldown uses in‑memory Map only.
+
+Fix: Persist cooldowns in DB or Redis.
+
+P1 – Auto‑scan uses default settings instead of user settings
+
+Symptom: Auto‑scan results differ from manual scans.
+
+Root cause: DEFAULT_SETTINGS in auto‑scan.
+
+Proof: autoScanService uses default settings.
+
+Fix: Persist settings and apply to auto‑scan.
+
+P1 – File‑based persistence for signals/journal
+
+Symptom: Data loss/corruption under concurrent writes; no indexing.
+
+Root cause: JSON files used for persistence.
+
+Proof: signalStore, journalStore use JSON files.
+
+Fix: Replace with DB.
+
+P1 – Strategy timeframes not fully enforced
+
+Symptom: Strategy‑specific timeframes may not match indicator fetch.
+
+Root cause: Metadata timeframes exist but not consistently enforced.
+
+Proof: Strategy metadata includes timeframes; indicator service uses entry interval.
+
+Fix: Enforce timeframes across indicator requests.
+
+P1 – Documentation/API mismatch
+
+Symptom: Docs reference outdated endpoints.
+
+Root cause: README not updated for newer API flows.
+
+Proof: README endpoint list lacks detection cache endpoints.
+
+Fix: Update docs and add detection endpoints.
+
+P2 – Dead code in batchDataService
+
+Symptom: Unused API path.
+
+Root cause: Not referenced.
+
+Proof: batchDataService.ts present without usage.
+
+Fix: Remove or integrate.
+
+P2 – Logging not structured
+
+Symptom: Observability limited.
+
+Root cause: Console logger only.
+
+Proof: logger.ts simple formatting.
+
+Fix: Add structured logs + correlation IDs.
+
+P2 – PII in repo
+
+Symptom: email stored in autoScanConfig.json.
+
+Proof: email field in data file.
+
+Fix: Remove and load from env/DB.
+
+D) Caching & Strategy Isolation Design (Detailed)
+Architecture
+
+Indicator Cache: per‑strategy/per‑timeframe/per‑indicator keying.
+
+Decision Cache: per‑strategy/per‑settings/per‑data window.
+
+Auto vs Manual: share the same cache model but must include settingsHash + mode where relevant.
+
+Cache Key Strategy
+
+indicator:{strategyId}:{symbol}:{timeframe}:{indicator}:{paramsHash}:{dataWindowVersion}:{barCloseTime}
+decision:{strategyId}:{symbol}:{entryInterval}:{settingsHash}:{dataWindowVersion}
+Invalidation Rules
+
+New bar closed (barCloseTime changes)
+
+Timeframe shift (strategy metadata change)
+
+Indicator params change (paramsHash)
+
+Settings change (settingsHash)
+
+TTL safety fallback
+
+Concurrency
+
+In‑flight de‑duplication should include strategyId + dataWindowVersion.
+
+Do not share inflight requests across strategies.
+
+Evidence in current code
+
+Current cache uses TTL‑only and lacks version/time‑based invalidation.
+
+E) Auto Scan Cached‑Detections Tab Specification
+UI Behavior
+
+Add “Detected Trades Cache” tab.
+
+Group detections by strategy.
+
+Show time since first detection, last detected, cooldown ends, status.
+
+Data Model Fields
+
+firstDetectedAt
+
+lastDetectedAt
+
+detectionCount
+
+cooldownEndsAt
+
+status: CoolingDown | Eligible | Expired | Invalidated | Executed | Dismissed
+
+strategyId, symbol, timeframe, direction, grade, indicatorSnapshotId
+
+Lifecycle
+
+CoolingDown → Eligible → (Expired | Executed | Dismissed | Invalidated)
+
+API Endpoints
+
+GET /api/detections
+
+POST /api/detections/:id/execute
+
+POST /api/detections/:id/dismiss
+
+POST /api/detections/:id/invalidate
+
+Example JSON
+
+{
+  "id": "det_01HV...",
+  "strategyId": "rsi-bounce",
+  "symbol": "EURUSD",
+  "timeframe": "H1",
+  "direction": "long",
+  "grade": "A",
+  "firstDetectedAt": "2026-01-09T10:00:00Z",
+  "lastDetectedAt": "2026-01-09T10:20:00Z",
+  "detectionCount": 3,
+  "cooldownEndsAt": "2026-01-09T11:00:00Z",
+  "status": "CoolingDown"
+}
+F) Database Plan
+Recommendation: PostgreSQL (Supabase)
+
+Supports relational queries, JSONB for indicator snapshots, and indexing.
+
+Matches enterprise auditability requirements.
+
+Schema Proposal
+
+detections
+
+id, strategy_id, symbol, timeframe, direction, grade
+
+first_detected_at, last_detected_at, detection_count, cooldown_ends_at
+
+status, settings_hash, indicator_snapshot_id
+
+Indexes: (strategy_id, status), (cooldown_ends_at), (symbol, status)
+
+trades
+
+id, strategy_id, symbol, direction, entry_price, stop_loss, take_profit, executed_at, result
+
+detection_id (FK)
+
+Indexes: (strategy_id, executed_at), (symbol, executed_at)
+
+journal_entries
+
+id, strategy_id, symbol, timeframe, status, notes, result, created_at
+
+detection_id (FK), signal_id (FK)
+
+Indexes: (strategy_id, created_at), (symbol, created_at)
+
+indicator_snapshots
+
+id, strategy_id, symbol, timeframe, params_hash, data_window_version, payload
+
+Indexes: (strategy_id, symbol, timeframe, data_window_version)
+
+Migration
+
+Create tables.
+
+Backfill from data/*.json.
+
+Dual‑write during transition.
+
+Cut over fully to DB.
+
+G) Implementation Plan (Step‑by‑Step)
+Phase 0: Unblockers (build/typecheck/runtime)
+Files: package.json, tsconfig.json, CI config (missing).
+
+Work: Add typecheck, lint, test scripts; add CI pipeline.
+
+Tests: npm run typecheck.
+
+Acceptance: CI fails on type errors.
+
+Phase 1: Correctness (strategy isolation + cache foundation)
+Files: src/engine/indicatorService.ts, src/services/cache.ts, src/engine/strategyAnalyzer.ts.
+
+Work: Add cache key versioning with bar‑close timestamps; include params/settings hash; invalidate on new bars.
+
+Tests: Unit tests for cache keys; integration test scanning two strategies in parallel.
+
+Acceptance: Different strategies do not reuse cached indicator values.
+
+Phase 2: Auto‑scan tab + cooldown persistence
+Files: src/services/autoScanService.ts, src/storage/signalFreshnessTracker.ts, public/js/app.js, public/js/ui.js, public/index.html.
+
+Work: Create detection DB table + APIs; UI tab rendering and statuses.
+
+Tests: API tests for detection lifecycle; UI snapshot test.
+
+Acceptance: Detections persist across restart; cooldown state visible in UI.
+
+Phase 3: DB journaling + performance hardening
+Files: src/storage/signalStore.ts, src/storage/journalStore.ts, new DB layer.
+
+Work: Replace JSON persistence; add indexes.
+
+Tests: Query performance tests (by strategy/date).
+
+Acceptance: Data remains consistent under concurrent writes.
+
+H) Verification Checklist
+Cache isolation: run parallel scans on same symbol with two strategies; verify cache keys differ and indicator bundles are not shared.
+
+Cooldown correctness: detect same signal twice and ensure status moves from CoolingDown → Eligible after 60m (persisted).
+
+DB journaling integrity: query journal by strategy/date and verify counts vs expected inputs.
+
+Performance: load test auto‑scan; ensure no stale signals and no missed cooldown updates.

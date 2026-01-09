@@ -1,0 +1,123 @@
+You are a Principal/Staff-level full-stack engineer performing a production-grade audit and remediation plan. I want a TRUE line-by-line, file-by-file audit of this entire codebase, with evidence, and a complete execution plan to bring the system to enterprise readiness.
+
+NON-NEGOTIABLE REQUIREMENTS
+- Perform an in-depth audit of ALL files: frontend, backend, shared libs, config, scripts, CI, tests.
+- Provide a line-by-line style review: every file must have documented purpose + issues + fixes.
+- Do not hand-wave. Use file paths + line numbers + function names for every claim.
+- Identify what is missing or broken across: integrations, strategies, indicator logic, data flow integrity, caching behavior, Auto Scan vs Manual behavior, and journaling/storage.
+
+CORE PROBLEMS TO SOLVE (MUST ADDRESS ALL)
+1) Strategy-by-Strategy Indicator Execution + Caching
+- Cache must be PER STRATEGY, regardless of Auto Scan or Manual Scan.
+- Each strategy must call indicators independently (no hidden cross-strategy shared state that contaminates results).
+- Indicator results must be cached individually (per strategy, per timeframe/instrument, per indicator set), regardless of Auto/Manual mode.
+- The cache keys must prevent collisions (strategy + instrument + timeframe + indicator params + data window version).
+- The cache must support invalidation rules (new bar arrived, timeframe shift, config change, indicator param change, TTL, etc.).
+- Ensure data integrity: no stale indicator values bleeding into new calculations.
+
+2) Auto Scan “Detected Trades Cache” Tab + Cooldown Workflow
+- Add a separate UI tab/section where Auto-Scanned detections are stored and shown:
+  - Grouped by strategy
+  - Includes “time since first detection”
+  - Shows detection history / updates (if detection persists or re-triggers)
+- This tab is the staging area for cooldown completion:
+  - Trades detected are cached here for the next 60 minutes (cooldown window).
+  - After cooldown completion, they can be eligible for action/notification (depending on rules).
+- The system must clearly track:
+  - firstDetectedAt
+  - lastDetectedAt
+  - detectionCount (optional)
+  - cooldownEndsAt
+  - status (CoolingDown, Eligible, Expired, Invalidated, Executed, Dismissed)
+
+3) Database Storage for Trades + Journaling
+- We need a database layer (SQL or Supabase—use what exists in the project or recommend best fit).
+- Start saving trades and detections more efficiently:
+  - Auto-scan detections (including cooldown metadata)
+  - Manual scan results (separately tracked)
+  - Actual executed trades (if applicable)
+  - Journal entries tied to strategy + instrument + timeframe + timestamps + signal metadata
+- Design schema with indexes and a clean query model for:
+  - “show me all detections by strategy”
+  - “what is currently cooling down”
+  - “trade journal by date range / strategy / instrument”
+  - “win/loss analysis readiness” (even if not implemented yet)
+
+AUDIT SCOPE (LINE-BY-LINE, FILE-BY-FILE)
+You must audit, at minimum:
+- Strategy engine: how strategies are selected, executed, invalidated, and how they request indicators
+- Indicator layer: calculation, parameterization, alignment/Lookback windows, error handling
+- Cache layer: where caching exists (or doesn’t), keying, TTL, invalidation, concurrency safety
+- Auto Scan pipeline: scheduler/timer, scanning loop, dedupe, cooldown logic, storage
+- Manual Scan pipeline: UI trigger → backend call → results rendering → caching differences
+- Integrations: APIs, external services, sentiment modules, market data, notification/email if present
+- Data flow integrity: bar alignment, timeframe conversion, index consistency, off-by-one issues
+- UI responsiveness: loading states, stale UI, button actions not reflecting state, state management issues
+- Logging/observability: where failures are silent, where errors are swallowed, missing logs/metrics
+- Build/typecheck/test failures: missing imports, dead code, deprecated modules still breaking CI
+
+REQUIRED OUTPUT FORMAT (DO NOT CHANGE)
+A) Repo Map (High-Level)
+- Component diagram in text: Frontend / Backend / Shared / Data / Strategies / Indicators / Cache / Storage
+- Key entry points (where execution starts for scan/manual)
+
+B) Full File Audit Index
+For EVERY file, provide:
+- File path
+- Purpose (1–3 lines)
+- Key exports/classes/functions
+- Issues found (bullet list)
+- Severity per issue (P0/P1/P2)
+- Fix recommendation (specific)
+If there are many files, you may group files into sections but still must list every file.
+
+C) Critical Findings (Prioritized)
+- Top 10–20 issues blocking production readiness
+- For each: symptom → root cause → proof (file+line) → fix
+
+D) Caching & Strategy Isolation Design (Detailed)
+- Proposed architecture for per-strategy indicator execution + per-strategy caching
+- Exact cache key strategy
+- Invalidations/TTL rules
+- Concurrency/race condition handling
+- How Auto vs Manual share the SAME cache model without mixing results
+
+E) Auto Scan Cached-Detections Tab Specification
+- UI behavior + data model fields
+- Sorting/grouping rules
+- Status lifecycle (CoolingDown → Eligible → Expired/Invalidated/Executed)
+- API endpoints needed
+- Example JSON payloads
+
+F) Database Plan
+- DB choice recommendation (SQL/Supabase/etc.) with rationale
+- Schema proposal (tables + key columns + indexes)
+- Migration approach
+- CRUD endpoints/services needed
+- Data retention strategy
+
+G) Implementation Plan (Step-by-Step)
+Split into phases:
+- Phase 0: Unblockers (build/typecheck/runtime)
+- Phase 1: Correctness (strategy isolation + cache foundation)
+- Phase 2: Auto-scan tab + cooldown persistence
+- Phase 3: DB journaling + performance hardening
+For each task:
+- Files/modules to change
+- Exact work to do
+- Tests to add (unit/integration/e2e)
+- Acceptance criteria
+
+H) Verification Checklist
+- How to prove caching is per-strategy and not leaking across modes
+- How to validate cooldown and detection timestamps
+- How to validate DB journaling integrity and query correctness
+- Performance checks + failure injection tests
+
+IMPORTANT RULES
+- Do not assume anything is correct without checking the code.
+- If you find missing implementations, list them explicitly and propose exact placement.
+- If existing code conflicts with the new requirements, call it out and recommend the cleanest fix.
+- Prefer minimal safe changes, but do not preserve broken architecture.
+
+Now run the full audit and produce the deliverable.

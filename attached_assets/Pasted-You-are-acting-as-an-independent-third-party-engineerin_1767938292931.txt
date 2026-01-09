@@ -1,0 +1,106 @@
+You are acting as an independent, third-party engineering auditor at a Principal / Staff engineer level. A prior GPT “3rd Outside Audit” has already reviewed this repository. Your task is to compare that audit against the current codebase, validate what is truly implemented, and provide an executive-level, evidence-based assessment.
+
+Primary Objective
+
+Determine whether the Regime and Liquidity engines/detectors are:
+
+Present in the codebase
+
+Correctly wired into the live execution path
+
+Executing at runtime with real data
+
+Influencing system decisions (signal gating, confidence scoring, eligibility, alerts, or execution)
+
+Consistent across Auto Scan and Manual Scan workflows
+
+Each of the above must be answered explicitly as YES or NO, with supporting evidence.
+
+Scope of Analysis (Do Not Skip)
+
+1. Audit Comparison
+
+Review the findings and assumptions from the prior GPT “3rd Outside Audit.”
+
+Compare them against the current repository state.
+
+Identify which findings are:
+
+Fully implemented
+
+Partially implemented
+
+Missing, broken, or regressed
+
+Call out any discrepancies between documented intent and actual behavior.
+
+2. Wiring Verification (Proof Required)
+For both Regime and Liquidity engines, identify and document:
+
+Where they are imported
+
+Where they are invoked
+
+Where their outputs are consumed and influence behavior
+
+Include file paths and line numbers for each.
+If any of these three links is missing, the engine must be classified as not wired.
+
+3. Functional Validation
+
+Confirm the engines execute during real runs (Auto Scan and Manual Scan).
+
+Verify that their outputs materially affect decisions (block trades, adjust confidence, gate execution, etc.).
+
+Identify default/fallback behavior, bypasses, or ignored return values that neutralize their impact.
+
+4. Data Integrity & Alignment
+
+Verify that Regime and Liquidity engines consume the same aligned market data (bars, timeframes, lookbacks) as the indicators they are intended to gate.
+
+Identify risks related to bar misalignment, stale caches, partial bars, or inconsistent inputs.
+
+Confirm that caching does not cause cross-strategy or Auto/Manual contamination.
+
+Required Deliverables
+
+A) Executive Verdict
+
+Regime Engine: Wired / Working / Influencing Decisions / Auto-Manual Parity (YES/NO)
+
+Liquidity Engine: Same evaluation
+
+High-level risk assessment if either is incomplete or non-functional
+
+B) Evidence Summary
+
+Concrete code references (file paths + line numbers)
+
+Clear trace: import → execution → decision impact
+
+C) Gap Analysis
+
+What exists vs what is missing
+
+Why the current state does or does not meet production expectations
+
+D) Integration or Remediation Plan (If Needed)
+
+Minimal, safe steps to fully wire and validate the engines
+
+Where changes must occur
+
+How to prevent regression
+
+How to prove correctness post-integration (tests, logs, metrics)
+
+Constraints
+
+Do not assume correctness—use code as the source of truth.
+
+Avoid speculative or generic answers.
+
+If information from the prior audit is missing, state what is needed explicitly and proceed with repository-based verification.
+
+The outcome should be a clear, executive-ready answer to the question:
+“Are our Regime and Liquidity engines truly wired, working, and trustworthy in production?”

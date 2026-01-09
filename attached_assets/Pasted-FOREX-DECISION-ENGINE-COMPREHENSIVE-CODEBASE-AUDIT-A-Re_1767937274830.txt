@@ -1,0 +1,894 @@
+FOREX DECISION ENGINE - COMPREHENSIVE CODEBASE AUDIT
+A) Repo Map (High-Level)
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         FOREX DECISION ENGINE                                │
+│                        Architecture Overview                                 │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌──────────────────┐     ┌──────────────────┐     ┌──────────────────┐
+│   HTTP Layer     │     │   SSE Layer      │     │   Frontend       │
+│   (Express)      │     │   (Real-time)    │     │   (Vanilla JS)   │
+│   server.ts      │     │   server.ts      │     │   app.js         │
+└────────┬─────────┘     └────────┬─────────┘     └────────┬─────────┘
+         │                        │                        │
+         └────────────────────────┼────────────────────────┘
+                                  │
+                    ┌─────────────▼─────────────┐
+                    │      ENGINE LAYER         │
+                    ├───────────────────────────┤
+                    │ strategyAnalyzer.ts       │
+                    │ indicatorService.ts       │
+                    │ indicatorFactory.ts       │
+                    └─────────────┬─────────────┘
+                                  │
+         ┌────────────────────────┼────────────────────────┐
+         │                        │                        │
+┌────────▼────────┐    ┌─────────▼─────────┐    ┌────────▼────────┐
+│  STRATEGIES     │    │   SERVICES        │    │   STORAGE       │
+│  (12+ files)    │    │                   │    │                 │
+├─────────────────┤    ├───────────────────┤    ├─────────────────┤
+│ RsiBounce       │    │ autoScanService   │    │ signalStore     │
+│ MACDDivergence  │    │ signalCooldown    │    │ journalStore    │
+│ TrendFollowing  │    │ twelveDataClient  │    │ (JSON files)    │
+│ BreakoutRetest  │    │ alertService      │    │                 │
+│ EMACrossover    │    │ cache.ts          │    │                 │
+│ ...             │    │ sentimentService  │    │                 │
+└─────────────────┘    └───────────────────┘    └─────────────────┘
+         │                        │                        │
+         └────────────────────────┼────────────────────────┘
+                                  │
+                    ┌─────────────▼─────────────┐
+                    │    EXTERNAL APIs          │
+                    ├───────────────────────────┤
+                    │ Twelve Data (Market Data) │
+                    │ Resend (Email Alerts)     │
+                    │ xAI (Sentiment - WIP)     │
+                    └───────────────────────────┘
+
+Data Flow:
+
+User Request → server.ts → strategyAnalyzer.ts → indicatorService.ts
+                                    │                    │
+                                    │              cache.ts (NO strategy ID!)
+                                    │                    │
+                                    ▼                    ▼
+                            Strategy.analyze() ← indicatorBundle
+                                    │
+                                    ▼
+                            SignalQualityGate.evaluate()
+                                    │
+                                    ▼
+                            signalCooldown.checkCooldown()
+                                    │
+                                    ▼
+                            signalStore.save() (JSON file)
+
+B) Full File Audit Index
+B.1 Server & Entry Point
+File	Purpose	Issues	Severity	Fixes Required
+src/server.ts	Express server, routes, SSE	No validation on some endpoints, missing rate limiting	P2	Add rate limiting, standardize error responses
+B.2 Engine Layer
+File	Purpose	Issues	Severity	Fixes Required
+src/engine/strategyAnalyzer.ts	Orchestrates strategy execution	Decision caching separate from indicator cache	P1	Unify caching approach
+src/engine/indicatorService.ts:175	Fetches indicator bundles	Cache key missing strategy ID	P0	Add strategyId to cache key
+src/engine/indicatorFactory.ts	Creates indicator instances	Tightly coupled to specific indicators	P3	Consider registry pattern
+B.3 Cache Layer
+File	Purpose	Issues	Severity	Fixes Required
+src/services/cache.ts:49	In-memory caching	makeKey() excludes strategy ID	P0	Add strategyId parameter
+src/services/cache.ts:37	TTL management	No data version tracking	P1	Add version/generation concept
+B.4 Services Layer
+File	Purpose	Issues	Severity	Fixes Required
+src/services/autoScanService.ts	Auto scanning	No persistent detected trades storage, Missing cooldown metadata	P0	Add DetectedTradesCache, persist cooldowns
+src/services/signalCooldown.ts	Cooldown tracking	In-memory only, lost on restart	P1	Persist to database
+src/services/alertService.ts	Email notifications	Dedupe logic in-memory only	P2	Persist alert history
+src/services/twelveDataClient.ts	Market data API	Good retry logic, but no circuit breaker	P2	Add circuit breaker pattern
+src/services/sentimentService.ts	Sentiment analysis	Appears to be WIP/unused	P3	Complete or remove
+B.5 Storage Layer
+File	Purpose	Issues	Severity	Fixes Required
+src/storage/signalStore.ts	Signal persistence	JSON file storage - no indexing, no queries	P0	Replace with database
+src/storage/journalStore.ts	Journal persistence	JSON file storage	P0	Replace with database
+B.6 Strategies Layer
+File	Purpose	Issues	Severity	Fixes Required
+src/strategies/registry.ts	Strategy registration	Clean implementation	-	None
+src/strategies/types.ts	Type definitions	Missing cooldown metadata types	P1	Add DetectedTradeCache types
+src/strategies/SignalQualityGate.ts	Signal grading	Solid implementation	-	None
+src/strategies/utils.ts	Shared utilities	Good helper functions	-	None
+src/strategies/intraday/*.ts	Intraday strategies	Each strategy isolated but shares indicator cache	P1	Ensure strategy-isolated caching
+src/strategies/swing/*.ts	Swing strategies	Same as above	P1	Same fix
+B.7 Config & Validation
+File	Purpose	Issues	Severity	Fixes Required
+src/config/e8InstrumentSpecs.ts	Instrument specs	Well-structured SSOT	-	None
+src/validation/schemas.ts	Zod schemas	Missing DetectedTradeCache schema	P1	Add new schemas
+B.8 Frontend
+File	Purpose	Issues	Severity	Fixes Required
+public/js/app.js	Frontend application	Missing "Detected Trades Cache" tab	P0	Add new tab with cooldown UI
+public/index.html	Main HTML	Tab structure exists	P1	Add new tab container
+C) Critical Findings (Prioritized)
+P0 - CRITICAL (Must Fix Before Production)
+C.1 Cache Key Missing Strategy ID
+Location: src/services/cache.ts:49, src/engine/indicatorService.ts:175
+Evidence:
+
+// cache.ts line 49
+static makeKey(symbol: string, timeframe: string, indicator: string, params: Record<string, unknown>, candleTime?: string): string {
+  const paramStr = Object.entries(params).sort(...).map(...).join('_') || 'default';
+  const timeKey = candleTime ? `@${candleTime}` : '';
+  return `${symbol}:${timeframe}:${indicator}:${paramStr}${timeKey}`;
+  // ❌ NO STRATEGY ID IN KEY!
+}
+
+Impact: Multiple strategies requesting the same indicator for the same symbol/timeframe will share cached results. If Strategy A calculates RSI(14) and Strategy B also needs RSI(14), they share the same cache entry - BUT if their data windows or calculation contexts differ, this causes incorrect signals.
+Risk: False signals, missed trades, inconsistent behavior between manual and auto scans.
+
+C.2 No Database Layer - JSON File Storage
+Location: src/storage/signalStore.ts, src/storage/journalStore.ts
+Evidence:
+
+// signalStore.ts
+private async readData(): Promise<SignalRecord[]> {
+  const content = await fs.readFile(this.filePath, 'utf-8');
+  return JSON.parse(content);
+}
+
+Impact:
+
+No indexing for efficient queries
+No concurrent access safety
+No transactional integrity
+Performance degrades as data grows
+No ability to query by strategy, date range, cooldown status
+Risk: Data corruption, slow queries, inability to implement advanced features.
+C.3 Missing "Detected Trades Cache" Tab & Cooldown Metadata
+Location: src/services/autoScanService.ts, public/js/app.js
+Evidence: No DetectedTradesCache concept exists. Auto-scan results go directly to signals without staging area.
+Missing Fields:
+
+firstDetectedAt - When signal first appeared
+lastDetectedAt - Most recent confirmation
+detectionCount - How many times confirmed
+cooldownEndsAt - When eligible for action
+status - CoolingDown | Eligible | Expired | Invalidated | Executed | Dismissed
+Impact: Users cannot see signals during cooldown period, cannot track signal persistence.
+C.4 Signal Cooldown Data Lost on Restart
+Location: src/services/signalCooldown.ts
+Evidence:
+
+class SignalCooldownService {
+  private cooldowns: Map<string, CooldownEntry> = new Map();
+  // ❌ In-memory only - lost on process restart!
+}
+
+Impact: Server restart resets all cooldowns, potentially causing duplicate alerts.
+
+P1 - HIGH (Fix Soon)
+C.5 Indicator Bundle Cache Without Strategy Context
+Location: src/engine/indicatorService.ts:175
+
+const cacheKey = CacheService.makeKey(symbol, style, 'indicator-bundle', { version: BUNDLE_CACHE_VERSION });
+// ❌ 'style' is not strategy ID - multiple strategies share same style
+
+C.6 Auto-Scan Service Lacks Persistent Cooldown Storage
+Location: src/services/autoScanService.ts
+The service emits signals but doesn't maintain a persistent record of detected trades in cooldown.
+
+C.7 Decision Cache Separate From Indicator Cache
+Location: src/engine/strategyAnalyzer.ts
+Two separate caching mechanisms that could get out of sync.
+
+P2 - MEDIUM (Should Fix)
+C.8 No Rate Limiting on API Endpoints
+Location: src/server.ts
+
+C.9 Alert Dedupe Logic In-Memory Only
+Location: src/services/alertService.ts:14
+
+C.10 No Circuit Breaker for External APIs
+Location: src/services/twelveDataClient.ts
+
+D) Caching & Strategy Isolation Design (Detailed)
+D.1 Current State (Broken)
+┌─────────────────────────────────────────────────────────────────┐
+│                    CURRENT CACHE STRUCTURE                       │
+├─────────────────────────────────────────────────────────────────┤
+│  Key Format: symbol:timeframe:indicator:params@candleTime       │
+│                                                                  │
+│  Example: EURUSD:1h:RSI:period_14@2024-01-15T10:00:00Z          │
+│                                                                  │
+│  ❌ Problem: RsiBounce and MACDDivergence both requesting       │
+│     RSI(14) for EURUSD 1h share the SAME cache entry            │
+│                                                                  │
+│  ❌ Problem: Manual scan and Auto scan share cache              │
+└─────────────────────────────────────────────────────────────────┘
+
+D.2 Proposed Solution
+┌─────────────────────────────────────────────────────────────────┐
+│                    NEW CACHE STRUCTURE                           │
+├─────────────────────────────────────────────────────────────────┤
+│  Key Format:                                                     │
+│  strategyId:symbol:timeframe:indicator:params:dataVersion@candle │
+│                                                                  │
+│  Example:                                                        │
+│  rsi-bounce:EURUSD:1h:RSI:period_14:v3@2024-01-15T10:00:00Z     │
+│                                                                  │
+│  ✅ Each strategy has isolated cache entries                    │
+│  ✅ Data version tracks when underlying data changed            │
+│  ✅ Candle timestamp ensures freshness                          │
+└─────────────────────────────────────────────────────────────────┘
+
+D.3 Implementation: New Cache Key Function
+// src/services/cache.ts - PROPOSED CHANGES
+
+interface CacheKeyParams {
+  strategyId: string;
+  symbol: string;
+  timeframe: string;
+  indicator: string;
+  params: Record<string, unknown>;
+  dataVersion?: string;
+  candleTime?: string;
+}
+
+static makeKey(options: CacheKeyParams): string {
+  const {
+    strategyId,
+    symbol,
+    timeframe,
+    indicator,
+    params,
+    dataVersion = 'v1',
+    candleTime
+  } = options;
+  
+  const paramStr = Object.entries(params)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([k, v]) => `${k}_${v}`)
+    .join('_') || 'default';
+  
+  const timeKey = candleTime ? `@${candleTime}` : '';
+  
+  return `${strategyId}:${symbol}:${timeframe}:${indicator}:${paramStr}:${dataVersion}${timeKey}`;
+}
+
+D.4 Cache Invalidation Rules
+Event	Action	Implementation
+New bar closes	Invalidate entries with old candleTime	TTL check on read
+Timeframe shift (e.g., H1 → H4)	Invalidate higher TF dependent on lower	Cascading invalidation
+Config change	Increment dataVersion	Version parameter in key
+Strategy parameter change	New cache entries (different params hash)	Automatic via key
+TTL expiry	Remove stale entries	Background cleanup job
+Manual invalidation	Clear specific strategy:symbol:*	Admin endpoint
+D.5 Updated IndicatorService
+// src/engine/indicatorService.ts - PROPOSED CHANGES
+
+export async function getIndicatorBundle(
+  symbol: string,
+  style: TradingStyle,
+  strategyId: string,  // NEW REQUIRED PARAMETER
+  dataVersion: string = 'v1'
+): Promise<IndicatorBundle> {
+  const cacheKey = CacheService.makeKey({
+    strategyId,
+    symbol,
+    timeframe: style,
+    indicator: 'indicator-bundle',
+    params: { version: BUNDLE_CACHE_VERSION },
+    dataVersion,
+    candleTime: getLatestCandleTime(style)
+  });
+  
+  const cached = CacheService.get<IndicatorBundle>(cacheKey);
+  if (cached) return cached;
+  
+  // ... fetch and calculate indicators ...
+  
+  CacheService.set(cacheKey, bundle, getTTLForStyle(style));
+  return bundle;
+}
+
+E) Auto Scan Cached-Detections Tab Specification
+E.1 Data Model: DetectedTradeCache
+// src/types/detectedTrade.ts - NEW FILE
+
+export type DetectedTradeStatus = 
+  | 'cooling-down'      // In 60-min cooldown period
+  | 'eligible'          // Cooldown complete, awaiting action
+  | 'expired'           // Signal invalidated (conditions changed)
+  | 'executed'          // User took the trade
+  | 'dismissed'         // User explicitly dismissed
+  | 'invalidated';      // Market conditions no longer support signal
+
+export interface DetectedTrade {
+  id: string;                          // UUID
+  strategyId: string;
+  strategyName: string;
+  symbol: string;
+  direction: 'long' | 'short';
+  grade: SignalGrade;
+  confidence: number;
+  
+  // Cooldown tracking
+  firstDetectedAt: string;             // ISO timestamp
+  lastDetectedAt: string;              // ISO timestamp
+  detectionCount: number;              // Times confirmed
+  cooldownEndsAt: string;              // ISO timestamp (firstDetectedAt + 60min)
+  
+  // Status
+  status: DetectedTradeStatus;
+  statusChangedAt: string;
+  statusReason?: string;
+  
+  // Signal details (frozen at first detection)
+  entry: { price: number; formatted: string };
+  stopLoss: { price: number; formatted: string };
+  takeProfit: { price: number; formatted: string };
+  position?: { lots: number; riskAmount: number };
+  
+  // Validation
+  currentlyValid: boolean;             // Re-evaluated each scan
+  validityReason?: string;
+  
+  // Metadata
+  scanSource: 'auto' | 'manual';
+  lastScanAt: string;
+}
+
+export interface DetectedTradeUpdate {
+  lastDetectedAt: string;
+  detectionCount: number;
+  currentlyValid: boolean;
+  validityReason?: string;
+  grade?: SignalGrade;
+  confidence?: number;
+}
+
+E.2 Status Lifecycle
+┌──────────────┐
+│   DETECTED   │
+│  (Auto Scan) │
+└──────┬───────┘
+       │
+       ▼
+┌──────────────┐     60 minutes     ┌──────────────┐
+│ COOLING-DOWN │ ─────────────────► │   ELIGIBLE   │
+└──────┬───────┘                    └──────┬───────┘
+       │                                   │
+       │ (conditions invalidate)           │
+       ▼                                   │
+┌──────────────┐                           │
+│ INVALIDATED  │◄──────────────────────────┤
+└──────────────┘  (conditions invalidate)  │
+                                           │
+                         ┌─────────────────┼─────────────────┐
+                         │                 │                 │
+                         ▼                 ▼                 ▼
+                  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐
+                  │   EXECUTED   │  │  DISMISSED   │  │   EXPIRED    │
+                  │ (user took)  │  │ (user skip)  │  │  (TTL hit)   │
+                  └──────────────┘  └──────────────┘  └──────────────┘
+
+E.3 UI Tab Specification
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  [Signals] [Journal] [Auto-Scan Control] [Detected Trades ●3]               │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ DETECTED TRADES CACHE                                          [Refresh]    │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  Filter: [All ▼] [Cooling Down] [Eligible] [All Strategies ▼]              │
+│                                                                              │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │ STRATEGY: RSI Bounce                                                │   │
+│  ├─────────────────────────────────────────────────────────────────────┤   │
+│  │                                                                      │   │
+│  │  ┌───────────────────────────────────────────────────────────────┐  │   │
+│  │  │ EURUSD  LONG  A+                         ⏱️ 45:32 remaining   │  │   │
+│  │  │ ──────────────────────────────────────────────────────────────│  │   │
+│  │  │ First Detected: 14:28:00 UTC  │  Confirmations: 3            │  │   │
+│  │  │ Entry: 1.0850  │  SL: 1.0820  │  TP: 1.0920                  │  │   │
+│  │  │ Status: COOLING DOWN                                          │  │   │
+│  │  │                                                                │  │   │
+│  │  │ [View Details]  [Dismiss]                                     │  │   │
+│  │  └───────────────────────────────────────────────────────────────┘  │   │
+│  │                                                                      │   │
+│  │  ┌───────────────────────────────────────────────────────────────┐  │   │
+│  │  │ GBPUSD  SHORT  A                         ✅ ELIGIBLE          │  │   │
+│  │  │ ──────────────────────────────────────────────────────────────│  │   │
+│  │  │ First Detected: 13:15:00 UTC  │  Confirmations: 8            │  │   │
+│  │  │ Entry: 1.2650  │  SL: 1.2690  │  TP: 1.2570                  │  │   │
+│  │  │ Status: ELIGIBLE (cooldown complete)                          │  │   │
+│  │  │                                                                │  │   │
+│  │  │ [Take Trade]  [View Details]  [Dismiss]                       │  │   │
+│  │  └───────────────────────────────────────────────────────────────┘  │   │
+│  │                                                                      │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+│                                                                              │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │ STRATEGY: MACD Divergence                                           │   │
+│  ├─────────────────────────────────────────────────────────────────────┤   │
+│  │  (No active detections)                                             │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+E.4 API Endpoints
+// New endpoints for src/server.ts
+
+// GET /api/detected-trades
+// Returns all detected trades, optionally filtered
+// Query params: status, strategyId, symbol
+
+// GET /api/detected-trades/:id
+// Returns single detected trade details
+
+// POST /api/detected-trades/:id/execute
+// Marks trade as executed, creates journal entry
+
+// POST /api/detected-trades/:id/dismiss
+// Marks trade as dismissed with optional reason
+
+// DELETE /api/detected-trades/:id
+// Removes from cache (admin only)
+
+// GET /api/detected-trades/stats
+// Returns summary: count by status, by strategy
+
+F) Database Plan
+F.1 Schema Design (PostgreSQL/Supabase)
+-- Detected Trades Cache (Auto-Scan Staging Area)
+CREATE TABLE detected_trades (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    strategy_id VARCHAR(50) NOT NULL,
+    strategy_name VARCHAR(100) NOT NULL,
+    symbol VARCHAR(20) NOT NULL,
+    direction VARCHAR(10) NOT NULL CHECK (direction IN ('long', 'short')),
+    grade VARCHAR(10) NOT NULL,
+    confidence DECIMAL(5,2),
+    
+    -- Cooldown tracking
+    first_detected_at TIMESTAMPTZ NOT NULL,
+    last_detected_at TIMESTAMPTZ NOT NULL,
+    detection_count INTEGER DEFAULT 1,
+    cooldown_ends_at TIMESTAMPTZ NOT NULL,
+    
+    -- Status
+    status VARCHAR(20) NOT NULL DEFAULT 'cooling-down',
+    status_changed_at TIMESTAMPTZ NOT NULL,
+    status_reason TEXT,
+    
+    -- Signal details (frozen at detection)
+    entry_price DECIMAL(20,8),
+    entry_formatted VARCHAR(50),
+    stop_loss_price DECIMAL(20,8),
+    stop_loss_formatted VARCHAR(50),
+    take_profit_price DECIMAL(20,8),
+    take_profit_formatted VARCHAR(50),
+    lot_size DECIMAL(10,2),
+    risk_amount DECIMAL(20,2),
+    
+    -- Validation
+    currently_valid BOOLEAN DEFAULT true,
+    validity_reason TEXT,
+    
+    -- Metadata
+    scan_source VARCHAR(10) DEFAULT 'auto',
+    last_scan_at TIMESTAMPTZ,
+    signal_payload JSONB,  -- Full decision object for reference
+    
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    
+    -- Constraints
+    CONSTRAINT valid_status CHECK (status IN (
+        'cooling-down', 'eligible', 'expired', 
+        'executed', 'dismissed', 'invalidated'
+    ))
+);
+
+-- Indexes for detected_trades
+CREATE INDEX idx_detected_trades_status ON detected_trades(status);
+CREATE INDEX idx_detected_trades_strategy ON detected_trades(strategy_id);
+CREATE INDEX idx_detected_trades_symbol ON detected_trades(symbol);
+CREATE INDEX idx_detected_trades_cooldown ON detected_trades(cooldown_ends_at) 
+    WHERE status = 'cooling-down';
+CREATE UNIQUE INDEX idx_detected_trades_active ON detected_trades(strategy_id, symbol, direction) 
+    WHERE status IN ('cooling-down', 'eligible');
+
+
+-- Signals (Executed/Historical)
+CREATE TABLE signals (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    detected_trade_id UUID REFERENCES detected_trades(id),
+    strategy_id VARCHAR(50) NOT NULL,
+    strategy_name VARCHAR(100),
+    symbol VARCHAR(20) NOT NULL,
+    direction VARCHAR(10) NOT NULL,
+    grade VARCHAR(10) NOT NULL,
+    confidence DECIMAL(5,2),
+    
+    -- Prices
+    entry_price DECIMAL(20,8),
+    stop_loss_price DECIMAL(20,8),
+    take_profit_price DECIMAL(20,8),
+    lot_size DECIMAL(10,2),
+    
+    -- Timing
+    signal_time TIMESTAMPTZ NOT NULL,
+    valid_until TIMESTAMPTZ,
+    
+    -- Result tracking
+    result VARCHAR(20),  -- win, loss, breakeven, pending
+    r_multiple DECIMAL(10,2),
+    pnl_dollars DECIMAL(20,2),
+    pnl_pips DECIMAL(10,1),
+    
+    -- Metadata
+    reason_codes TEXT[],
+    reason_text TEXT,
+    scan_source VARCHAR(10),
+    signal_payload JSONB,
+    
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Indexes for signals
+CREATE INDEX idx_signals_strategy ON signals(strategy_id);
+CREATE INDEX idx_signals_symbol ON signals(symbol);
+CREATE INDEX idx_signals_result ON signals(result);
+CREATE INDEX idx_signals_time ON signals(signal_time DESC);
+CREATE INDEX idx_signals_grade ON signals(grade);
+
+
+-- Journal Entries
+CREATE TABLE journal_entries (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    signal_id UUID REFERENCES signals(id),
+    detected_trade_id UUID REFERENCES detected_trades(id),
+    
+    -- Trade info
+    symbol VARCHAR(20) NOT NULL,
+    direction VARCHAR(10) NOT NULL,
+    action VARCHAR(20) NOT NULL,  -- taken, skipped, missed
+    source VARCHAR(20),  -- signal, manual
+    
+    -- Strategy
+    strategy_id VARCHAR(50),
+    strategy_name VARCHAR(100),
+    style VARCHAR(20),
+    grade VARCHAR(10),
+    confidence DECIMAL(5,2),
+    
+    -- Planned prices
+    entry_price DECIMAL(20,8),
+    stop_loss_price DECIMAL(20,8),
+    take_profit_1 DECIMAL(20,8),
+    take_profit_2 DECIMAL(20,8),
+    lot_size DECIMAL(10,2),
+    position_risk DECIMAL(20,2),
+    
+    -- Actual execution
+    actual_entry DECIMAL(20,8),
+    actual_exit DECIMAL(20,8),
+    
+    -- Status & Result
+    status VARCHAR(20) DEFAULT 'pending',  -- pending, running, closed
+    result VARCHAR(20),  -- win, loss, breakeven
+    r_multiple DECIMAL(10,2),
+    pnl_dollars DECIMAL(20,2),
+    pnl_pips DECIMAL(10,1),
+    
+    -- Notes
+    reason_codes TEXT[],
+    notes TEXT,
+    
+    -- Timestamps
+    opened_at TIMESTAMPTZ,
+    closed_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Indexes for journal
+CREATE INDEX idx_journal_symbol ON journal_entries(symbol);
+CREATE INDEX idx_journal_strategy ON journal_entries(strategy_id);
+CREATE INDEX idx_journal_result ON journal_entries(result);
+CREATE INDEX idx_journal_status ON journal_entries(status);
+CREATE INDEX idx_journal_created ON journal_entries(created_at DESC);
+
+
+-- Signal Cooldowns (persistent)
+CREATE TABLE signal_cooldowns (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    cooldown_key VARCHAR(200) UNIQUE NOT NULL,  -- strategy:symbol:direction
+    strategy_id VARCHAR(50) NOT NULL,
+    symbol VARCHAR(20) NOT NULL,
+    direction VARCHAR(10) NOT NULL,
+    started_at TIMESTAMPTZ NOT NULL,
+    expires_at TIMESTAMPTZ NOT NULL,
+    triggered_by_signal_id UUID REFERENCES signals(id),
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_cooldowns_key ON signal_cooldowns(cooldown_key);
+CREATE INDEX idx_cooldowns_expires ON signal_cooldowns(expires_at);
+
+
+-- Alert History (for dedupe)
+CREATE TABLE alert_history (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    alert_key VARCHAR(200) NOT NULL,  -- symbol:strategy:direction
+    signal_id UUID REFERENCES signals(id),
+    grade VARCHAR(10) NOT NULL,
+    sent_to VARCHAR(255) NOT NULL,
+    sent_at TIMESTAMPTZ NOT NULL,
+    expires_at TIMESTAMPTZ NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_alerts_key ON alert_history(alert_key);
+CREATE INDEX idx_alerts_expires ON alert_history(expires_at);
+
+F.2 Migration Approach
+// src/db/migrations/001_initial_schema.ts
+
+import { Kysely, sql } from 'kysely';
+
+export async function up(db: Kysely<unknown>): Promise<void> {
+  // Create tables in order (respecting foreign keys)
+  await db.schema
+    .createTable('detected_trades')
+    // ... columns from schema above
+    .execute();
+    
+  await db.schema
+    .createTable('signals')
+    // ... columns
+    .execute();
+    
+  // ... other tables
+  
+  // Create indexes
+  await sql`CREATE INDEX idx_detected_trades_status ON detected_trades(status)`.execute(db);
+  // ... other indexes
+}
+
+export async function down(db: Kysely<unknown>): Promise<void> {
+  await db.schema.dropTable('alert_history').execute();
+  await db.schema.dropTable('signal_cooldowns').execute();
+  await db.schema.dropTable('journal_entries').execute();
+  await db.schema.dropTable('signals').execute();
+  await db.schema.dropTable('detected_trades').execute();
+}
+
+F.3 New CRUD Endpoints
+// src/api/detectedTrades.ts - NEW FILE
+
+import { Router } from 'express';
+import { db } from '../db/client';
+
+const router = Router();
+
+// List detected trades with filtering
+router.get('/', async (req, res) => {
+  const { status, strategyId, symbol, limit = 100, offset = 0 } = req.query;
+  
+  let query = db
+    .selectFrom('detected_trades')
+    .selectAll()
+    .orderBy('first_detected_at', 'desc')
+    .limit(Number(limit))
+    .offset(Number(offset));
+    
+  if (status) query = query.where('status', '=', status as string);
+  if (strategyId) query = query.where('strategy_id', '=', strategyId as string);
+  if (symbol) query = query.where('symbol', '=', symbol as string);
+  
+  const trades = await query.execute();
+  res.json({ data: trades, count: trades.length });
+});
+
+// Get single detected trade
+router.get('/:id', async (req, res) => {
+  const trade = await db
+    .selectFrom('detected_trades')
+    .selectAll()
+    .where('id', '=', req.params.id)
+    .executeTakeFirst();
+    
+  if (!trade) return res.status(404).json({ error: 'Not found' });
+  res.json(trade);
+});
+
+// Execute trade (move to journal)
+router.post('/:id/execute', async (req, res) => {
+  const { actualEntry, notes } = req.body;
+  
+  await db.transaction().execute(async (trx) => {
+    // Update detected trade status
+    const trade = await trx
+      .updateTable('detected_trades')
+      .set({ 
+        status: 'executed', 
+        status_changed_at: new Date(),
+        status_reason: 'User executed trade'
+      })
+      .where('id', '=', req.params.id)
+      .returningAll()
+      .executeTakeFirst();
+      
+    if (!trade) throw new Error('Trade not found');
+    
+    // Create journal entry
+    await trx
+      .insertInto('journal_entries')
+      .values({
+        detected_trade_id: trade.id,
+        symbol: trade.symbol,
+        direction: trade.direction,
+        action: 'taken',
+        source: 'signal',
+        strategy_id: trade.strategy_id,
+        strategy_name: trade.strategy_name,
+        grade: trade.grade,
+        confidence: trade.confidence,
+        entry_price: trade.entry_price,
+        stop_loss_price: trade.stop_loss_price,
+        take_profit_1: trade.take_profit_price,
+        lot_size: trade.lot_size,
+        actual_entry: actualEntry || trade.entry_price,
+        status: 'running',
+        notes,
+        opened_at: new Date()
+      })
+      .execute();
+  });
+  
+  res.json({ success: true });
+});
+
+// Dismiss trade
+router.post('/:id/dismiss', async (req, res) => {
+  const { reason } = req.body;
+  
+  await db
+    .updateTable('detected_trades')
+    .set({
+      status: 'dismissed',
+      status_changed_at: new Date(),
+      status_reason: reason || 'User dismissed'
+    })
+    .where('id', '=', req.params.id)
+    .execute();
+    
+  res.json({ success: true });
+});
+
+export default router;
+
+G) Implementation Plan (Step-by-Step, Phased)
+Phase 0: Foundation (Pre-requisites)
+Step	Task	Files	Acceptance Criteria
+0.1	Add database dependency	package.json	kysely, pg installed
+0.2	Create DB client	src/db/client.ts	Connection pool working
+0.3	Create migration system	src/db/migrate.ts	Can run up/down migrations
+0.4	Create initial migration	src/db/migrations/001_*.ts	All tables created
+0.5	Add DB env vars	.env, src/validation/schemas.ts	DATABASE_URL validated
+Phase 1: Cache Key Fix (Critical)
+Step	Task	Files	Acceptance Criteria
+1.1	Update CacheService.makeKey()	src/services/cache.ts	Accepts strategyId, dataVersion params
+1.2	Update all makeKey() callers	src/engine/indicatorService.ts, src/engine/strategyAnalyzer.ts	All calls pass strategyId
+1.3	Update strategy interface	src/strategies/types.ts	Strategy.id required in analyze() context
+1.4	Update all strategies	src/strategies/intraday/*.ts, src/strategies/swing/*.ts	Each passes own ID to indicator calls
+1.5	Write unit tests	tests/cache.test.ts	Cache isolation verified
+1.6	Write integration test	tests/integration/cache-isolation.test.ts	Two strategies, same indicator, different results
+Phase 2: Database Layer
+Step	Task	Files	Acceptance Criteria
+2.1	Create DetectedTradeStore	src/storage/detectedTradeStore.ts	CRUD operations working
+2.2	Create SignalStore (DB)	src/storage/signalStoreDb.ts	Replaces JSON file store
+2.3	Create JournalStore (DB)	src/storage/journalStoreDb.ts	Replaces JSON file store
+2.4	Create CooldownStore (DB)	src/storage/cooldownStore.ts	Persistent cooldowns
+2.5	Data migration script	scripts/migrate-json-to-db.ts	Existing data preserved
+2.6	Update services to use DB	src/services/*.ts	All stores use DB
+Phase 3: Detected Trades Cache Feature
+Step	Task	Files	Acceptance Criteria
+3.1	Create DetectedTrade types	src/types/detectedTrade.ts	Full type definitions
+3.2	Create detection service	src/services/detectionService.ts	Handles cooldown logic
+3.3	Update AutoScanService	src/services/autoScanService.ts	Stages to detected_trades
+3.4	Create API routes	src/api/detectedTrades.ts	All endpoints working
+3.5	Add routes to server	src/server.ts	Routes mounted
+3.6	Create frontend tab	public/js/app.js, public/index.html	Tab renders correctly
+3.7	Add SSE events	src/server.ts	Real-time updates
+3.8	Status transition logic	src/services/detectionService.ts	All status changes work
+3.9	Cooldown timer display	public/js/app.js	Live countdown shown
+3.10	Execute/Dismiss actions	public/js/app.js	Buttons functional
+Phase 4: Polish & Hardening
+Step	Task	Files	Acceptance Criteria
+4.1	Add rate limiting	src/server.ts	Endpoints protected
+4.2	Add circuit breaker	src/services/twelveDataClient.ts	API failures handled gracefully
+4.3	Error handling audit	All files	Consistent error responses
+4.4	Add metrics/logging	src/services/metricsService.ts	Key events logged
+4.5	Performance testing	tests/performance/*.ts	Handles 100+ symbols
+4.6	Documentation	docs/*.md	API docs complete
+H) Verification Checklist
+H.1 Cache Isolation Verification
+ Test 1: Run RsiBounce and MACDDivergence for EURUSD simultaneously
+
+Both request RSI(14) for 1h timeframe
+Verify cache has TWO separate entries: rsi-bounce:EURUSD:1h:RSI:* and macd-divergence:EURUSD:1h:RSI:*
+ Test 2: Run manual scan then auto scan for same symbol/strategy
+
+Verify cache keys are identical (same strategy should share)
+Verify results are identical
+ Test 3: Change strategy parameters mid-session
+
+Verify old cache entries are invalidated
+Verify new entries created with new params
+ Test 4: New candle closes
+
+Verify old candleTime entries expire
+Verify fresh data fetched
+H.2 Detected Trades Cache Verification
+ Test 5: Auto scan detects new A+ signal
+Verify entry created in detected_trades table
+Verify status = 'cooling-down'
+Verify cooldown_ends_at = first_detected_at + 60min
+ Test 6: Same signal detected again during cooldown
+Verify detection_count incremented
+Verify last_detected_at updated
+Verify first_detected_at unchanged
+ Test 7: Cooldown expires
+Verify status changes to 'eligible'
+Verify UI shows green "ELIGIBLE" badge
+Verify email alert sent (if configured)
+ Test 8: User clicks "Execute"
+Verify journal entry created
+Verify detected trade status = 'executed'
+Verify signal created in signals table
+ Test 9: User clicks "Dismiss"
+Verify status = 'dismissed'
+Verify no journal entry created
+ Test 10: Signal conditions invalidate during cooldown
+Verify status = 'invalidated'
+Verify validity_reason populated
+H.3 Database Verification
+ Test 11: Server restart
+Verify all cooldowns restored from DB
+Verify detected trades preserved
+Verify no duplicate alerts sent
+ Test 12: Query performance
+List 1000 journal entries: < 100ms
+Filter by strategy + date range: < 50ms
+Aggregate win/loss by strategy: < 200ms
+ Test 13: Concurrent writes
+10 simultaneous signal detections
+Verify no duplicate detected_trade entries (unique constraint)
+Verify all detection_counts accurate
+H.4 End-to-End Verification
+ Test 14: Full workflow
+Start auto scan
+Wait for A+ detection
+Verify appears in Detected Trades tab
+Verify cooldown timer counting down
+Wait for eligibility
+Click Execute
+Verify appears in Journal
+Mark as win
+Verify statistics update
+ Test 15: Manual scan doesn't use detected trades cache
+Manual scan results go directly to Signals tab
+No cooldown applied to manual scans
+Detected Trades tab unchanged
+Summary of Critical Fixes Required
+Priority	Issue	LOE	Impact
+P0	Cache key missing strategy ID	2 days	Prevents cross-strategy contamination
+P0	No database layer	3 days	Enables all advanced features
+P0	Missing Detected Trades Cache tab	3 days	Core UX requirement
+P0	Cooldowns lost on restart	1 day	Data integrity
+P1	Indicator bundle cache isolation	1 day	Supports P0 fix
+P1	Alert dedupe persistence	0.5 day	Prevents duplicate emails
+P2	Rate limiting	0.5 day	Security hardening
+P2	Circuit breaker	1 day	Resilience
+Total Estimated Effort: ~12 days of focused development
