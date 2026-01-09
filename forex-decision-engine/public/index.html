@@ -3,6 +3,9 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
   <title>Forex Decision Engine</title>
   <link rel="stylesheet" href="/css/styles.css">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎯</text></svg>">
@@ -21,10 +24,10 @@
         <h1>Forex Decision Engine</h1>
       </div>
       <nav class="header-nav" role="navigation" aria-label="Main navigation">
-        <button class="nav-btn active" data-screen="dashboard" aria-current="page" aria-label="Dashboard">Dashboard</button>
-        <button class="nav-btn" data-screen="auto-scan" aria-label="Auto-scan">Auto <span class="nav-badge hidden" id="detections-badge">0</span></button>
-        <button class="nav-btn" data-screen="journal" aria-label="View trade journal">Journal</button>
-        <button class="nav-btn" data-screen="settings" aria-label="Configure settings">Settings</button>
+        <button class="nav-btn active" data-screen="dashboard" aria-current="page" aria-label="Dashboard" onclick="App.switchScreen('dashboard')">Dashboard</button>
+        <button class="nav-btn" data-screen="auto-scan" aria-label="Auto-scan" onclick="App.switchScreen('auto-scan')">Auto <span class="nav-badge hidden" id="detections-badge">0</span></button>
+        <button class="nav-btn" data-screen="journal" aria-label="View trade journal" onclick="App.switchScreen('journal')">Journal</button>
+        <button class="nav-btn" data-screen="settings" aria-label="Configure settings" onclick="App.switchScreen('settings')">Settings</button>
       </nav>
     </header>
     
@@ -651,9 +654,9 @@
     </section>
   </div>
 
-  <script src="/js/api.js?v=20260109a"></script>
-  <script src="/js/storage.js?v=20260109a"></script>
-  <script src="/js/ui.js?v=20260109a"></script>
-  <script src="/js/app.js?v=20260109a"></script>
+  <script src="/js/api.js?v=20260109c"></script>
+  <script src="/js/storage.js?v=20260109c"></script>
+  <script src="/js/ui.js?v=20260109c"></script>
+  <script src="/js/app.js?v=20260109c"></script>
 </body>
 </html>

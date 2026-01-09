@@ -1225,12 +1225,24 @@ const App = {
    */
   setupEventListeners() {
     // Navigation
-    UI.$$('.nav-btn').forEach(btn => {
-      btn.addEventListener('click', () => this.switchScreen(btn.dataset.screen));
+    const navBtns = UI.$$('.nav-btn');
+    console.log('Setting up nav buttons:', navBtns.length);
+    navBtns.forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        console.log('Nav button clicked:', btn.dataset.screen);
+        this.switchScreen(btn.dataset.screen);
+      });
     });
 
-    // Welcome screen
-    UI.$('get-started-btn')?.addEventListener('click', () => this.completeOnboarding());
+    // Welcome screen - Get Started button
+    const getStartedBtn = UI.$('get-started-btn');
+    console.log('Get Started button found:', !!getStartedBtn);
+    if (getStartedBtn) {
+      getStartedBtn.addEventListener('click', () => {
+        console.log('Get Started clicked');
+        this.completeOnboarding();
+      });
+    }
 
     // Settings form - prevent duplicate handlers
     const settingsForm = UI.$('settings-form');
