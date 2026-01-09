@@ -6209,7 +6209,25 @@
       "valid_until": "2026-01-05T21:47:54.244Z",
       "result": null,
       "result_notes": null
+    },
+    {
+      "id": 346,
+      "symbol": "GBPCAD",
+      "style": "intraday",
+      "direction": "long",
+      "grade": "C",
+      "entry_low": 1.86345,
+      "entry_high": 1.86345,
+      "stop_loss": 1.86278940255,
+      "take_profit": 1.8647711949,
+      "position_lots": 1.04,
+      "risk_amount": 50,
+      "reason": "Price above EMA200 (uptrend). EMA20 > EMA50 (bullish structure). Price pulled back to EMA20/50 zone. Strong trend (ADX: 23.0). RSI reset to neutral (49.4). H4 trend aligned (bullish)",
+      "created_at": "2026-01-09T05:16:05.635Z",
+      "valid_until": "2026-01-09T06:16:05.636Z",
+      "result": null,
+      "result_notes": null
     }
   ],
-  "nextId": 346
+  "nextId": 347
 }
