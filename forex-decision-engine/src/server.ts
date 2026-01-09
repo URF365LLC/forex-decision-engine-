@@ -36,7 +36,7 @@ import { gradeTracker } from './services/gradeTracker.js';
 import { autoScanService } from './services/autoScanService.js';
 import { alertService } from './services/alertService.js';
 import { grokSentimentService } from './services/grokSentimentService.js';
-import { validateBody, validateQuery } from './middleware/validate.js';
+import { validateBody, validateQuery, validateParams } from './middleware/validate.js';
 import { requestIdMiddleware } from './middleware/requestId.js';
 import {
   ScanRequestSchema,
@@ -47,6 +47,17 @@ import {
   AutoScanConfigSchema,
   JournalEntrySchema,
   BatchSentimentSchema,
+  StrategiesQuerySchema,
+  SignalsQuerySchema,
+  JournalQuerySchema,
+  JournalStatsQuerySchema,
+  UpgradesQuerySchema,
+  AggregatedSentimentQuerySchema,
+  DetectionsQuerySchema,
+  DetectionExecuteSchema,
+  DetectionDismissSchema,
+  SymbolParamSchema,
+  IdParamSchema,
 } from './validation/schemas.js';
 import { z } from 'zod';
 import * as detectionService from './services/detectionService.js';
@@ -275,10 +286,9 @@ app.get('/api/settings/defaults', (req, res) => {
 /**
  * Get available strategies
  */
-app.get('/api/strategies', (req, res) => {
-  const style = (req.query.style as string) || 'intraday';
-  const validStyle = style === 'swing' ? 'swing' : 'intraday';
-  const strategies = strategyRegistry.getByStyle(validStyle as 'intraday' | 'swing');
+app.get('/api/strategies', validateQuery(StrategiesQuerySchema), (req, res) => {
+  const { style } = req.query as { style: 'intraday' | 'swing' };
+  const strategies = strategyRegistry.getByStyle(style);
   
   res.json(strategies.map(s => ({
     id: s.id,
@@ -442,11 +452,9 @@ app.post('/api/scan', validateBody(ScanRequestSchema), async (req, res) => {
 /**
  * Get signal history
  */
-app.get('/api/signals', async (req, res) => {
+app.get('/api/signals', validateQuery(SignalsQuerySchema), async (req, res) => {
   try {
-    const limit = Math.min(parseInt(req.query.limit as string) || 50, 100);
-    const grade = req.query.grade as string;
-    const symbol = req.query.symbol as string;
+    const { limit, grade, symbol } = req.query as { limit: number; grade?: string; symbol?: string };
 
     let signals;
     if (grade) {
@@ -532,17 +540,18 @@ app.post('/api/journal', validateBody(JournalEntrySchema), async (req, res) => {
 /**
  * Get journal entries
  */
-app.get('/api/journal', async (req, res) => {
+app.get('/api/journal', validateQuery(JournalQuerySchema), async (req, res) => {
   try {
+    const { symbol, status, result, action, tradeType, dateFrom, dateTo } = req.query as any;
     const filters: JournalFilters = {};
 
-    if (req.query.symbol) filters.symbol = req.query.symbol as string;
-    if (req.query.status) filters.status = req.query.status as any;
-    if (req.query.result) filters.result = req.query.result as any;
-    if (req.query.action) filters.action = req.query.action as any;
-    if (req.query.tradeType) filters.tradeType = req.query.tradeType as any;
-    if (req.query.dateFrom) filters.dateFrom = req.query.dateFrom as string;
-    if (req.query.dateTo) filters.dateTo = req.query.dateTo as string;
+    if (symbol) filters.symbol = symbol;
+    if (status) filters.status = status;
+    if (result) filters.result = result;
+    if (action) filters.action = action;
+    if (tradeType) filters.tradeType = tradeType;
+    if (dateFrom) filters.dateFrom = dateFrom;
+    if (dateTo) filters.dateTo = dateTo;
 
     const entries = await journalStore.getAll(Object.keys(filters).length > 0 ? filters : undefined);
     res.json({ success: true, count: entries.length, entries });
@@ -557,10 +566,9 @@ app.get('/api/journal', async (req, res) => {
 /**
  * Get journal stats
  */
-app.get('/api/journal/stats', async (req, res) => {
+app.get('/api/journal/stats', validateQuery(JournalStatsQuerySchema), async (req, res) => {
   try {
-    const dateFrom = req.query.dateFrom as string | undefined;
-    const dateTo = req.query.dateTo as string | undefined;
+    const { dateFrom, dateTo } = req.query as { dateFrom?: string; dateTo?: string };
 
     const stats = await journalStore.getStats(dateFrom, dateTo);
     res.json({ success: true, stats });
@@ -575,15 +583,16 @@ app.get('/api/journal/stats', async (req, res) => {
 /**
  * Export journal as CSV
  */
-app.get('/api/journal/export', async (req, res) => {
+app.get('/api/journal/export', validateQuery(JournalQuerySchema), async (req, res) => {
   try {
+    const { symbol, status, result, dateFrom, dateTo } = req.query as any;
     const filters: JournalFilters = {};
 
-    if (req.query.symbol) filters.symbol = req.query.symbol as string;
-    if (req.query.status) filters.status = req.query.status as any;
-    if (req.query.result) filters.result = req.query.result as any;
-    if (req.query.dateFrom) filters.dateFrom = req.query.dateFrom as string;
-    if (req.query.dateTo) filters.dateTo = req.query.dateTo as string;
+    if (symbol) filters.symbol = symbol;
+    if (status) filters.status = status;
+    if (result) filters.result = result;
+    if (dateFrom) filters.dateFrom = dateFrom;
+    if (dateTo) filters.dateTo = dateTo;
 
     const csv = await journalStore.exportCSV(Object.keys(filters).length > 0 ? filters : undefined);
 
@@ -717,8 +726,8 @@ gradeTracker.onUpgrade((upgrade) => {
 /**
  * Get recent grade upgrades
  */
-app.get('/api/upgrades/recent', (req, res) => {
-  const minutes = parseInt(req.query.minutes as string) || 60;
+app.get('/api/upgrades/recent', validateQuery(UpgradesQuerySchema), (req, res) => {
+  const { minutes } = req.query as { minutes: number };
   const upgrades = gradeTracker.getRecentUpgrades(minutes);
   res.json({ upgrades, count: upgrades.length });
 });
@@ -905,9 +914,9 @@ app.post('/api/sentiment/batch', validateBody(BatchSentimentSchema), async (req,
   }
 });
 
-app.get('/api/sentiment/:symbol/aggregated', async (req, res) => {
-  const { symbol } = req.params;
-  const samples = Math.min(5, Math.max(2, parseInt(req.query.samples as string) || 3));
+app.get('/api/sentiment/:symbol/aggregated', validateParams(SymbolParamSchema), validateQuery(AggregatedSentimentQuerySchema), async (req, res) => {
+  const { symbol } = req.params as { symbol: string };
+  const { samples } = req.query as { samples: number };
   
   if (!grokSentimentService.isEnabled()) {
     return res.status(503).json({ 
@@ -916,7 +925,7 @@ app.get('/api/sentiment/:symbol/aggregated', async (req, res) => {
   }
   
   try {
-    const sentiment = await grokSentimentService.getAggregatedSentiment(symbol.toUpperCase(), samples);
+    const sentiment = await grokSentimentService.getAggregatedSentiment(symbol, samples);
     
     if (!sentiment) {
       return res.status(404).json({ 
@@ -956,21 +965,21 @@ app.get('/api/sentiment/overview', (req, res) => {
 /**
  * List detected trades with optional filtering
  */
-app.get('/api/detections', async (req, res) => {
+app.get('/api/detections', validateQuery(DetectionsQuerySchema), async (req, res) => {
   try {
+    const { status, strategyId, symbol, grade, limit, offset } = req.query as any;
     const filters: DetectionFilters = {};
 
-    if (req.query.status) {
-      const statusParam = req.query.status as string;
-      filters.status = statusParam.includes(',')
-        ? statusParam.split(',') as any
-        : statusParam as any;
+    if (status) {
+      filters.status = status.includes(',')
+        ? status.split(',') as any
+        : status as any;
     }
-    if (req.query.strategyId) filters.strategyId = req.query.strategyId as string;
-    if (req.query.symbol) filters.symbol = req.query.symbol as string;
-    if (req.query.grade) filters.grade = req.query.grade as string;
-    if (req.query.limit) filters.limit = parseInt(req.query.limit as string);
-    if (req.query.offset) filters.offset = parseInt(req.query.offset as string);
+    if (strategyId) filters.strategyId = strategyId;
+    if (symbol) filters.symbol = symbol;
+    if (grade) filters.grade = grade;
+    if (limit) filters.limit = limit;
+    if (offset) filters.offset = offset;
 
     const detections = await detectionService.listDetections(filters);
     const summary = await detectionService.getSummary();
@@ -1032,9 +1041,9 @@ app.get('/api/detections/:id', async (req, res) => {
  * Execute a detection (user took the trade)
  * Atomically: marks detection as executed AND creates linked journal entry
  */
-app.post('/api/detections/:id/execute', async (req, res) => {
+app.post('/api/detections/:id/execute', validateParams(IdParamSchema), validateBody(DetectionExecuteSchema), async (req, res) => {
   try {
-    const { notes } = req.body || {};
+    const { notes } = req.body;
     
     // First get the detection to capture all data before status change
     const detectionData = await detectionService.getDetection(req.params.id);
@@ -1110,9 +1119,9 @@ app.post('/api/detections/:id/execute', async (req, res) => {
 /**
  * Dismiss a detection (user decided not to take it)
  */
-app.post('/api/detections/:id/dismiss', async (req, res) => {
+app.post('/api/detections/:id/dismiss', validateParams(IdParamSchema), validateBody(DetectionDismissSchema), async (req, res) => {
   try {
-    const { reason } = req.body || {};
+    const { reason } = req.body;
     const detection = await detectionService.dismissDetection(req.params.id, reason);
 
     if (!detection) {

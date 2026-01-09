@@ -104,6 +104,68 @@ export const PaginationSchema = z.object({
   offset: z.coerce.number().min(0).optional().default(0),
 });
 
+// ═══════════════════════════════════════════════════════════════
+// QUERY PARAMETER SCHEMAS
+// ═══════════════════════════════════════════════════════════════
+
+export const StrategiesQuerySchema = z.object({
+  style: z.enum(['intraday', 'swing']).optional().default('intraday'),
+});
+
+export const SignalsQuerySchema = z.object({
+  limit: z.coerce.number().min(1).max(100).optional().default(50),
+  grade: z.enum(['A+', 'A', 'B+', 'B', 'C', 'no-trade']).optional(),
+  symbol: z.string().min(1).max(20).optional(),
+});
+
+export const JournalQuerySchema = z.object({
+  symbol: z.string().min(1).max(20).optional(),
+  status: z.enum(['pending', 'running', 'closed']).optional(),
+  result: z.enum(['win', 'loss', 'breakeven']).optional(),
+  action: z.enum(['taken', 'skipped', 'missed']).optional(),
+  tradeType: z.enum(['pullback', 'counter-trend', 'liquidity-grab', 'exhaustion', 'other']).optional(),
+  dateFrom: z.string().optional(),
+  dateTo: z.string().optional(),
+});
+
+export const JournalStatsQuerySchema = z.object({
+  dateFrom: z.string().optional(),
+  dateTo: z.string().optional(),
+});
+
+export const UpgradesQuerySchema = z.object({
+  minutes: z.coerce.number().min(1).max(1440).optional().default(60),
+});
+
+export const AggregatedSentimentQuerySchema = z.object({
+  samples: z.coerce.number().min(2).max(5).optional().default(3),
+});
+
+export const DetectionsQuerySchema = z.object({
+  status: z.string().optional(),
+  strategyId: z.string().optional(),
+  symbol: z.string().min(1).max(20).optional(),
+  grade: z.enum(['A+', 'A', 'B+', 'B', 'C']).optional(),
+  limit: z.coerce.number().min(1).max(100).optional().default(50),
+  offset: z.coerce.number().min(0).optional().default(0),
+});
+
+export const DetectionExecuteSchema = z.object({
+  notes: z.string().max(500).optional(),
+});
+
+export const DetectionDismissSchema = z.object({
+  reason: z.string().max(500).optional(),
+});
+
+export const SymbolParamSchema = z.object({
+  symbol: z.string().min(1).max(20).transform(s => s.toUpperCase()),
+});
+
+export const IdParamSchema = z.object({
+  id: z.string().min(1).max(50),
+});
+
 export const EnvSchema = z.object({
   TWELVE_DATA_API_KEY: z.string().min(1, 'TWELVE_DATA_API_KEY is required'),
   PORT: z.coerce.number().min(1).max(65535).optional().default(5000),

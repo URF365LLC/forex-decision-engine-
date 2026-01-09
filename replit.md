@@ -111,6 +111,9 @@ Core API endpoints cover system health, symbol retrieval, signal analysis and sc
 10. **Rate Limiter Graceful Backpressure**: Queue overflow now returns structured error instead of throwing FATAL - prevents system crashes.
 11. **Cooldown Database Persistence**: Cooldowns now persist to PostgreSQL and survive server restarts via `loadFromDatabase()`.
 12. **Dead Code Removal**: Removed `/api/analyze` endpoint, `isCryptoData()`, `toE8Symbol()`, `getSessionAdjustment()`, and Alpha Vantage config fields.
+13. **Zod Validation**: Added validation schemas for 10+ previously unvalidated endpoints including strategies, signals, journal, upgrades, sentiment, and detection endpoints.
+14. **Rate Limiter Timeout Handle Leak Fix**: Added cleanup logic in `tryAcquire()` to prevent timer leaks when promises resolve.
+15. **Cooldown Service Initialization Guards**: Added `isReady()`, `isDegraded()` methods with graceful degraded mode when DB unavailable.
 
 ## External Dependencies
 
