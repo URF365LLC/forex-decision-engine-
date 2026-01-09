@@ -1,0 +1,456 @@
+# FOREX DECISION ENGINE - ENTERPRISE SYSTEMS AUDIT REPORT
+
+**Audit Date:** 2026-01-09
+**Auditor:** Claude (Opus 4.5)
+**Branch:** `claude/systems-audit-review-I3Dr0`
+**Scope:** End-to-end architecture, frontend, backend, strategies, storage, integrations
+
+---
+
+## A) EXECUTIVE SUMMARY
+
+### Overall System Health: **7.5/10 - Production Ready with Caveats**
+
+The Forex Decision Engine is a well-architected, prop-firm-compliant trading signal generation system with 11 intraday strategies, comprehensive risk management (E8 Markets compliant), and a Bloomberg-style frontend. The codebase demonstrates mature engineering practices including fail-closed safety gates, hybrid persistence with fallback, and proper separation of concerns.
+
+### Production Readiness Assessment
+
+| Aspect | Status | Rating |
+|--------|--------|--------|
+| **Core Functionality** | ✅ Operational | 8/10 |
+| **Risk Management** | ✅ Strong | 9/10 |
+| **Error Handling** | ⚠️ Inconsistent | 6/10 |
+| **Frontend Stability** | ⚠️ Fragile | 6/10 |
+| **Data Integrity** | ✅ Good | 8/10 |
+| **Observability** | ⚠️ Basic | 5/10 |
+
+### Top Risks & Blockers
+
+**P0 - Critical (Immediate Action Required)**
+- None identified - system is operational
+
+**P1 - High (Address Within 1-2 Sprints)**
+1. **Silent failures in auto-scan detection persistence** - Errors logged but not surfaced to user
+2. **Potential SSE memory leak** - Clients not properly cleaned up on write errors
+3. **Frontend race conditions** - Multiple parallel state updates without synchronization
+4. **Missing request timeouts** - External API calls can hang indefinitely
+
+**P2 - Medium (Technical Debt)**
+1. Inconsistent null checking patterns across frontend
+2. No request/response schema validation on some endpoints
+3. Limited observability (no structured metrics export)
+4. Cache invalidation not coordinated across features
+
+### Quick Wins vs Structural Improvements
+
+**Quick Wins (< 1 day each)**
+- Add null guards to remaining frontend functions
+- Add request timeout to Twelve Data client
+- Fix SSE client cleanup on write error
+- Add loading states to journal screen
+
+**Structural Improvements (> 1 sprint)**
+- Implement proper event-driven state management for frontend
+- Add comprehensive integration test suite
+- Implement distributed tracing
+- Add circuit breaker pattern to all external APIs
+
+---
+
+## B) SYSTEM MAP
+
+### Component/Module Overview
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           FRONTEND (Vanilla JS)                              │
+│  ┌─────────┐  ┌────────┐  ┌──────────┐  ┌─────────┐  ┌─────────────────┐   │
+│  │  App.js │  │ api.js │  │  ui.js   │  │storage.js│ │ index.html(SPA)│   │
+│  │ (2095L) │  │ (191L) │  │  (850L)  │  │         │  │ Bloomberg UI   │   │
+│  └────┬────┘  └───┬────┘  └────┬─────┘  └─────────┘  └─────────────────┘   │
+│       │           │            │                                             │
+│       └───────────┴────────────┴────── SSE /api/upgrades/stream            │
+└───────────────────────────────────────┬─────────────────────────────────────┘
+                                        │ HTTP REST + SSE
+┌───────────────────────────────────────▼─────────────────────────────────────┐
+│                         BACKEND (Express + TypeScript)                       │
+│                                                                              │
+│  ┌─────────────────────────────────────────────────────────────────────────┐│
+│  │                        server.ts (1260L)                                 ││
+│  │   40+ REST endpoints | Middleware | Error handling | SSE                ││
+│  └───────────────────────────────────┬─────────────────────────────────────┘│
+│                                      │                                       │
+│  ┌─────────────┐  ┌─────────────┐  ┌─▼───────────┐  ┌────────────────────┐ │
+│  │   Engine    │  │  Services   │  │   Storage   │  │     Strategies     │ │
+│  ├─────────────┤  ├─────────────┤  ├─────────────┤  ├────────────────────┤ │
+│  │strategyAna- │  │autoScanServ │  │signalStore  │  │ 11 Intraday:       │ │
+│  │lyzer.ts     │  │detectionSrv │  │journalStore │  │ - RSI Bounce       │ │
+│  │indicator-   │  │drawdownGuard│  │detectionStr │  │ - Bollinger MR     │ │
+│  │Factory.ts   │  │cache.ts     │  │             │  │ - Triple EMA       │ │
+│  │grader.ts    │  │rateLimiter  │  │             │  │ - Break & Retest   │ │
+│  │entryTrigger │  │alertService │  │             │  │ - Liquidity Sweep  │ │
+│  │trendFilter  │  │circuitBreak │  │             │  │ - ...              │ │
+│  │positionSizr │  │volatilityGt │  │             │  │                    │ │
+│  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘  └────────────────────┘ │
+│         │                │                │                                  │
+│         └────────────────┴────────────────┴──────────────────────────────┐  │
+│                                                                          │  │
+└──────────────────────────────────────────────────────────────────────────┼──┘
+                                                                           │
+┌──────────────────────────────────────────────────────────────────────────▼──┐
+│                           DATA LAYER                                         │
+│  ┌─────────────────────┐  ┌─────────────────────┐  ┌─────────────────────┐  │
+│  │   PostgreSQL (Kysely)│  │   JSON Files        │  │   In-Memory        │  │
+│  │   - detections       │  │   - signals.json    │  │   - cache.ts       │  │
+│  │   - signals          │  │   - journal.json    │  │   - rateLimiter    │  │
+│  │   - journal_entries  │  │   - autoScanConfig  │  │   - gradeTracker   │  │
+│  │   - cooldowns        │  │   - drawdown/       │  │   - signalCooldown │  │
+│  │   - alert_history    │  │     default.json    │  │                    │  │
+│  └─────────────────────┘  └─────────────────────┘  └─────────────────────┘  │
+└─────────────────────────────────────────────────────────────────────────────┘
+                           │
+                           ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                       EXTERNAL INTEGRATIONS                                  │
+│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────────────────┐  │
+│  │  Twelve Data    │  │   XAI/Grok      │  │      Resend                 │  │
+│  │  Market Data    │  │   Sentiment     │  │      Email Alerts           │  │
+│  │  610 calls/min  │  │   (optional)    │  │      (optional)             │  │
+│  └─────────────────┘  └─────────────────┘  └─────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Primary Data Flows
+
+**Flow 1: Manual Scan**
+```
+User selects symbols → Click "Scan" → POST /api/scan
+→ validateBody(ScanRequestSchema) → checkDrawdownLimits()
+→ acquireScanLock() → scanWithStrategy()
+→ [for each symbol: analyzeWithStrategy() → getIndicators() → strategy.analyze()]
+→ saveSignal() → processAutoScanDecision() → return sorted decisions
+→ Frontend: UI.renderSignalsTable() → Storage.saveResults()
+```
+
+**Flow 2: Auto-Scan Cycle**
+```
+autoScanService.start() → scheduleStrategyRuns()
+→ [per strategy interval: runScan()]
+→ getActiveSymbols() → [for each symbol: analyzeWithStrategy()]
+→ processAutoScanDecision() → alertCallback()
+→ broadcastUpgrade() (SSE) → Frontend receives via EventSource
+```
+
+**Flow 3: Detection Lifecycle**
+```
+Signal detected → createDetection(status='cooling_down', 60min cooldown)
+→ [cooldown checker interval: checkAndUpdateCooldowns()]
+→ Detection becomes 'eligible' → User clicks "Take Trade"
+→ POST /api/detections/:id/execute → markAsExecuted() → journalStore.add()
+→ broadcastUpgrade('detection_executed') → Frontend updates
+```
+
+---
+
+## C) FINDINGS WITH EVIDENCE
+
+### FINDING C-1: Silent Failures in Auto-Scan Detection Persistence
+**Severity: P1**
+
+**Symptom:** When auto-scan detects a qualifying signal, failures to persist the detection are logged but not surfaced to the user or system monitoring.
+
+**Root Cause:** The `processAutoScanDecision` call is wrapped in a try-catch that swallows errors.
+
+**Proof:** `forex-decision-engine/src/services/autoScanService.ts:601-604`
+```typescript
+try {
+  await processAutoScanDecision(enrichedDecision);
+} catch (detectionError) {
+  logger.warn(`AUTO_SCAN: Failed to persist detection for ${symbol}: ${detectionError instanceof Error ? detectionError.message : 'Unknown'}`);
+}
+```
+
+**Recommended Fix:**
+1. Add error counter metric
+2. Surface repeated failures via SSE to frontend
+3. Consider retry with backoff for transient failures
+
+---
+
+### FINDING C-2: SSE Client Memory Leak Potential
+**Severity: P1**
+
+**Symptom:** When an SSE write fails, the client is deleted from the set but the response object may not be properly closed.
+
+**Root Cause:** Error handling only deletes from set, doesn't call `res.end()`.
+
+**Proof:** `forex-decision-engine/src/server.ts:734-739`
+```typescript
+for (const client of sseClients) {
+  try {
+    client.write(`data: ${data}\n\n`);
+  } catch (e) {
+    sseClients.delete(client);  // Missing: client.end()
+  }
+}
+```
+
+**Recommended Fix:**
+```typescript
+} catch (e) {
+  sseClients.delete(client);
+  try { client.end(); } catch {}
+}
+```
+
+---
+
+### FINDING C-3: Frontend Race Conditions in State Updates
+**Severity: P1**
+
+**Symptom:** Multiple asynchronous operations can update shared state (`this.results`, `this.detections`, `this.journalEntries`) without synchronization, potentially causing UI desyncs.
+
+**Root Cause:** No mutex/lock mechanism, no state management library.
+
+**Proof:** `forex-decision-engine/public/js/app.js:621-665` - `refreshCurrentScreen()` triggers multiple async calls:
+```javascript
+async refreshCurrentScreen() {
+  switch (activeScreen) {
+    case 'dashboard':
+      await this.checkHealth();
+      await this.loadJournal();  // Updates this.journalEntries
+      await this.loadDetections(); // Updates this.detections
+      // Both can trigger renders that read inconsistent state
+```
+
+**Recommended Fix:**
+1. Implement simple state management with controlled updates
+2. Use Promise.allSettled() and batch state updates
+3. Add loading flags to prevent concurrent operations
+
+---
+
+### FINDING C-4: Missing Request Timeouts on External API Calls
+**Severity: P1**
+
+**Symptom:** Twelve Data API calls have no timeout, can hang indefinitely and block scan operations.
+
+**Root Cause:** Standard fetch without AbortController.
+
+**Recommended Fix:** Add AbortController with 30-second timeout to all external API calls.
+
+---
+
+### FINDING C-5: Inconsistent Null Checking in Frontend
+**Severity: P2**
+
+**Symptom:** Some functions have null guards added (recent commits), others still assume elements exist.
+
+**Root Cause:** Incremental fixes without comprehensive audit.
+
+**Proof:** `forex-decision-engine/public/js/app.js:1619-1625` (has null check):
+```javascript
+const tickerAutoscan = UI.$('ticker-autoscan');
+if (tickerAutoscan) {  // Good - has null check
+  tickerAutoscan.textContent = status.isRunning ? 'ON' : 'OFF';
+```
+
+vs `forex-decision-engine/public/js/ui.js:155-159` (no null check):
+```javascript
+showLoading(text = 'Loading...') {
+  this.$('loading-text').textContent = text;  // Could fail if element missing
+```
+
+**Recommended Fix:** Systematic audit of all `UI.$()` calls and add guards.
+
+---
+
+### FINDING C-6: Detection Store JSON Parse Safety
+**Severity: P2 (Addressed in recent commit)**
+
+**Symptom:** JSON stored in database could fail to parse if data is already an object.
+
+**Status:** ✅ **RESOLVED** in commit `3810229` with `safeJsonParse()` helper:
+```typescript
+function safeJsonParse<T>(value: unknown, defaultValue: T): T {
+  if (value === null || value === undefined) return defaultValue;
+  if (typeof value === 'object') return value as T;  // Already parsed
+  if (typeof value === 'string') {
+    try { return JSON.parse(value) as T; }
+    catch { return defaultValue; }
+  }
+  return defaultValue;
+}
+```
+
+---
+
+### FINDING C-7: Drawdown Guard State Sanity Checks
+**Severity: Informational (Good Practice)**
+
+**Status:** ✅ **WELL-IMPLEMENTED** - The drawdown guard includes sanity checks to prevent stale/corrupted state from blocking trades.
+
+**Proof:** `forex-decision-engine/src/services/drawdownGuard.ts:160-166`
+```typescript
+// SANITY CHECK: If stored startOfDay is more than 50% different from current equity,
+// it's likely the account size was changed. Reset to current equity.
+if (storedStart > equity * 1.5 || storedStart < equity * 0.5) {
+  startOfDayEquity = equity;
+  warnings.push(`startOfDayEquity reset: stored ${storedStart} was unrealistic vs equity ${equity}`);
+}
+```
+
+---
+
+### FINDING C-8: Strategy Implementation Quality
+**Severity: Informational**
+
+**Status:** ✅ **GOOD IMPLEMENTATION** - Strategies include proper gating, H4 trend alignment, and confidence thresholds.
+
+**Proof:** `forex-decision-engine/src/strategies/intraday/RsiBounce.ts:93-95`
+```typescript
+if (isTrendAligned(preflight.h4Trend, direction)) {
+  triggers.push(`H4 trend aligned (${preflight.h4Trend.direction})`);
+} else {
+  if (preflight.h4Trend.strength === 'strong') return null; // Rejects counter-trend
+}
+```
+
+---
+
+### FINDING C-9: Cache TTL Inconsistency
+**Severity: P2**
+
+**Symptom:** Different TTLs used for same data in different contexts.
+
+**Proof:** Multiple TTL definitions in `cache.ts:183-193` and `strategyAnalyzer.ts:34-35`.
+
+**Recommended Fix:** Consolidate all TTL constants in single CACHE_TTL object.
+
+---
+
+### FINDING C-10: Missing Error States in UI
+**Severity: P2**
+
+**Symptom:** Some API failures don't show user feedback consistently.
+
+**Proof:** `loadJournal()` has good error handling with toast and retry link. `loadDetections()` has less graceful error handling.
+
+**Recommended Fix:** Standardize error handling pattern across all async operations.
+
+---
+
+## D) COMMIT/CHANGE ANALYSIS
+
+### Commit-by-Commit Summary (Most Recent First)
+
+| Commit | Description | Files Changed | Risk |
+|--------|-------------|---------------|------|
+| `4cef9a6` | Update drawdown timestamp | 1 (data file) | ⚪ None |
+| `f3c86b3` | Add refresh button functionality | 4 | 🟡 Low |
+| `395da44` | Sync docs (replit.md) | 1 | ⚪ None |
+| `0a61ab0` | Fix ticker status display | 1 (app.js) | 🟢 Good |
+| `3810229` | UI fixes + safe JSON parse | 5 | 🟢 Good |
+
+### Detailed Risk Assessment
+
+**Commit `f3c86b3` - Add refresh button and functionality**
+
+**Changes:**
+- Added refresh button to header HTML
+- Implemented `refreshCurrentScreen()` function
+- Updates autoScanConfig.json (data file)
+
+**Risks:**
+- **Medium:** `refreshCurrentScreen()` triggers multiple parallel async calls without waiting for all to complete. If user navigates away mid-refresh, state could be inconsistent.
+
+**Recommendation:** Add `isRefreshing` flag to prevent double-click, consider `Promise.allSettled()` for parallel execution.
+
+---
+
+**Commit `0a61ab0` - Update status display for auto-scan and detection signals**
+
+**Assessment:** ✅ **Well-implemented** - Properly adds null guards before element access.
+
+---
+
+**Commit `3810229` - Improve UI and UX by fixing navigation and preventing errors**
+
+**Assessment:** ✅ **Quality improvement** - Addresses runtime errors from missing elements and JSON parse issues.
+
+---
+
+### Required Follow-up Tasks
+
+1. **Complete null check audit** - Some UI functions still lack guards
+2. **Add loading flag to refresh** - Prevent double-click during refresh
+3. **Standardize error handling** - Apply journal's error pattern to detections
+4. **Test SSE reconnection** - Verify exponential backoff works correctly
+
+---
+
+## E) FIX PLAN (PHASED)
+
+### Phase 0: Immediate Unblockers (0-3 days)
+
+| Task | Files | Tests | Acceptance Criteria |
+|------|-------|-------|---------------------|
+| Fix SSE client cleanup | `server.ts:734-739` | Manual: disconnect client mid-write | No orphaned response objects |
+| Add null guards to UI | `public/js/ui.js:155-178` | Manual: test with missing DOM elements | No runtime errors on missing elements |
+| Add isRefreshing flag | `public/js/app.js:621-665` | Manual: rapid-click refresh button | Button disabled during refresh |
+
+### Phase 1: Correctness + Parity (1-2 weeks)
+
+| Task | Files | Tests | Acceptance Criteria |
+|------|-------|-------|---------------------|
+| Surface detection persistence errors | `autoScanService.ts:601-604` | Unit: mock failure, verify SSE broadcast | User sees notification on persistent failures |
+| Add request timeout to external APIs | `twelveDataClient.ts` | Unit: mock slow response | Calls abort after 30 seconds |
+| Standardize error handling pattern | `app.js` (multiple functions) | E2E: trigger API errors | All screens show error + retry |
+| Consolidate cache TTL constants | `cache.ts`, `strategyAnalyzer.ts` | Unit: verify consistent TTLs | Single source of truth for TTLs |
+
+**Test Plan:**
+- Add unit tests for error scenarios in `autoScanService`
+- Add integration tests for SSE connection lifecycle
+- Add E2E tests for error state rendering
+
+### Phase 2: Hardening + Observability (2-4 weeks)
+
+| Task | Files | Tests | Acceptance Criteria |
+|------|-------|-------|---------------------|
+| Add structured metrics export | New: `services/metrics.ts` | Unit: verify metric formats | Prometheus-compatible /metrics endpoint |
+| Implement frontend state manager | `public/js/state.js` (new) | E2E: verify no race conditions | Single state update per user action |
+| Add circuit breaker to Twelve Data | `circuitBreaker.ts` | Unit: verify open/close states | System degrades gracefully on API failure |
+| Add comprehensive logging | Multiple services | Manual: trace request through system | Request ID visible in all log entries |
+
+**Acceptance Criteria Summary:**
+1. All API errors surface to users with actionable feedback
+2. No memory leaks under sustained SSE connections
+3. Frontend remains stable with missing DOM elements
+4. External API failures don't block system operation
+5. Request tracing available end-to-end
+
+---
+
+## APPENDIX: Files Audited
+
+| File | Lines | Status |
+|------|-------|--------|
+| `src/server.ts` | 1260 | Audited ✅ |
+| `public/js/app.js` | 2095 | Audited ✅ |
+| `public/js/api.js` | 191 | Audited ✅ |
+| `public/js/ui.js` | 850 | Audited ✅ |
+| `src/engine/strategyAnalyzer.ts` | 574 | Audited ✅ |
+| `src/services/autoScanService.ts` | 757 | Audited ✅ |
+| `src/services/detectionService.ts` | 271 | Audited ✅ |
+| `src/storage/detectionStore.ts` | 482 | Audited ✅ |
+| `src/services/cache.ts` | 207 | Audited ✅ |
+| `src/storage/signalStore.ts` | 455 | Audited ✅ |
+| `src/services/drawdownGuard.ts` | 291 | Audited ✅ |
+| `src/strategies/intraday/RsiBounce.ts` | 126 | Audited ✅ |
+| `src/db/client.ts` | 282 | Audited ✅ |
+
+---
+
+**Audit Completed:** 2026-01-09
+**Auditor:** Claude (Opus 4.5)
+**Branch:** `claude/systems-audit-review-I3Dr0`
