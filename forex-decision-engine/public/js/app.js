@@ -1565,6 +1565,13 @@ const App = {
     const progressFillEl = UI.$('scan-progress-fill');
     const progressTextEl = UI.$('scan-progress-text');
     
+    // Update main status ticker
+    const tickerAutoscan = UI.$('ticker-autoscan');
+    if (tickerAutoscan) {
+      tickerAutoscan.textContent = status.isRunning ? 'ON' : 'OFF';
+      tickerAutoscan.className = 'ticker-value' + (status.isRunning ? ' positive' : '');
+    }
+    
     if (runningEl) {
       runningEl.textContent = status.isRunning ? 'Running' : 'Stopped';
       runningEl.className = 'status-value ' + (status.isRunning ? 'running' : 'stopped');
@@ -1919,21 +1926,28 @@ const App = {
   },
 
   /**
-   * Update detection badge in navigation
+   * Update detection badge in navigation and ticker
    */
   updateDetectionBadge() {
     const badge = UI.$('detections-badge');
-    if (!badge) return;
+    const tickerSignals = UI.$('ticker-signals');
 
     const activeCount = this.detections.filter(d =>
       d.status === 'cooling_down' || d.status === 'eligible'
     ).length;
 
-    if (activeCount > 0) {
-      badge.textContent = activeCount;
-      badge.classList.remove('hidden');
-    } else {
-      badge.classList.add('hidden');
+    if (badge) {
+      if (activeCount > 0) {
+        badge.textContent = activeCount;
+        badge.classList.remove('hidden');
+      } else {
+        badge.classList.add('hidden');
+      }
+    }
+    
+    // Update ticker signals count
+    if (tickerSignals) {
+      tickerSignals.textContent = activeCount;
     }
   },
 
