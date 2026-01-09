@@ -1,0 +1,143 @@
+I need a comprehensive, professional-grade code audit of the entire codebase, conducted from the perspective of a senior/staff-level full-stack engineer with deep experience in production systems.
+
+The audit must be line-by-line and file-by-file, covering both frontend and backend, with a strong focus on architecture, correctness, data flow integrity, API integrations, and production readiness.
+
+At present, the system is exhibiting failures during scans and runtime behavior that indicate misconfigurations, missing components, or inconsistent changes. Errors suggest that APIs are configured, yet functionality is broken—implying that parts of the system may have been deleted, refactored incorrectly, or left in an inconsistent state. I need clarity on what changed, why it changed, and what broke as a result.
+
+Audit Scope (Do Not Skip Any Area)
+
+1) Codebase Integrity & Consistency
+
+Review every file for correctness, relevance, and usage.
+
+Identify dead code, orphaned imports, missing modules, and unreachable logic.
+
+Detect inconsistencies between declared intent (comments, docs, configs) and actual behavior.
+
+2) Change & Refactor Validation
+
+Identify recent changes, deletions, or refactors that may have introduced errors.
+
+Verify whether changes were applied consistently across the system.
+
+Call out breaking changes that were not fully propagated or tested.
+
+3) Frontend Architecture & UX Logic
+
+Evaluate state management, component boundaries, and rendering logic.
+
+Identify UI flows that break due to backend or data issues.
+
+Highlight brittle patterns, race conditions, or poor lifecycle handling.
+
+4) Backend Architecture & Business Logic
+
+Review service boundaries, domain logic placement, and error handling.
+
+Identify silent failures, improper exception handling, and missing guards.
+
+Validate that business rules are enforced consistently.
+
+5) API Integrations & Configuration
+
+Trace all API integrations end-to-end:
+
+Configuration → initialization → usage → error handling
+
+Verify environment variables, secrets, API keys, and feature flags.
+
+Identify mismatches where APIs appear “configured” but are not actually functional.
+
+Detect removed or partially deleted integration code.
+
+6) Data Flow & System Behavior
+
+Trace critical data paths from ingestion to consumption.
+
+Identify where data is lost, malformed, delayed, or misinterpreted.
+
+Validate assumptions around timing, indexing, alignment, and state persistence.
+
+7) Build, Scan & Runtime Failures
+
+Analyze typecheck errors, build failures, scan warnings, and runtime logs.
+
+Identify root causes, not just symptoms.
+
+Call out failures caused by missing files, incorrect imports, config drift, or broken dependencies.
+
+Required Deliverable
+
+Produce a structured, senior-level audit report containing:
+
+A) Executive Summary
+
+High-level system health
+
+Why the system is currently failing
+
+Whether the platform is production-safe in its current state
+
+B) File-by-File Findings
+For each affected file:
+
+Purpose
+
+Issues found
+
+Root cause
+
+Severity (P0 / P1 / P2)
+
+Recommendation (fix / refactor / delete)
+
+C) Change Impact Analysis
+
+What was changed or removed
+
+What broke as a result
+
+Whether changes were consistent and correct
+
+D) API & Configuration Report
+
+What APIs are truly functional vs “configured but broken”
+
+Missing or invalid environment/config values
+
+Recommended corrections
+
+E) Fix Plan
+
+Phase 0: Immediate unblockers (build/runtime)
+
+Phase 1: Correctness & consistency fixes
+
+Phase 2: Architecture & hardening improvements
+Each phase must include:
+
+Exact tasks
+
+Files/modules involved
+
+Risk level
+
+Validation steps
+
+F) Verification & Prevention
+
+How to confirm the system is fixed
+
+Tests that must be added
+
+Guardrails to prevent this class of failure from recurring
+
+Constraints
+
+Do not speculate. If information is missing, state what is missing and how to verify it.
+
+Prefer evidence: file paths, line numbers, logs, and configs.
+
+Call out any code that should be deleted if it contributes to instability.
+
+Now perform the audit and produce the report.
