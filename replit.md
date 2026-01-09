@@ -98,6 +98,13 @@ Core API endpoints cover system health, symbol retrieval, signal analysis and sc
 3. **Mean-Reversion Regime Fix**: Changed from outright blocking to confidence penalty (-15pts) in strong-trend regimes.
 4. **Indicator Alignment Cleanup**: `alignIndicatorToBars()` now returns NaN for missing data instead of backfilling with stale values.
 
+### Enterprise Hardening (Phase 0 & 1)
+1. **SSE Client Cleanup**: Added `res.end()` after deleting clients on write errors to prevent hung connections (server.ts).
+2. **UI Null Guards**: Added null checks to `showLoading()` and `updateProgress()` to prevent DOM errors when elements don't exist.
+3. **Refresh Debounce**: Added `isRefreshing` flag to prevent double-click during refresh operations.
+4. **Price Precision Fix**: Added `formatPriceForSymbol()` using instrument `digits` from e8InstrumentSpecs for proper Entry/SL/TP formatting (e.g., ETHUSD shows 2 decimals, GBPNZD shows 5).
+5. **Type Safety**: `formatTieredExits()` now handles both string and numeric price values with graceful NaN fallback.
+
 ## External Dependencies
 
 ### Twelve Data API
