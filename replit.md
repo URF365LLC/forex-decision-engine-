@@ -147,3 +147,46 @@ Core API endpoints facilitate system health checks, symbol retrieval, signal ana
     -   Reduced motion media query for motion-sensitive users
     -   Keyboard shortcuts: 1-4 for screens, S for scan, Escape for modals
     -   Arrow key navigation through result cards
+
+### Phase 4: Detection System & Database (Completed - January 2026)
+-   **Per-Strategy Cooldown Fix**: Critical bug fix ensuring cooldowns are isolated per strategy (strategyId in makeKey), preventing cross-strategy blocking.
+-   **PostgreSQL Database**: Kysely ORM with connection pooling for persistent storage.
+    -   Tables: detections, signals, journal_entries, cooldowns, alert_history
+    -   Indexes for efficient querying by status, symbol, strategy, cooldown
+-   **Detection Service** (`src/services/detectionService.ts`):
+    -   Manages detection lifecycle: cooling_down → eligible → executed/dismissed/expired
+    -   60-minute default cooldown before signals become actionable
+    -   Auto-invalidation on direction flip
+    -   Background cooldown checker runs every 60 seconds
+-   **Detection Store** (`src/storage/detectionStore.ts`): PostgreSQL-backed storage for detected trades.
+-   **Auto-Scan Integration**: Auto-scan now persists detections via `processAutoScanDecision()` and invalidates opposite-direction signals.
+-   **Detected Trades UI**:
+    -   New navigation tab with badge counter for eligible detections
+    -   Status filtering (All/Cooling Down/Eligible)
+    -   Strategy grouping with live cooldown timers
+    -   Execute/Dismiss action buttons
+-   **Detection API Endpoints**:
+    -   `GET /api/detections` - List detections with filtering
+    -   `GET /api/detections/:id` - Get single detection
+    -   `POST /api/detections/:id/execute` - Mark detection as executed
+    -   `POST /api/detections/:id/dismiss` - Dismiss detection
+    -   `GET /api/detections/summary` - Get detection statistics
+
+### Phase 5: Resilience & Regime Detection (Completed - January 2026)
+-   **Circuit Breaker Service** (`src/services/circuitBreaker.ts`):
+    -   Prevents cascading failures when external APIs are down
+    -   States: CLOSED (normal) → OPEN (rejecting) → HALF_OPEN (testing recovery)
+    -   Twelve Data circuit: 5 failures → 60s cooldown
+    -   Grok AI circuit: 3 failures → 120s cooldown
+    -   Database circuit: 3 failures → 30s cooldown
+-   **Twelve Data Integration**: All API requests now wrapped in circuit breaker protection.
+-   **Regime Detector Integration**: Now wired into `strategyAnalyzer.ts` decision pipeline:
+    -   ATR percentile-based volatility classification (compression/normal/expansion)
+    -   Adaptive confidence adjustments based on strategy type and regime
+    -   Regime info attached to decisions for transparency
+    -   Strategy-type detection: mean-reversion, breakout, trend
+-   **Decision Regime Field**: Decisions now include regime info (type, atrPercentile, rrMultiplier, description).
+
+### NPM Dependencies (Updated)
+-   **Runtime**: `express`, `cors`, `dotenv`, `zod`, `openai`, `kysely`, `pg`.
+-   **Development**: `typescript`, `tsx`, `@types/pg`, and respective `@types/*` packages.

@@ -21,6 +21,7 @@ import { ALL_INSTRUMENTS, FOREX_SPECS, CRYPTO_SPECS, METAL_SPECS, INDEX_SPECS, C
 import { isNewSignal, trackSignal } from '../storage/signalFreshnessTracker.js';
 import { strategyRegistry } from '../strategies/registry.js';
 import { gradeTracker } from './gradeTracker.js';
+import { processAutoScanDecision, invalidateOnConditionChange } from './detectionService.js';
 import { UserSettings, Decision, SignalGrade } from '../strategies/types.js';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -579,6 +580,27 @@ class AutoScanService {
           if (isNew) {
             newSignals++;
             trackSignal(symbol, schedule.strategyId, decision.direction);
+            
+            // Invalidate opposite direction detections
+            await invalidateOnConditionChange(
+              schedule.strategyId,
+              symbol,
+              decision.direction as 'long' | 'short'
+            );
+          }
+          
+          // Persist detection for cooldown tracking
+          try {
+            // Ensure decision has required fields for detection
+            const enrichedDecision = {
+              ...decision,
+              strategyId: decision.strategyId || schedule.strategyId,
+              strategyName: decision.strategyName || schedule.strategyId,
+              timestamp: decision.timestamp || new Date().toISOString(),
+            };
+            await processAutoScanDecision(enrichedDecision);
+          } catch (detectionError) {
+            logger.warn(`AUTO_SCAN: Failed to persist detection for ${symbol}: ${detectionError instanceof Error ? detectionError.message : 'Unknown'}`);
           }
 
           if (this.shouldNotify(decision, isNew)) {

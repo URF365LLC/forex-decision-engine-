@@ -27,6 +27,7 @@ import { createLogger } from '../services/logger.js';
 import { signalCooldown, CooldownCheck } from '../services/signalCooldown.js';
 import { checkVolatility, VolatilityCheck } from '../services/volatilityGate.js';
 import { gradeTracker } from '../services/gradeTracker.js';
+import { calculateATRPercentile, getAdaptiveRR, shouldTradeInRegime, RegimeClassification } from '../modules/regimeDetector.js';
 
 const logger = createLogger('StrategyAnalyzer');
 
@@ -319,6 +320,38 @@ export async function analyzeWithStrategy(
     
     if (!options.skipVolatility && atrValues.length >= 5) {
       volatilityCheck = checkVolatility(symbol, currentAtr, atrValues);
+    }
+    
+    // 1.5. REGIME DETECTION (adaptive R:R based on volatility percentile)
+    let regimeClassification: RegimeClassification | null = null;
+    if (atrValues.length >= 20) {
+      regimeClassification = calculateATRPercentile(atrValues);
+      decision.regime = {
+        type: regimeClassification.regime,
+        atrPercentile: regimeClassification.atrPercentile,
+        rrMultiplier: regimeClassification.rrMultiplier,
+        description: regimeClassification.description,
+      };
+      
+      // Determine strategy type for regime adjustment
+      const strategyType = decision.strategyName?.toLowerCase().includes('mean') 
+        ? 'mean-reversion' as const
+        : decision.strategyName?.toLowerCase().includes('breakout') || decision.strategyName?.toLowerCase().includes('break')
+          ? 'breakout' as const
+          : 'trend' as const;
+      
+      // Apply regime-based confidence adjustment (only if confidence > 0)
+      const regimeSuitability = shouldTradeInRegime(regimeClassification, strategyType);
+      if (regimeSuitability.confidenceAdjustment !== 0 && decision.confidence && decision.confidence > 0) {
+        const originalConfidence = decision.confidence;
+        decision.confidence = Math.max(0, Math.min(100, decision.confidence + regimeSuitability.confidenceAdjustment));
+        logger.debug(`${symbol}/${strategyId}: Regime ${regimeClassification.regime} adjusted confidence ${originalConfidence} → ${decision.confidence}`);
+      }
+      
+      // Only append regime reason if there's a valid reason and existing decision reason
+      if (regimeSuitability.reason && decision.reason) {
+        decision.reason = `${decision.reason} [Regime: ${regimeSuitability.reason}]`;
+      }
     }
     
     // 2. COOLDOWN CHECK (only if we have a trade signal)

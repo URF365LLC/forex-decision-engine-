@@ -8,6 +8,7 @@ import { rateLimiter } from './rateLimiter.js';
 import { cache, CacheService, CACHE_TTL } from './cache.js';
 import { createLogger } from './logger.js';
 import { toDataSymbol, getInstrumentSpec } from '../config/e8InstrumentSpecs.js';
+import { twelveDataCircuit, CircuitOpenError } from './circuitBreaker.js';
 
 const logger = createLogger('TwelveData');
 
@@ -114,44 +115,54 @@ class TwelveDataClient {
   }
 
   private async request<T>(path: string, params: Record<string, string>): Promise<T> {
-    await rateLimiter.acquire();
+    return twelveDataCircuit.execute(async () => {
+      await rateLimiter.acquire();
 
-    const url = new URL(`${this.baseUrl}${path}`);
-    url.searchParams.set('apikey', this.apiKey);
+      const url = new URL(`${this.baseUrl}${path}`);
+      url.searchParams.set('apikey', this.apiKey);
 
-    for (const [key, value] of Object.entries(params)) {
-      url.searchParams.set(key, value);
-    }
-
-    logger.debug(`Fetching: ${path} for ${params.symbol || 'N/A'}`);
-
-    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-      try {
-        const response = await fetch(url.toString());
-
-        if (!response.ok) {
-          throw new Error(`API error: ${response.status} ${response.statusText}`);
-        }
-
-        const data = await response.json();
-
-        if (data.status === 'error') {
-          throw new Error(`Twelve Data error: ${data.message || 'Unknown error'}`);
-        }
-
-        return data as T;
-      } catch (error) {
-        if (isTransientError(error) && attempt < MAX_RETRIES) {
-          const delay = BASE_DELAY_MS * Math.pow(2, attempt - 1);
-          logger.warn(`Transient error, retrying in ${delay}ms (attempt ${attempt}/${MAX_RETRIES})`);
-          await sleep(delay);
-          continue;
-        }
-        throw error;
+      for (const [key, value] of Object.entries(params)) {
+        url.searchParams.set(key, value);
       }
-    }
 
-    throw new Error('Max retries exceeded');
+      logger.debug(`Fetching: ${path} for ${params.symbol || 'N/A'}`);
+
+      for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+        try {
+          const response = await fetch(url.toString());
+
+          if (!response.ok) {
+            throw new Error(`API error: ${response.status} ${response.statusText}`);
+          }
+
+          const data = await response.json();
+
+          if (data.status === 'error') {
+            throw new Error(`Twelve Data error: ${data.message || 'Unknown error'}`);
+          }
+
+          return data as T;
+        } catch (error) {
+          if (isTransientError(error) && attempt < MAX_RETRIES) {
+            const delay = BASE_DELAY_MS * Math.pow(2, attempt - 1);
+            logger.warn(`Transient error, retrying in ${delay}ms (attempt ${attempt}/${MAX_RETRIES})`);
+            await sleep(delay);
+            continue;
+          }
+          throw error;
+        }
+      }
+
+      throw new Error('Max retries exceeded');
+    });
+  }
+
+  isCircuitOpen(): boolean {
+    return twelveDataCircuit.getState() === 'OPEN';
+  }
+
+  getCircuitStats() {
+    return twelveDataCircuit.getStats();
   }
 
   private oldestFirst<T extends { datetime?: string; timestamp?: string }>(data: T[]): T[] {

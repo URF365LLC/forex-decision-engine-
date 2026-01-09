@@ -276,6 +276,12 @@ export interface Decision {
   gating?: GatingInfo;
   upgrade?: GradeUpgrade;
   sentiment?: SentimentData;
+  regime?: {
+    type: 'compression' | 'normal' | 'expansion';
+    atrPercentile: number;
+    rrMultiplier: number;
+    description: string;
+  };
 }
 
 export interface IStrategy {
