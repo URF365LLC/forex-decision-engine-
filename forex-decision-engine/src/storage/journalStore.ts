@@ -531,6 +531,43 @@ class JournalStore {
   }
 
   /**
+   * Find active (running/pending) trades by symbol and direction
+   * Used for dedupe awareness between manual and auto scan
+   */
+  async findActiveBySymbolDirection(
+    symbol: string,
+    direction: string,
+    statuses: TradeStatus[] = ['running', 'pending']
+  ): Promise<TradeJournalEntry[]> {
+    if (isDbAvailable()) {
+      try {
+        const db = getDb();
+        const rows = await db
+          .selectFrom('journal_entries')
+          .selectAll()
+          .where('symbol', '=', symbol)
+          .where('direction', '=', direction)
+          .where('status', 'in', statuses)
+          .orderBy('created_at', 'desc')
+          .limit(10)
+          .execute();
+
+        return rows.map(row => this.rowToJournalEntry(row as Record<string, unknown>));
+      } catch (error) {
+        logger.error('Failed to find active trades from database', { error });
+      }
+    }
+
+    // Fallback to in-memory
+    return this.entries.filter(e =>
+      e.symbol === symbol &&
+      e.direction === direction &&
+      statuses.includes(e.status)
+    ).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      .slice(0, 10);
+  }
+
+  /**
    * Calculate P&L for an entry
    */
   calculatePnL(entry: TradeJournalEntry): { pnlPips: number; rMultiple: number; pnlDollars: number } | null {
