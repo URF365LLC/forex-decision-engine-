@@ -929,6 +929,19 @@ const App = {
   // ═══════════════════════════════════════════════════════════════
 
   /**
+   * Take signal trade from signals table (opens trade modal)
+   * @param {string} decisionKey - format: strategyId:symbol
+   */
+  takeSignalTrade(decisionKey) {
+    const decision = this.findDecisionByKey(decisionKey);
+    if (!decision) {
+      UI.toast('Signal not found', 'error');
+      return;
+    }
+    this.openTradeModal(decision);
+  },
+
+  /**
    * Log trade from signal card
    * @param {string} decisionKey - format: strategyId:symbol
    */
