@@ -1843,6 +1843,8 @@ const App = {
   renderDetectionCard(detection) {
     const isEligible = detection.status === 'eligible';
     const isCooling = detection.status === 'cooling_down';
+    // Allow taking trade from both eligible AND cooling_down states
+    const canTake = isEligible || isCooling;
 
     const statusClass = isEligible ? 'eligible' : (isCooling ? 'cooling' : 'other');
     const statusIcon = isEligible ? '✅' : (isCooling ? '⏱️' : '📋');
@@ -1857,8 +1859,10 @@ const App = {
       cooldownHtml = `<span class="cooldown-timer" data-ends="${detection.cooldownEndsAt}">${remaining}</span>`;
     }
 
-    const actionsHtml = isEligible ? `
-      <button class="btn btn-small btn-primary" onclick="App.executeDetection('${detection.id}')">Take Trade</button>
+    const actionsHtml = canTake ? `
+      <button class="btn btn-small btn-primary ${isCooling ? 'cooling' : ''}" onclick="App.executeDetection('${detection.id}')">
+        ${isCooling ? 'Take (Cooling)' : 'Take Trade'}
+      </button>
       <button class="btn btn-small btn-secondary" onclick="App.dismissDetection('${detection.id}')">Dismiss</button>
     ` : `
       <button class="btn btn-small btn-secondary" onclick="App.dismissDetection('${detection.id}')">Dismiss</button>
