@@ -749,10 +749,32 @@ class JournalStore {
   }
 
   /**
+   * Synchronous persist for shutdown - blocks but ensures data is saved
+   */
+  private persistSync(): void {
+    try {
+      const dir = path.dirname(this.filePath);
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+      const tempPath = `${this.filePath}.tmp`;
+      fs.writeFileSync(tempPath, JSON.stringify({
+        entries: this.entries,
+        nextId: this.nextId,
+      }, null, 2));
+      fs.renameSync(tempPath, this.filePath);
+      logger.debug('Journal persisted to file synchronously on shutdown');
+    } catch (e) {
+      logger.error('Failed to save journal on shutdown', e);
+    }
+  }
+
+  /**
    * Close store (persist on shutdown)
+   * Uses sync persist to ensure data is written before process exits
    */
   close(): void {
-    this.persist();
+    this.persistSync();
     logger.info('Journal store closed');
   }
 }
