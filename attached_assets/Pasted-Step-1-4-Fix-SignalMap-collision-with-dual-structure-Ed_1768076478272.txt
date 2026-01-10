@@ -1,0 +1,160 @@
+Step 1.4: Fix SignalMap collision with dual structure
+
+Edit
+/home/user/forex-decision-engine-/forex-decision-engine/public/js/app.js
+   * Render dashboard watchlist sidebar
+
+
+   */
+
+
+  renderDashboardWatchlist() {
+
+
+    // Build signal map from current results
+
+
+    const signalMap = {};
+
+
+    for (const decision of this.results) {
+
+
+      if (decision.grade !== 'no-trade') {
+
+
+        signalMap[decision.symbol] = decision;
+
+
+      }
+
+
+    }
+
+
+    
+
+
+    // Render each asset class
+
+
+    UI.renderWatchlistSidebar('forex-watchlist', this.universe.forex, this.selectedSymbols, signalMap);
+
+
+    UI.renderWatchlistSidebar('metals-watchlist', this.universe.metals, this.selectedSymbols, signalMap);
+
+
+    UI.renderWatchlistSidebar('indices-watchlist', this.universe.indices, this.selectedSymbols, signalMap);
+
+
+    UI.renderWatchlistSidebar('commodities-watchlist', this.universe.commodities, this.selectedSymbols, signalMap);
+
+
+    UI.renderWatchlistSidebar('crypto-watchlist', this.universe.crypto, this.selectedSymbols, signalMap);
+
+
+    
+
+
+    // Dual structure to prevent collision when multiple strategies detect same symbol
+
+
+    const decisionsBySymbol = {};  // symbol → Decision[] (for lists/rendering)
+
+
+    const decisionsByKey = {};     // composite key → Decision (for direct lookups)
+
+
+ 
+
+
+    for (const decision of this.results) {
+
+
+      if (decision.grade !== 'no-trade') {
+
+
+        // Composite key: symbol::strategyId::style::timeframe
+
+
+        const timeframe = decision.timeframes?.entry || 'H1';
+
+
+        const key = `${decision.symbol}::${decision.strategyId}::${decision.style || 'intraday'}::${timeframe}`;
+
+
+ 
+
+
+        decisionsByKey[key] = decision;
+
+
+ 
+
+
+        // Array per symbol for multi-signal display
+
+
+        if (!decisionsBySymbol[decision.symbol]) {
+
+
+          decisionsBySymbol[decision.symbol] = [];
+
+
+        }
+
+
+        decisionsBySymbol[decision.symbol].push(decision);
+
+
+      }
+
+
+    }
+
+
+ 
+
+
+    // Store for later lookups
+
+
+    this.decisionsByKey = decisionsByKey;
+
+
+    this.decisionsBySymbol = decisionsBySymbol;
+
+
+ 
+
+
+    // Render each asset class with multi-signal aware structure
+
+
+    UI.renderWatchlistSidebar('forex-watchlist', this.universe.forex, this.selectedSymbols, decisionsBySymbol);
+
+
+    UI.renderWatchlistSidebar('metals-watchlist', this.universe.metals, this.selectedSymbols, decisionsBySymbol);
+
+
+    UI.renderWatchlistSidebar('indices-watchlist', this.universe.indices, this.selectedSymbols, decisionsBySymbol);
+
+
+    UI.renderWatchlistSidebar('commodities-watchlist', this.universe.commodities, this.selectedSymbols, decisionsBySymbol);
+
+
+    UI.renderWatchlistSidebar('crypto-watchlist', this.universe.crypto, this.selectedSymbols, decisionsBySymbol);
+
+
+ 
+
+
+    // Add event listeners for watchlist items
+
+
+    this.setupWatchlistEventListeners();
+
+
+  },
+
+
