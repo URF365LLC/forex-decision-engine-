@@ -18,6 +18,26 @@ const App = {
   upgradeEventSource: null,
 
   /**
+   * Infer trade type from strategy ID
+   */
+  inferTradeType(strategyId) {
+    const typeMap = {
+      'ema-pullback-intra': 'pullback',
+      'rsi-bounce': 'counter-trend',
+      'rsi-oversold': 'counter-trend',
+      'stochastic-oversold': 'counter-trend',
+      'bollinger-mr': 'mean-reversion',
+      'williams-ema': 'momentum',
+      'triple-ema': 'trend',
+      'break-retest': 'breakout',
+      'cci-zero-line': 'momentum',
+      'multi-oscillator-momentum': 'momentum',
+      'liquidity-sweep': 'liquidity-grab',
+    };
+    return typeMap[strategyId] || 'other';
+  },
+
+  /**
    * Initialize the application
    */
   async init() {
