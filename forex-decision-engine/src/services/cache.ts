@@ -198,9 +198,38 @@ export const CACHE_TTL = {
 
 export const cache = new CacheService();
 
-// Cleanup expired entries every 5 minutes
-setInterval(() => {
-  cache.cleanup();
-}, 5 * 60 * 1000);
+// ═══════════════════════════════════════════════════════════════
+// INTERVAL MANAGEMENT (for clean shutdown)
+// ═══════════════════════════════════════════════════════════════
+
+let cleanupIntervalId: NodeJS.Timeout | null = null;
+
+/**
+ * Start automatic cache cleanup interval
+ */
+export function startCacheCleanup(): void {
+  if (cleanupIntervalId) {
+    logger.debug('Cache cleanup already running');
+    return;
+  }
+  cleanupIntervalId = setInterval(() => {
+    cache.cleanup();
+  }, 5 * 60 * 1000); // Every 5 minutes
+  logger.debug('Cache cleanup interval started');
+}
+
+/**
+ * Stop automatic cache cleanup interval (for clean shutdown)
+ */
+export function stopCacheCleanup(): void {
+  if (cleanupIntervalId) {
+    clearInterval(cleanupIntervalId);
+    cleanupIntervalId = null;
+    logger.debug('Cache cleanup interval stopped');
+  }
+}
+
+// Auto-start cleanup on module load
+startCacheCleanup();
 
 export { CacheService };

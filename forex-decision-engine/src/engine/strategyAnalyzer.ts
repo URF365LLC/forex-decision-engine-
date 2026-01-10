@@ -31,10 +31,59 @@ import { calculateATRPercentile, getAdaptiveRR, shouldTradeInRegime, RegimeClass
 
 const logger = createLogger('StrategyAnalyzer');
 
-const DECISION_CACHE_TTL = 5 * 60;       // 5 minutes for actionable signals
+// Reduced TTL - fingerprint handles invalidation via lastClosedBarTs
+const DECISION_CACHE_TTL = 60;           // 60 seconds (fingerprint handles staleness)
 const NO_TRADE_CACHE_TTL = CACHE_TTL.noTrade;  // 2 minutes for no-trade decisions
 
-function makeDecisionCacheKey(symbol: string, strategyId: string): string {
+/**
+ * Get the timestamp of the last fully closed bar.
+ * Excludes the currently forming candle to prevent stale cache.
+ */
+function getLastClosedBar(bars: Bar[], timeframe: string): string | null {
+  if (!bars || bars.length === 0) return null;
+
+  // Get the last bar
+  const lastBar = bars[bars.length - 1];
+  if (!lastBar.timestamp) return null;
+
+  const barTime = new Date(lastBar.timestamp);
+  const now = new Date();
+
+  // Determine bar duration based on timeframe
+  const barDurationMs: Record<string, number> = {
+    '1h': 60 * 60 * 1000,
+    '4h': 4 * 60 * 60 * 1000,
+    '1day': 24 * 60 * 60 * 1000,
+    'H1': 60 * 60 * 1000,
+    'H4': 4 * 60 * 60 * 1000,
+    'D1': 24 * 60 * 60 * 1000,
+  };
+
+  const duration = barDurationMs[timeframe] || barDurationMs['1h'];
+  const barCloseTime = new Date(barTime.getTime() + duration);
+
+  // If the bar hasn't closed yet, use the previous bar
+  if (barCloseTime > now && bars.length > 1) {
+    return bars[bars.length - 2].timestamp;
+  }
+
+  return lastBar.timestamp;
+}
+
+/**
+ * Create fingerprinted cache key including timeframe and last closed bar timestamp.
+ * This ensures cache invalidation when a new bar closes.
+ */
+function makeDecisionCacheKey(
+  symbol: string,
+  strategyId: string,
+  timeframe?: string,
+  lastClosedBarTs?: string
+): string {
+  if (timeframe && lastClosedBarTs) {
+    return `decision:${symbol}:${strategyId}:${timeframe}:${lastClosedBarTs}`;
+  }
+  // Fallback for legacy calls without fingerprint
   return `decision:${symbol}:${strategyId}`;
 }
 
@@ -181,22 +230,24 @@ export async function analyzeWithStrategy(
   const errors: string[] = [];
   
   logger.info(`Analyzing ${symbol} with strategy ${strategyId}`);
-  
-  // Check for cached actionable decision first (skip if force refresh)
+
+  // Get strategy metadata for timeframe info (needed for fingerprinted cache)
+  const strategy = strategyRegistry.get(strategyId);
+  if (!strategy) {
+    logger.error(`Strategy not found: ${strategyId}`);
+    return {
+      decision: null,
+      fromCache: false,
+      strategyId,
+      errors: [`Strategy not found: ${strategyId}`],
+    };
+  }
+  const meta = strategyRegistry.getMeta(strategyId);
+  const entryTimeframe = meta?.timeframes?.entry || 'H1';
+
+  // Note: We can't check fingerprinted cache until we have bars data
+  // Check for cached no-trade decision first (these don't need bar fingerprint)
   if (!options.skipCache) {
-    const cacheKey = makeDecisionCacheKey(symbol, strategyId);
-    const cachedDecision = cache.get<StrategyDecision>(cacheKey);
-    if (cachedDecision) {
-      logger.debug(`Cache HIT for decision: ${symbol}:${strategyId}`);
-      return {
-        decision: cachedDecision,
-        fromCache: true,
-        strategyId,
-        errors: [],
-      };
-    }
-    
-    // Check for cached no-trade decision (shorter TTL to allow quick re-checks)
     const noTradeCacheKey = makeNoTradeCacheKey(symbol, strategyId);
     const cachedNoTrade = cache.get<StrategyDecision>(noTradeCacheKey);
     if (cachedNoTrade) {
@@ -209,18 +260,7 @@ export async function analyzeWithStrategy(
       };
     }
   }
-  
-  const strategy = strategyRegistry.get(strategyId);
-  if (!strategy) {
-    logger.error(`Strategy not found: ${strategyId}`);
-    return {
-      decision: null,
-      fromCache: false,
-      strategyId,
-      errors: [`Strategy not found: ${strategyId}`],
-    };
-  }
-  
+
   let oldIndicators: AnyIndicatorData;
   try {
     oldIndicators = await getIndicators(symbol, settings.style);
@@ -244,9 +284,27 @@ export async function analyzeWithStrategy(
       errors: ['Insufficient price data'],
     };
   }
-  
+
   const strategyData = convertToStrategyIndicatorData(symbol, oldIndicators);
-  
+
+  // Get last closed bar timestamp for fingerprinted cache key
+  const lastClosedBarTs = getLastClosedBar(strategyData.bars, entryTimeframe);
+
+  // Check for cached actionable decision with fingerprinted key
+  if (!options.skipCache && lastClosedBarTs) {
+    const cacheKey = makeDecisionCacheKey(symbol, strategyId, entryTimeframe, lastClosedBarTs);
+    const cachedDecision = cache.get<StrategyDecision>(cacheKey);
+    if (cachedDecision) {
+      logger.debug(`Cache HIT (fingerprinted): ${cacheKey}`);
+      return {
+        decision: cachedDecision,
+        fromCache: true,
+        strategyId,
+        errors: [],
+      };
+    }
+  }
+
   let decision: StrategyDecision | null = null;
   try {
     decision = await strategy.analyze(strategyData, settings);
@@ -418,20 +476,21 @@ export async function analyzeWithStrategy(
     }
     
     // ════════════════════════════════════════════════════════════════════════════
-    // CACHE DECISION
+    // CACHE DECISION (with fingerprinted key for staleness prevention)
     // ════════════════════════════════════════════════════════════════════════════
-    
-    const cacheKey = makeDecisionCacheKey(symbol, strategyId);
+
     const noTradeCacheKey = makeNoTradeCacheKey(symbol, strategyId);
-    
+
     if (!options.skipCache) {
       // Don't cache blocked decisions as actionable - treat them as no-trade for caching
       if (decision.grade === 'no-trade' || isBlocked) {
         cache.set(noTradeCacheKey, decision, NO_TRADE_CACHE_TTL);
         logger.debug(`Cached no-trade/blocked decision: ${symbol}:${strategyId} (TTL: ${NO_TRADE_CACHE_TTL}s)`);
-      } else {
-        cache.set(cacheKey, decision, DECISION_CACHE_TTL);
-        logger.debug(`Cached actionable decision: ${symbol}:${strategyId}`);
+      } else if (lastClosedBarTs) {
+        // Use fingerprinted cache key for actionable decisions
+        const fingerprintedKey = makeDecisionCacheKey(symbol, strategyId, entryTimeframe, lastClosedBarTs);
+        cache.set(fingerprintedKey, decision, DECISION_CACHE_TTL);
+        logger.debug(`Cached actionable decision (fingerprinted): ${fingerprintedKey}`);
       }
     }
   }

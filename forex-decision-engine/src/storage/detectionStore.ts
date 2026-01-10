@@ -19,10 +19,14 @@ import { randomUUID } from 'crypto';
 const logger = createLogger('DetectionStore');
 
 // ═══════════════════════════════════════════════════════════════
-// IN-MEMORY FALLBACK
+// IN-MEMORY FALLBACK CONFIGURATION
 // ═══════════════════════════════════════════════════════════════
 
+const IN_MEMORY_MAX_AGE_MS = 24 * 60 * 60 * 1000;  // 24 hours
+const IN_MEMORY_MAX_ENTRIES = 1000;
+
 const inMemoryStore = new Map<string, DetectedTrade>();
+let inMemoryCleanupIntervalId: NodeJS.Timeout | null = null;
 
 // ═══════════════════════════════════════════════════════════════
 // HELPER FUNCTIONS
@@ -195,7 +199,8 @@ export async function updateDetection(
       if (updates.status) {
         updateData.status = updates.status;
         if (updates.statusReason) {
-          // Store status change metadata in reason field for now
+          // Append status reason to existing reason for audit trail
+          updateData.reason = updates.statusReason;
         }
       }
       if (updates.grade) updateData.grade = updates.grade;
@@ -472,10 +477,83 @@ function rowToDetection(row: Record<string, unknown>): DetectedTrade {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// CLEANUP
+// CLEANUP & MEMORY MANAGEMENT
 // ═══════════════════════════════════════════════════════════════
+
+/**
+ * Clean up in-memory store to prevent unbounded memory growth.
+ * Removes:
+ * - Entries older than 24 hours
+ * - Terminal status entries (dismissed, taken, expired)
+ * - Excess entries beyond max limit (FIFO)
+ */
+export function cleanupInMemoryStore(): number {
+  const now = Date.now();
+  let cleaned = 0;
+
+  // Clean by age and terminal status
+  for (const [id, detection] of inMemoryStore.entries()) {
+    if (!detection.createdAt) {
+      inMemoryStore.delete(id);
+      cleaned++;
+      continue;
+    }
+
+    const age = now - new Date(detection.createdAt).getTime();
+    const isTerminal = ['dismissed', 'executed', 'expired', 'invalidated'].includes(detection.status);
+
+    // Remove old entries or terminal entries older than 1 hour
+    if (age > IN_MEMORY_MAX_AGE_MS || (isTerminal && age > 60 * 60 * 1000)) {
+      inMemoryStore.delete(id);
+      cleaned++;
+    }
+  }
+
+  // Enforce max entries (FIFO - remove oldest first)
+  if (inMemoryStore.size > IN_MEMORY_MAX_ENTRIES) {
+    const entries = Array.from(inMemoryStore.entries())
+      .sort((a, b) => new Date(a[1].createdAt).getTime() - new Date(b[1].createdAt).getTime());
+
+    const toRemove = entries.slice(0, entries.length - IN_MEMORY_MAX_ENTRIES);
+    for (const [id] of toRemove) {
+      inMemoryStore.delete(id);
+      cleaned++;
+    }
+  }
+
+  if (cleaned > 0) {
+    logger.info(`Cleaned ${cleaned} detections from in-memory store (remaining: ${inMemoryStore.size})`);
+  }
+  return cleaned;
+}
+
+/**
+ * Start automatic in-memory cleanup interval
+ */
+export function startInMemoryCleanup(): void {
+  if (inMemoryCleanupIntervalId) {
+    logger.debug('In-memory detection cleanup already running');
+    return;
+  }
+  inMemoryCleanupIntervalId = setInterval(cleanupInMemoryStore, 60 * 60 * 1000); // Every hour
+  logger.debug('In-memory detection cleanup interval started');
+}
+
+/**
+ * Stop automatic in-memory cleanup interval (for clean shutdown)
+ */
+export function stopInMemoryCleanup(): void {
+  if (inMemoryCleanupIntervalId) {
+    clearInterval(inMemoryCleanupIntervalId);
+    inMemoryCleanupIntervalId = null;
+    logger.debug('In-memory detection cleanup interval stopped');
+  }
+}
 
 export function clearInMemoryStore(): void {
   inMemoryStore.clear();
   logger.info('In-memory detection store cleared');
 }
+
+// Auto-start cleanup on module load
+startInMemoryCleanup();
