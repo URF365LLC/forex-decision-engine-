@@ -210,6 +210,8 @@ export async function updateDetection(
         updateData.status = updates.status;
         if (updates.statusReason) {
           // Store status change metadata in reason field for now
+          // Append status reason to existing reason for audit trail
+          updateData.reason = updates.statusReason;
         }
       }
       if (updates.grade) updateData.grade = updates.grade;
