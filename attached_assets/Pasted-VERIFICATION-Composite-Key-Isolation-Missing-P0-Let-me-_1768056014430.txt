@@ -1,0 +1,130 @@
+VERIFICATION: Composite Key Isolation (Missing P0)
+Let me check the current keying patterns across caches, stores, and UI rendering.
+
+Grep
+makeKey|cacheKey|\.get\(|\.set\(
+Grep
+decision:|no-trade:|cache\.set|cache\.get
+Good - backend cache uses composite keys. Now let me check the frontend rendering/storage.
+
+Grep
+data-key=|decisionKey|results\[|this\.results
+Grep
+signalMap
+Grep
+data-key=
+Read
+/home/user/forex-decision-engine-/forex-decision-engine/src/validation/schemas.ts
+Read 127 lines
+COMPREHENSIVE VERIFICATION OF GPT SENIOR REVIEW
+I have verified the GPT's concerns against the actual codebase. Here are my findings:
+
+✅ CONFIRMED: Missing P0 - Composite Key Isolation Issue
+CRITICAL BUG FOUND at public/js/app.js:263:
+
+// Line 263 - COLLISION BUG
+signalMap[decision.symbol] = decision;  // ← Only uses symbol!
+
+Impact: When two strategies fire on the same symbol (e.g., RSI-Bounce AND Liquidity-Sweep both detect EURUSD), only the last one survives in the watchlist sidebar. The other is silently overwritten.
+
+Where composite keys ARE correctly used:
+
+Location	Key Format	Status
+Backend cache (strategyAnalyzer.ts:38)	decision:${symbol}:${strategyId}	✅ Correct
+UI card rendering (ui.js:342)	data-key="${strategyId}:${symbol}"	✅ Correct
+UI table rendering (ui.js:519)	data-key="${strategyId}:${symbol}"	✅ Correct
+findDecisionByKey() (app.js:718-720)	Splits on : and matches both	✅ Correct
+Where composite keys are MISSING:
+
+Location	Current Key	Issue
+signalMap for watchlist (app.js:263)	symbol only	COLLISION
+GPT is correct - this must be elevated to P0 and fixed before other patches "stick."
+
+✅ CONFIRMED: Zod Schema Contradiction Warning
+GPT's concern about .positive().optional().default(0):
+
+The execution plan proposed:
+
+entry: z.number().positive().optional().default(0)  // WRONG - 0 is not positive!
+
+Actual current schema (schemas.ts:58-62):
+
+entry: z.number().positive().optional(),      // No default - CORRECT
+stopLoss: z.number().positive().optional(),   // No default - CORRECT  
+takeProfit1: z.number().positive().optional(),// No default - CORRECT
+lotSize: z.number().positive().optional(),    // No default - CORRECT
+
+GPT is correct - The current schema is fine. The proposed fix in the execution plan would introduce a validation bug. Do NOT add .default(0) to positive-constrained fields.
+
+Correct approach:
+
+Keep fields optional with no default
+Store null in DB for missing values, not 0
+Or use .nonnegative() if 0 is valid
+✅ CONFIRMED: Frontend Sends Wrong Field Names
+Verified mismatch at app.js:903-923 (quickLogTrade):
+
+Frontend Field	Backend Schema Field	Match
+entryPrice	entry	❌
+takeProfit	takeProfit1	❌
+lots	lotSize	❌
+tradeType: 'pullback'	Not in schema	⚠️ Hardcoded
+GPT's suggestion to send both keys temporarily (compat window) is valid for production safety.
+
+✅ CONFIRMED: Triple Account Field Names
+At schemas.ts:4-6:
+
+accountSize: z.number().min(100).max(10000000).optional(),
+accountBalance: z.number().min(100).max(10000000).optional(),
+equity: z.number().min(100).max(10000000).optional(),
+
+All three accepted - contract drift risk confirmed.
+
+✅ CONFIRMED: .passthrough() Allows Unknown Fields
+At schemas.ts:16, 65, 83:
+
+}).passthrough();  // Allows ANY additional fields through
+
+This is intentional for flexibility but creates validation gaps.
+
+UPGRADED EXECUTION SEQUENCE (Per GPT Review + My Verification)
+Order	Issue	Justification
+1	NEW P0: signalMap composite key fix	Stops cross-strategy collision
+2	#2 Journal payload mismatch	Unblocks all trade logging
+3	#1 /api/analyze → /api/scan	Unblocks single-symbol analysis
+4	#3 Take button for cooling_down	Unblocks actions
+5	#5 tradeType derivation	Correct analytics
+6	#4 Memory leak cleanup	Stability
+7	#6 Cache interval cleanup	Clean shutdown
+8	#7 Array mutation	UI consistency
+9	#8 Deployment config	Production ready
+ADDITIONAL SUGGESTIONS FROM VERIFICATION
+1. Show Cooldown Remaining When Taking cooling_down Trade
+GPT suggested: if cooling_down is actionable, UI should show why and how long remains.
+
+Current code lacks this - cooldownEndsAt exists in detection but not displayed when Take button is clicked.
+
+2. Backend Should Return tradeType in Decision
+GPT suggested: canonical classification belongs in backend.
+
+Verification: tradeType is NOT currently returned by strategy analysis. Only strategyId and strategyName are included.
+
+Suggestion: Add tradeType to strategy metadata in strategies/registry.ts and include in decision response.
+
+3. Max Size Cap on In-Memory Store
+GPT suggested: add max size as final fail-safe.
+
+Current: No size limit - Map can grow indefinitely.
+
+Suggestion: Add cap (e.g., 1000 entries) and delete oldest when exceeded.
+
+SUMMARY
+GPT Concern	Verification Status
+Missing P0: Composite key isolation	✅ CONFIRMED - signalMap uses symbol-only key
+Zod .positive().default(0) contradiction	✅ CONFIRMED - Do NOT add default(0)
+Journal field name mismatch	✅ CONFIRMED - 3 fields need renaming
+Execution order improvement	✅ AGREED - Fix keying first
+UX: show cooldown remaining	✅ VALID - Not currently displayed
+Backend should return tradeType	✅ VALID - Not currently in response
+Memory store max size cap	✅ VALID - No limit exists
+All GPT review concerns verified. Ready to execute with upgraded sequence upon your explicit approval.

@@ -1,0 +1,74 @@
+Final Remediation Plan v3.0 — Amended Execution Order
+Phase 1: Restore Core UX (Stop the Bleeding)
+Step	Issue	Location	Description
+1.1	P0-4 /api/analyze 410	api.js → server.ts	Fix frontend to call /api/scan for single symbol
+1.2	P0-2 Journal payload + tradeType	app.js:914, server.ts	Fix field mismatch + derive tradeType from strategy
+1.3	P0-3 Take button cooling_down	app.js:1805	Enable Take for cooling_down status
+1.4	P0-1 SignalMap collision	app.js:263	Composite key + dual structure pattern
+✅ Checkpoint 1: User can analyze symbol → see correct signal(s) → click Take → journal saves correctly.
+
+Phase 2: Correctness + Staleness + Stability
+Step	Issue	Location	Description
+2.1	P1-3 Cache fingerprint	strategyAnalyzer.ts	Add timeframe + lastClosedBarTs to cache key
+2.2	P1-1 Manual scan ephemeral	server.ts	No persistence BUT query existing trades for dedupe
+2.3	P1-2 Bidirectional awareness	Multiple	Check journal + detections before showing "Take"
+2.4	P1-5 Cache interval cleanup	cache.ts:202	Export interval ref + cleanup on SIGTERM
+2.5	P1-4 Memory cleanup	detectionStore.ts	Add TTL + max entries to in-memory store
+2.6	P1-6 statusReason persistence	detectionStore.ts:195-199	Actually store the statusReason
+2.7	P1-7 Deployment config	Environment	Document required env vars
+✅ Checkpoint 2: Cache correctly invalidates on new bar close. Manual scan doesn't persist but shows existing trade warnings. Memory stays bounded. Clean shutdown.
+
+Phase 3: Semantic Cleanup + Polish
+Step	Issue	Location	Description
+3.1	P0-5 Terminology	Multiple	executed→taken (compat mode first, then migrate)
+3.2	P2-1 Sort mutation	Multiple	Clone arrays before sorting
+3.3	P2-2 Multi-signal UI	ui.js	Render multiple signals per symbol
+3.4	P2-3 Blocking I/O	journalStore.ts, signalStore.ts	Convert writeFileSync to async
+✅ Checkpoint 3: Consistent terminology. No array mutations. Clean UI for multi-strategy signals.
+
+Key Amendments Accepted
+A) SignalMap Dual Structure
+decisionsBySymbol: Record<string, Decision[]>   // For UI rendering lists
+decisionsByKey: Record<string, Decision>        // For direct lookups
+
+Explicit separation prevents future confusion.
+
+B) Trade Identity Key (Canonical)
+tradeIdentityKey = symbol + direction + strategyId + entryTimeframe + style
+
+This prevents both over-blocking valid trades and under-blocking duplicates.
+
+C) getLastClosedBar() Helper
+Create a single source of truth function that:
+
+Removes forming candle based on timeframe
+Returns last closed bar timestamp
+Returns null if ambiguous → fail closed (skip caching)
+D) Terminology Migration (Compat Mode)
+Accept both executed and taken in reads
+Write new events as taken only
+Run DB migration
+Remove old term support
+E) Manual Scan Ephemeral + Dedupe Awareness
+No persistence to detection/signal stores
+Still queries journal + detections to annotate "already taken" in results
+Prevents UI from showing "Take" on duplicate trades
+F) skipCache Scope
+Skip decision cache only
+Keep market data cache intact
+Prevents unnecessary API request spikes
+6 Acceptance Tests (Non-Negotiable)
+#	Test	Expected Result
+1	Multi-signal same symbol	Scan 2 strategies → UI shows 2 distinct signals
+2	Journal end-to-end	Take → POST /api/journal → 201 → appears in UI
+3	Dedupe	Take manually → autoscan doesn't create duplicate detection
+4	Cache staleness	New candle close → rescan returns fresh decision
+5	Shutdown	SIGTERM → intervals cleared → clean exit
+6	DB down mode	Simulate failure → in-memory store bounded → no leak
+Risk Mitigations
+Risk	Mitigation
+strategyId="all" spikes rate limiter	Cap max strategies or batch with concurrency limits
+Journal schema changes	Frontend payload only, keep DB schema unchanged
+skipCache blows request volume	Only skip decision cache, keep market data cache
+This amended plan is approved for execution with the phased approach and checkpoints.
+

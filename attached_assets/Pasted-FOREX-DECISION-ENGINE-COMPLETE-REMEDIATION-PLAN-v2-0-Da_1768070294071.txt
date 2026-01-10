@@ -1,0 +1,501 @@
+FOREX DECISION ENGINE
+COMPLETE REMEDIATION PLAN v2.0
+Date: January 10, 2026
+Status: APPROVED FOR IMPLEMENTATION
+Estimated Total Effort: 6-8 hours
+Risk Level: Medium (touches core data flow)
+
+EXECUTIVE SUMMARY
+This remediation plan addresses 14 issues identified across multiple audit reviews:
+
+3 external audits (GPT, Replit, Forensic)
+2 internal audits (Systems Audit, Stabilization Review)
+The issues span four categories:
+
+Data Integrity — Signal collision, duplicate trades, terminology drift
+API Contracts — Frontend/backend field mismatches
+Architecture — Manual vs Auto-Scan separation, bidirectional awareness
+Stability — Memory leaks, interval cleanup, cache staleness
+PRIORITY MATRIX
+Priority	Count	Description
+🔴 P0 Critical	5	Core functionality broken, data loss
+🟠 P1 High	7	Data integrity, architecture, stability
+🟡 P2 Medium	2	Technical debt, deployment
+P0 CRITICAL ISSUES (5)
+P0-1: Frontend SignalMap Collision
+Source: External Audit + Forensic Verification
+Severity: 🔴 Critical
+Est. Time: 45 min
+
+Problem:
+Multiple strategies detecting same symbol overwrite each other. Only last strategy's signal survives.
+
+Location:
+
+public/js/app.js Lines 260-265
+Current Code:
+
+const signalMap = {};
+for (const decision of this.results) {
+  if (decision.grade !== 'no-trade') {
+    signalMap[decision.symbol] = decision;  // ← OVERWRITES
+  }
+}
+
+Required Fix:
+
+Replace single map with dual structure: decisionsByKey + decisionsBySymbol
+Key format: ${symbol}::${strategyId}::${style}::${timeframe}
+Store arrays per symbol for multi-strategy display
+Acceptance Criteria:
+
+ Same symbol with 2 strategies shows 2 separate cards/rows
+ Watchlist shows badge count "3" if 3 strategies detected
+ No signal overwriting in any scenario
+P0-2: Journal Payload Field Name Mismatch
+Source: Original Execution Plan
+Severity: 🔴 Critical
+Est. Time: 45 min
+
+Problem:
+Frontend sends different field names than backend expects. All trade logging fails silently.
+
+Location:
+
+Frontend: public/js/app.js Lines 903-923 (quickLogTrade)
+Backend: src/validation/schemas.ts Lines 47-65
+Field Mapping:
+
+Frontend Sends	Backend Expects	Action
+entryPrice	entry	Rename
+takeProfit	takeProfit1	Rename
+lots	lotSize	Rename
+tradeType: 'pullback'	Dynamic	Fix hardcode
+Required Fix:
+
+Update frontend to send correct field names
+Add inferTradeType(strategyId) function
+Backend schema remains unchanged (already correct)
+Acceptance Criteria:
+
+ POST /api/journal returns 201 with valid payload
+ Quick log buttons work without errors
+ Trade appears in journal with correct fields
+P0-3: Take Button Disabled for Cooling Down
+Source: Original Execution Plan
+Severity: 🔴 Critical
+Est. Time: 20 min
+
+Problem:
+"Take Trade" button only shows for eligible status, but backend allows cooling_down too.
+
+Location:
+
+public/js/app.js Lines 1805-1826
+Current Code:
+
+const isEligible = detection.status === 'eligible';
+// Button only rendered if isEligible
+
+Required Fix:
+
+const canTake = ['cooling_down', 'eligible'].includes(detection.status);
+
+Acceptance Criteria:
+
+ Take button visible for cooling_down detections
+ Take button visible for eligible detections
+ Take button hidden for dismissed/taken/expired
+P0-4: /api/analyze Endpoint Returns 410
+Source: Original Execution Plan
+Severity: 🔴 Critical
+Est. Time: 30 min
+
+Problem:
+Frontend API.analyze() calls deprecated /api/analyze endpoint which returns 410.
+
+Location:
+
+Frontend: public/js/api.js Lines 73-77
+Backend: src/server.ts Lines 297-308 (returns 410)
+Required Fix:
+
+Update API.analyze() to call /api/scan with single-symbol array
+Pass strategyId (required)
+Extract first decision from response
+Acceptance Criteria:
+
+ Single symbol analysis works
+ Returns decision object (not array)
+ Shows "No decision" with reason if empty
+P0-5: Unified Terminology (executed → taken)
+Source: User Requirement
+Severity: 🔴 Critical
+Est. Time: 30 min
+
+Problem:
+Same concept uses different terms: 'executed' vs 'taken'. Causes data leakage and confusion.
+
+Locations:
+
+File	Change
+src/types/detection.ts:15	'executed' → 'taken'
+src/storage/detectionStore.ts:304-307	Function + status
+src/services/detectionService.ts:155-176	Function name
+src/server.ts:1065-1129	Comments + event name
+public/js/app.js:2004-2020	Function + toast
+src/db/types.ts:15	Type definition
+Unified Standard:
+
+Action when user takes trade: 'taken'
+Function name: markAsTaken(), takeDetection()
+Event name: 'trade_taken'
+Database Migration:
+
+UPDATE detections SET status = 'taken' WHERE status = 'executed';
+
+Acceptance Criteria:
+
+ No occurrence of 'executed' for trade-taking action
+ All systems use 'taken' consistently
+ SSE event is 'trade_taken'
+P1 HIGH PRIORITY ISSUES (7)
+P1-1: Manual Scan Ephemeral Behavior
+Source: User Requirement
+Severity: 🟠 High
+Est. Time: 30 min
+
+Problem:
+Manual Scan currently saves to signalStore + detectionStore. Should be ephemeral (fresh data, no persistence).
+
+Location:
+
+src/server.ts Lines 406-430
+Current Behavior:
+
+// Saves to signalStore
+await signalStore.saveSignal(decision);
+// Saves to detectionStore
+await processAutoScanDecision(decision);
+
+Required Fix:
+
+Remove both save calls from Manual Scan
+Add skipCache: true option to force fresh data
+Only save to Journal when user clicks "Take Trade"
+Acceptance Criteria:
+
+ Manual Scan returns fresh data every time
+ No entries created in signalStore from Manual Scan
+ No detections created from Manual Scan
+ Journal entry created only on "Take Trade"
+P1-2: Bidirectional Trade Awareness
+Source: User Requirement
+Severity: 🟠 High
+Est. Time: 60 min
+
+Problem:
+Manual Scan and Auto-Scan don't know about each other's taken trades. Risk of duplicates.
+
+New Function: checkExistingTrade(symbol, direction, strategyId)
+
+Logic:
+
+Query Journal for symbol + direction + status IN ('running', 'pending')
+Query Detection Store for symbol + direction + status IN ('cooling_down', 'eligible')
+Return existing trade info if found
+Integration Points:
+
+System	When to Check	Action if Exists
+Manual Scan	Before displaying results	Add existingTrade flag
+Manual Scan	On "Take Trade" click	Re-check, warn user
+Auto-Scan	Before creating detection	Skip if in Journal
+Auto-Scan	Before executing detection	Skip if in Journal
+UI Behavior:
+
+Show warning banner: "⚠️ This trade is already RUNNING"
+Options: [View in Journal] [Add to Position] [Dismiss]
+Acceptance Criteria:
+
+ Manual Scan shows warning if trade exists in Journal
+ Auto-Scan skips detection if trade exists in Journal
+ No duplicate Journal entries for same symbol+direction
+P1-3: Backend Cache Key Fingerprint
+Source: External Audit (GPT/Replit)
+Severity: 🟠 High
+Est. Time: 45 min
+
+Problem:
+Decision cache key missing timeframe and bar timestamp. Serves stale decisions after new candle.
+
+Location:
+
+src/engine/strategyAnalyzer.ts Lines 34-38
+Current Key:
+
+`decision:${symbol}:${strategyId}`
+
+Required Key:
+
+`decision:${symbol}:${strategyId}:${timeframe}:${lastClosedBarTs}`
+
+Get lastClosedBarTs from:
+
+const lastClosedBarTs = bars[bars.length - 1].timestamp;
+
+TTL Adjustment:
+
+Current: 5 minutes (too long)
+New: 30-60 seconds (fingerprint handles invalidation)
+Acceptance Criteria:
+
+ New candle close → Cache miss → Fresh decision
+ Same candle → Cache hit → Fast response
+ No stale decisions served after bar close
+P1-4: In-Memory Detection Store Cleanup
+Source: Original Execution Plan
+Severity: 🟠 High
+Est. Time: 45 min
+
+Problem:
+inMemoryStore Map grows unbounded when DB unavailable. No TTL cleanup.
+
+Location:
+
+src/storage/detectionStore.ts Line 25
+Required Fix:
+
+Add cleanupInMemoryStore() function
+Delete entries older than 24 hours
+Delete terminal status entries immediately
+Add max size cap (1000 entries)
+Start cleanup interval on server startup
+Defensive Check:
+
+if (!detection.createdAt) continue;  // Skip invalid entries
+
+Acceptance Criteria:
+
+ Memory stable after 2+ hours with DB down
+ Old detections (>24h) removed automatically
+ Terminal status detections cleaned immediately
+P1-5: Cache Cleanup Interval Leak
+Source: Original Execution Plan
+Severity: 🟠 High
+Est. Time: 15 min
+
+Problem:
+setInterval created at module load, never cleared. Prevents clean shutdown.
+
+Location:
+
+src/services/cache.ts Lines 202-204
+Required Fix:
+
+Export startCacheCleanup() and stopCacheCleanup()
+Call start from server startup
+Call stop from shutdown handler (SIGTERM, SIGINT)
+Guard against multiple starts
+Acceptance Criteria:
+
+ Server shuts down cleanly (no hanging)
+ Hot reload works properly
+ Cache still cleans up during runtime
+P1-6: tradeType Hardcoded as 'pullback'
+Source: Original Execution Plan
+Severity: 🟠 High
+Est. Time: 15 min
+
+Problem:
+All trades logged with tradeType: 'pullback' regardless of strategy.
+
+Location:
+
+public/js/app.js Line 914
+Required Fix:
+
+Add inferTradeType(strategyId) mapping function
+Map all 11 strategies to appropriate types
+Mapping:
+
+Strategy	Trade Type
+ema-pullback-intra	pullback
+rsi-bounce	counter-trend
+rsi-oversold	counter-trend
+stochastic-oversold	counter-trend
+bollinger-mr	mean-reversion
+williams-ema	momentum
+triple-ema	trend
+break-retest	breakout
+cci-zero-line	momentum
+multi-oscillator-momentum	momentum
+liquidity-sweep	liquidity-grab
+Acceptance Criteria:
+
+ Each strategy logs correct trade type
+ Journal stats show accurate breakdown by type
+P1-7: Deployment Configuration (P1-Operational)
+Source: Original Execution Plan (upgraded from P2)
+Severity: 🟠 High (Operational Blocker)
+Est. Time: 30 min
+
+Problem:
+
+Autoscale deployment incompatible with stateful DB connections
+DATABASE_URL may contain stale hostname
+Port forwarding conflicts
+Required Fix:
+
+Change deployment type to "Reserved VM"
+Verify/update DATABASE_URL
+Clean port configuration (single 5000 mapping)
+Acceptance Criteria:
+
+ Deployment completes without errors
+ Database connection successful in production
+ Public URL loads application
+P2 MEDIUM PRIORITY ISSUES (2)
+P2-1: Array.sort() Mutation
+Source: Original Execution Plan
+Severity: 🟡 Medium
+Est. Time: 10 min
+
+Problem:
+entries.sort() mutates original this.journalEntries array.
+
+Location:
+
+public/js/app.js Line 1073
+Current:
+
+const activeFirst = entries.sort((a, b) => { ... });
+
+Required Fix:
+
+const activeFirst = [...entries].sort((a, b) => { ... });
+
+Acceptance Criteria:
+
+ Original array unchanged after sort
+ Multiple renders produce consistent results
+P2-2: UI Multi-Signal Display
+Source: External Audit
+Severity: 🟡 Medium
+Est. Time: 30 min
+
+Problem:
+Watchlist sidebar assumes one signal per symbol. Cannot show multiple strategies.
+
+Location:
+
+public/js/ui.js - renderWatchlistSidebar()
+Required Fix:
+
+Accept decisionsBySymbol (arrays) instead of single objects
+Show badge count for symbols with multiple signals
+Expand/collapse to show all strategies on click
+Acceptance Criteria:
+
+ Badge shows "3" if 3 strategies fired for symbol
+ Clicking expands to show all strategies
+ Each strategy shows: name, grade, direction
+EXECUTION SEQUENCE
+Phase 1: P0 Critical Fixes (2-3 hours)
+Order	Issue	Est. Time	Dependencies
+1	P0-5: Unified Terminology	30 min	None
+2	P0-2: Journal Payload	45 min	None
+3	P0-4: /api/analyze Fix	30 min	None
+4	P0-3: Take Button	20 min	P0-5
+5	P0-1: SignalMap Collision	45 min	None
+Checkpoint: All P0s complete, basic functionality restored
+
+Phase 2: P1 Architecture + Stability (3-4 hours)
+Order	Issue	Est. Time	Dependencies
+6	P1-1: Manual Scan Ephemeral	30 min	P0-5
+7	P1-2: Bidirectional Awareness	60 min	P1-1
+8	P1-3: Cache Key Fingerprint	45 min	None
+9	P1-6: tradeType Mapping	15 min	P0-2
+10	P1-5: Cache Interval Cleanup	15 min	None
+11	P1-4: Memory Cleanup	45 min	P1-5
+12	P1-7: Deployment Config	30 min	All code fixes
+Checkpoint: Architecture correct, stability improved
+
+Phase 3: P2 Cleanup (40 min)
+Order	Issue	Est. Time	Dependencies
+13	P2-1: Array Mutation	10 min	None
+14	P2-2: Multi-Signal UI	30 min	P0-1
+Checkpoint: Technical debt addressed
+
+ACCEPTANCE TEST CHECKLIST
+API Contract Tests
+ POST /api/scan returns decisions with correct fields
+ POST /api/journal accepts payload, returns 201
+ GET /api/detections shows 'taken' status (not 'executed')
+UI Functionality Tests
+ Analyze button works (no 410/404)
+ Take button works for cooling_down + eligible
+ Quick log creates journal entry
+ Multiple strategies per symbol display correctly
+Data Integrity Tests
+ Same symbol + 2 strategies → 2 cards displayed
+ Manual trade taken → Auto-Scan shows "already running"
+ Auto-Scan trade taken → Manual shows warning
+ No duplicate Journal entries
+Cache Correctness Tests
+ New candle closes → Fresh decision computed
+ Same candle → Cached decision returned
+Memory/Stability Tests
+ Server shuts down cleanly (no hanging)
+ Memory stable after 2+ hours with DB down
+ Hot reload works properly
+Deployment Tests
+ Production deployment succeeds
+ Database connection works
+ Public URL accessible
+FILES TO MODIFY
+Backend (TypeScript)
+src/server.ts                    # Manual Scan persistence, awareness check
+src/engine/strategyAnalyzer.ts   # Cache key fingerprint, TTL
+src/services/cache.ts            # Interval start/stop
+src/storage/detectionStore.ts    # Memory cleanup, terminology
+src/services/detectionService.ts # Terminology
+src/types/detection.ts           # Terminology
+src/db/types.ts                  # Terminology
+src/validation/schemas.ts        # (verify only)
+
+Frontend (JavaScript)
+public/js/app.js                 # SignalMap, Take button, terminology, tradeType
+public/js/api.js                 # /api/analyze fix
+public/js/ui.js                  # Multi-signal display
+
+Database
+UPDATE detections SET status = 'taken' WHERE status = 'executed';
+
+Infrastructure
+Replit Deployment Settings       # Reserved VM, DATABASE_URL, ports
+
+RISK ASSESSMENT
+Risk	Likelihood	Impact	Mitigation
+Breaking existing Journal entries	Low	High	Test with existing data first
+DB migration fails	Low	Medium	Backup before migration
+Cache fingerprint causes excess API calls	Medium	Low	Monitor rate limiter after deploy
+Bidirectional check creates deadlock	Low	High	Add timeout to checks
+ROLLBACK PLAN
+If critical issues arise post-deployment:
+
+Revert terminology migration:
+UPDATE detections SET status = 'executed' WHERE status = 'taken';
+
+Revert code: Git revert to pre-remediation commit
+
+Restart services: Force clear all caches
+
+SIGN-OFF CONDITIONS
+Before marking remediation complete:
+
+ All P0 issues verified fixed
+ All P1 issues verified fixed
+ Acceptance tests passing
+ Production deployment successful
+ No regression in existing functionality
+ Memory stable over 1 hour test

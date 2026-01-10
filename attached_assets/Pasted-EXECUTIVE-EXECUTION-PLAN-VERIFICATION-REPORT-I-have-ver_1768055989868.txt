@@ -1,0 +1,114 @@
+EXECUTIVE EXECUTION PLAN - VERIFICATION REPORT
+I have verified all 8 issues against the actual codebase. Here is the status:
+
+Issue #1: /api/analyze Endpoint Removal
+STATUS: ✅ VERIFIED - BUT CLARIFICATION NEEDED
+
+Aspect	Finding
+Frontend calls	public/js/api.js:73-77 - API.analyze() calls /api/analyze
+Backend status	Endpoint EXISTS but returns 410 at server.ts:297-308
+Actual error	410 Gone (not 404), includes migration guide
+Clarification: The endpoint wasn't deleted - it was deprecated and returns 410 with migration instructions. Users see "legacy_endpoint_disabled" error, not 404.
+
+Fix is still valid - Frontend should use /api/scan with single-symbol array.
+
+Issue #2: Journal Payload Field Name Mismatch
+STATUS: ✅ VERIFIED - CONFIRMED
+
+Frontend Sends (app.js:903-923)	Backend Expects (schemas.ts:47-65)	Match?
+entryPrice (line 917)	entry	❌
+takeProfit (line 919)	takeProfit1	❌
+lots (line 920)	lotSize	❌
+stopLoss (line 918)	stopLoss	✅
+Evidence confirmed at:
+
+public/js/app.js lines 901-930 (quickLogTrade function)
+src/validation/schemas.ts lines 47-65 (JournalEntrySchema)
+Issue #3: Take Button Disabled for Cooling Down
+STATUS: ✅ VERIFIED - CONFIRMED
+
+Evidence at public/js/app.js:
+
+// Line 1805:
+const isEligible = detection.status === 'eligible';
+
+// Lines 1821-1826:
+const actionsHtml = isEligible ? `
+  <button class="btn btn-small btn-primary" onclick="App.executeDetection('${detection.id}')">Take Trade</button>
+  ...
+` : `
+  <button class="btn btn-small btn-secondary" onclick="App.dismissDetection('${detection.id}')">Dismiss</button>
+`;
+
+Confirmed: "Take Trade" button ONLY appears when status === 'eligible', NOT for cooling_down.
+
+Issue #4: In-Memory Detection Store Memory Leak
+STATUS: ✅ VERIFIED - CONFIRMED
+
+Evidence at src/storage/detectionStore.ts:
+
+Line 25: const inMemoryStore = new Map<string, DetectedTrade>();
+NO TTL-based cleanup function exists
+Only clearInMemoryStore() at line 478 clears the entire store (nuclear option)
+No automatic cleanup of stale/terminal detections
+Memory leak pattern confirmed - Map grows unbounded in fallback mode.
+
+Issue #5: Hardcoded tradeType 'pullback'
+STATUS: ✅ VERIFIED - CONFIRMED
+
+Evidence at public/js/app.js:914:
+
+async quickLogTrade(decision, action) {
+  const entry = {
+    // ...
+    tradeType: 'pullback',  // ← HARDCODED, ignores actual strategy
+
+Confirmed: All trades logged as 'pullback' regardless of strategy.
+
+Issue #6: Cache Cleanup Interval Leak
+STATUS: ✅ VERIFIED - CONFIRMED
+
+Evidence at src/services/cache.ts:202-204:
+
+// Cleanup expired entries every 5 minutes
+setInterval(() => {
+  cache.cleanup();
+}, 5 * 60 * 1000);
+
+Confirmed:
+
+Interval created at module load (line 202)
+No function to stop the interval
+No clearInterval() anywhere in file
+Prevents clean server shutdown
+Issue #7: Journal entries.sort() Array Mutation
+STATUS: ✅ VERIFIED - CONFIRMED
+
+Evidence at public/js/app.js:1073:
+
+const activeFirst = entries.sort((a, b) => {
+  const priority = { running: 0, pending: 1 };
+  // ...
+});
+
+Confirmed: .sort() mutates original array in place. Should be [...entries].sort().
+
+Issue #8: Deployment Configuration Gaps
+STATUS: ⚠️ CANNOT VERIFY FROM CODE
+
+This is infrastructure/Replit platform configuration, not source code. Cannot verify DATABASE_URL or deployment type settings from codebase.
+
+VERIFICATION SUMMARY
+Issue	Status	Severity	Verified Location
+#1 /api/analyze	✅ Verified (410 not 404)	P0	api.js:73-77, server.ts:297-308
+#2 Journal payload	✅ Verified	P0	app.js:901-930, schemas.ts:47-65
+#3 Take button	✅ Verified	P0	app.js:1805-1826
+#4 Memory leak	✅ Verified	P1	detectionStore.ts:25 (no cleanup)
+#5 tradeType	✅ Verified	P1	app.js:914
+#6 Cache interval	✅ Verified	P1	cache.ts:202-204
+#7 Array mutation	✅ Verified	P2	app.js:1073
+#8 Deployment	⚠️ Cannot verify	P2	Infrastructure config
+RECOMMENDATION
+All 7 code issues are verified and accurate. The execution plan is sound.
+
+Minor correction for Issue #1: The endpoint returns 410 Gone (not 404 Not Found), but the fix remains the same - update frontend to use /api/scan.
