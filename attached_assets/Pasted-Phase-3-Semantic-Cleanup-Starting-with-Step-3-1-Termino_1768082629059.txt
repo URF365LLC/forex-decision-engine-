@@ -1,0 +1,1062 @@
+Phase 3: Semantic Cleanup
+
+Starting with Step 3.1: Terminology migration (executed → taken)
+
+Read
+/home/user/forex-decision-engine-/forex-decision-engine/src/types/detection.ts
+Read 231 lines
+Update the DetectionStatus type to use 'taken':
+
+Edit
+/home/user/forex-decision-engine-/forex-decision-engine/src/types/detection.ts
+export type DetectionStatus =
+
+
+  | 'cooling_down'   // Just detected, in 60-minute cooldown period
+
+
+  | 'eligible'       // Cooldown complete, ready for action
+
+
+  | 'executed'       // User took the trade
+
+
+  | 'dismissed'      // User explicitly dismissed
+
+
+  | 'expired'        // Signal validity window passed
+
+
+  | 'invalidated';   // Market conditions changed (e.g., direction flip)
+
+
+  | 'taken'          // User took the trade (unified terminology)
+
+
+  | 'executed'       // DEPRECATED: Use 'taken' - kept for backwards compatibility
+
+
+  | 'dismissed'      // User explicitly dismissed
+
+
+  | 'expired'        // Signal validity window passed
+
+
+  | 'invalidated';   // Market conditions changed (e.g., direction flip)
+
+
+ 
+
+
+// Terminal statuses (trade lifecycle complete)
+
+
+export const TERMINAL_STATUSES: DetectionStatus[] = ['taken', 'executed', 'dismissed', 'expired', 'invalidated'];
+
+
+Now update detectionStore to add markAsTaken and use TERMINAL_STATUSES:
+
+Edit
+/home/user/forex-decision-engine-/forex-decision-engine/src/storage/detectionStore.ts
+  UpdateDetectionInput,
+
+
+  DetectionFilters,
+
+
+  DetectionSummary,
+
+
+  TERMINAL_STATUSES,
+
+
+} from '../types/detection.js';
+
+
+Edit
+/home/user/forex-decision-engine-/forex-decision-engine/src/storage/detectionStore.ts
+export async function markAsExecuted(id: string, reason?: string): Promise<DetectedTrade | null> {
+
+
+  return updateDetection(id, {
+
+
+    status: 'executed',
+
+
+    statusReason: reason || 'User executed trade',
+
+
+  });
+
+
+/**
+
+
+ * Mark detection as taken (unified terminology)
+
+
+ */
+
+
+export async function markAsTaken(id: string, reason?: string): Promise<DetectedTrade | null> {
+
+
+  return updateDetection(id, {
+
+
+    status: 'taken',
+
+
+    statusReason: reason || 'User took trade',
+
+
+  });
+
+
+}
+
+
+ 
+
+
+/**
+
+
+ * @deprecated Use markAsTaken instead - kept for backwards compatibility
+
+
+ */
+
+
+export async function markAsExecuted(id: string, reason?: string): Promise<DetectedTrade | null> {
+
+
+  return markAsTaken(id, reason || 'User executed trade');
+
+
+}
+
+
+Update cleanupInMemoryStore to use TERMINAL_STATUSES:
+
+Edit
+/home/user/forex-decision-engine-/forex-decision-engine/src/storage/detectionStore.ts
+    const age = now - new Date(detection.createdAt).getTime();
+
+
+    const isTerminal = ['dismissed', 'executed', 'expired', 'invalidated'].includes(detection.status);
+
+
+    const isTerminal = TERMINAL_STATUSES.includes(detection.status);
+
+
+ 
+
+
+    // Remove old entries or terminal entries older than 1 hour
+
+
+    if (age > IN_MEMORY_MAX_AGE_MS || (isTerminal && age > 60 * 60 * 1000)) {
+
+
+Update getDetectionSummary to include 'taken':
+
+Edit
+/home/user/forex-decision-engine-/forex-decision-engine/src/storage/detectionStore.ts
+    byStatus: {
+
+
+      cooling_down: 0,
+
+
+      eligible: 0,
+
+
+      executed: 0,
+
+
+      taken: 0,
+
+
+      executed: 0,  // Kept for backwards compatibility
+
+
+    coolingDown: 0,
+
+
+    eligible: 0,
+
+
+  };
+
+
+Update DetectionSummary type to include 'taken':
+
+Edit
+/home/user/forex-decision-engine-/forex-decision-engine/src/types/detection.ts
+export interface DetectionSummary {
+
+
+  total: number;
+
+
+  byStatus: Record<DetectionStatus, number>;
+
+
+  byStatus: {
+
+
+    cooling_down: number;
+
+
+    eligible: number;
+
+
+    taken: number;
+
+
+    executed: number;  // Backwards compat
+
+
+    dismissed: number;
+
+
+    expired: number;
+
+
+    invalidated: number;
+
+
+  };
+
+
+  coolingDown: number;
+
+
+  eligible: number;
+
+
+}
+
+
+Grep
+markAsExecuted
+Grep
+markAsExecuted|executeDetection
+Read
+/home/user/forex-decision-engine-/forex-decision-engine/src/services/detectionService.ts
+Read 50 lines
+Edit
+/home/user/forex-decision-engine-/forex-decision-engine/src/services/detectionService.ts
+/**
+
+
+ * Execute a detection (user took the trade)
+
+
+ * Allows execution from both 'cooling_down' and 'eligible' status
+
+
+ */
+
+
+export async function executeDetection(
+
+
+  id: string,
+
+
+  notes?: string
+
+
+): Promise<DetectedTrade | null> {
+
+
+  const detection = await detectionStore.getDetection(id);
+
+
+ 
+
+
+  if (!detection) {
+
+
+    logger.warn(`Detection not found: ${id}`);
+
+
+    return null;
+
+
+  }
+
+
+ 
+
+
+  // Allow execution from both cooling_down and eligible
+
+
+  if (!['cooling_down', 'eligible'].includes(detection.status)) {
+
+
+    logger.warn(`Cannot execute detection in status: ${detection.status}`);
+
+
+    return null;
+
+
+  }
+
+
+ 
+
+
+  logger.info(`Executing detection: ${id}`);
+
+
+  return detectionStore.markAsExecuted(id, notes);
+
+
+ * Take a detection (user took the trade) - unified terminology
+
+
+ * Allows taking from both 'cooling_down' and 'eligible' status
+
+
+ */
+
+
+export async function takeDetection(
+
+
+  id: string,
+
+
+  notes?: string
+
+
+): Promise<DetectedTrade | null> {
+
+
+  const detection = await detectionStore.getDetection(id);
+
+
+ 
+
+
+  if (!detection) {
+
+
+    logger.warn(`Detection not found: ${id}`);
+
+
+    return null;
+
+
+  }
+
+
+ 
+
+
+  // Allow taking from both cooling_down and eligible
+
+
+  if (!['cooling_down', 'eligible'].includes(detection.status)) {
+
+
+    logger.warn(`Cannot take detection in status: ${detection.status}`);
+
+
+    return null;
+
+
+  }
+
+
+ 
+
+
+  logger.info(`Taking detection: ${id}`);
+
+
+  return detectionStore.markAsTaken(id, notes);
+
+
+}
+
+
+ 
+
+
+/**
+
+
+ * @deprecated Use takeDetection instead - kept for backwards compatibility
+
+
+ */
+
+
+export async function executeDetection(
+
+
+  id: string,
+
+
+  notes?: string
+
+
+): Promise<DetectedTrade | null> {
+
+
+  return takeDetection(id, notes);
+
+
+}
+
+
+Now update server.ts to use takeDetection:
+
+Grep
+executeDetection
+Read
+/home/user/forex-decision-engine-/forex-decision-engine/src/server.ts
+Read 70 lines
+Edit
+/home/user/forex-decision-engine-/forex-decision-engine/src/server.ts
+/**
+
+
+ * Execute a detection (user took the trade)
+
+
+ * Atomically: marks detection as executed AND creates linked journal entry
+
+
+ */
+
+
+app.post('/api/detections/:id/execute', async (req, res) => {
+
+
+  try {
+
+
+    const { notes } = req.body || {};
+
+
+    
+
+
+    // First get the detection to capture all data before status change
+
+
+    const detectionData = await detectionService.getDetection(req.params.id);
+
+
+    
+
+
+    if (!detectionData) {
+
+
+      return res.status(404).json({ error: 'Detection not found' });
+
+
+    }
+
+
+    
+
+
+    if (detectionData.status !== 'cooling_down' && detectionData.status !== 'eligible') {
+
+
+      return res.status(400).json({ error: `Cannot execute detection in status: ${detectionData.status}` });
+
+
+    }
+
+
+    
+
+
+    // Mark detection as executed
+
+
+    const detection = await detectionService.executeDetection(req.params.id, notes);
+
+
+ 
+
+
+    if (!detection) {
+
+
+      return res.status(500).json({ error: 'Failed to execute detection' });
+
+
+    }
+
+
+    
+
+
+    // Extract prices with null safety - only create journal if we have valid entry price
+
+
+    const entryPrice = detection.entry?.price;
+
+
+    const stopLoss = detection.stopLoss?.price;
+
+
+    const takeProfit = detection.takeProfit?.price;
+
+
+    
+
+
+    let journalEntry = null;
+
+
+    
+
+
+    // Only create journal entry if we have essential price data
+
+
+    if (entryPrice && entryPrice > 0) {
+
+
+      try {
+
+
+        journalEntry = await journalStore.add({
+
+
+          source: 'signal',
+
+
+          symbol: detection.symbol,
+
+
+          direction: detection.direction as 'long' | 'short',
+
+
+          style: 'intraday',
+
+
+          grade: detection.grade,
+
+
+          strategyId: detection.strategyId,
+
+
+          strategyName: detection.strategyName || detection.strategyId,
+
+
+          confidence: detection.confidence,
+
+
+          tradeType: 'pullback',
+
+
+          entryPrice,
+
+
+          stopLoss: stopLoss || entryPrice * 0.99, // Fallback: 1% below entry for long
+
+
+          takeProfit: takeProfit || entryPrice * 1.02, // Fallback: 2% above entry for long
+
+
+          lots: detection.lotSize || 0.01,
+
+
+          status: 'running',
+
+
+          action: 'taken',
+
+
+          notes: notes || `Trade taken from detection ${detection.id.substring(0, 8)}`,
+
+
+        });
+
+
+        logger.info(`Journal entry created for detection ${detection.id}: ${journalEntry.id}`);
+
+
+      } catch (journalError) {
+
+
+        logger.warn('Failed to create journal entry for detection', { error: journalError, detectionId: detection.id });
+
+
+        // Continue - detection was executed successfully, journal is optional
+
+
+      }
+
+
+    } else {
+
+
+      logger.warn(`Detection ${detection.id} executed but journal skipped - no entry price`);
+
+
+    }
+
+
+ 
+
+
+    // Broadcast status change via SSE
+
+
+    broadcastUpgrade({
+
+
+      type: 'detection_executed',
+
+
+ * Take a detection (user took the trade) - unified terminology
+
+
+ * Atomically: marks detection as taken AND creates linked journal entry
+
+
+ * Endpoint: /api/detections/:id/take (also /execute for backwards compat)
+
+
+ */
+
+
+async function handleTakeDetection(req: any, res: any) {
+
+
+  try {
+
+
+    const { notes } = req.body || {};
+
+
+ 
+
+
+    // First get the detection to capture all data before status change
+
+
+    const detectionData = await detectionService.getDetection(req.params.id);
+
+
+ 
+
+
+    if (!detectionData) {
+
+
+      return res.status(404).json({ error: 'Detection not found' });
+
+
+    }
+
+
+ 
+
+
+    if (detectionData.status !== 'cooling_down' && detectionData.status !== 'eligible') {
+
+
+      return res.status(400).json({ error: `Cannot take detection in status: ${detectionData.status}` });
+
+
+    }
+
+
+ 
+
+
+    // Mark detection as taken (unified terminology)
+
+
+    const detection = await detectionService.takeDetection(req.params.id, notes);
+
+
+ 
+
+
+    if (!detection) {
+
+
+      return res.status(500).json({ error: 'Failed to take detection' });
+
+
+    }
+
+
+ 
+
+
+    // Extract prices with null safety - only create journal if we have valid entry price
+
+
+    const entryPrice = detection.entry?.price;
+
+
+    const stopLoss = detection.stopLoss?.price;
+
+
+    const takeProfit = detection.takeProfit?.price;
+
+
+ 
+
+
+    let journalEntry = null;
+
+
+ 
+
+
+    // Only create journal entry if we have essential price data
+
+
+    if (entryPrice && entryPrice > 0) {
+
+
+      try {
+
+
+        journalEntry = await journalStore.add({
+
+
+          source: 'signal',
+
+
+          symbol: detection.symbol,
+
+
+          direction: detection.direction as 'long' | 'short',
+
+
+          style: 'intraday',
+
+
+          grade: detection.grade,
+
+
+          strategyId: detection.strategyId,
+
+
+          strategyName: detection.strategyName || detection.strategyId,
+
+
+          confidence: detection.confidence,
+
+
+          tradeType: 'pullback',
+
+
+          entryPrice,
+
+
+          stopLoss: stopLoss || entryPrice * 0.99, // Fallback: 1% below entry for long
+
+
+          takeProfit: takeProfit || entryPrice * 1.02, // Fallback: 2% above entry for long
+
+
+          lots: detection.lotSize || 0.01,
+
+
+          status: 'running',
+
+
+          action: 'taken',
+
+
+          notes: notes || `Trade taken from detection ${detection.id.substring(0, 8)}`,
+
+
+        });
+
+
+        logger.info(`Journal entry created for detection ${detection.id}: ${journalEntry.id}`);
+
+
+      } catch (journalError) {
+
+
+        logger.warn('Failed to create journal entry for detection', { error: journalError, detectionId: detection.id });
+
+
+        // Continue - detection was taken successfully, journal is optional
+
+
+      }
+
+
+    } else {
+
+
+      logger.warn(`Detection ${detection.id} taken but journal skipped - no entry price`);
+
+
+    }
+
+
+ 
+
+
+    // Broadcast status change via SSE
+
+
+    broadcastUpgrade({
+
+
+      type: 'detection_taken',
+
+
+      detection,
+
+
+      journalEntry,
+
+
+    });
+
+
+Read
+/home/user/forex-decision-engine-/forex-decision-engine/src/server.ts
+Read 20 lines
+Edit
+/home/user/forex-decision-engine-/forex-decision-engine/src/server.ts
+    res.json({ success: true, detection, journalEntry });
+
+
+  } catch (error) {
+
+
+    logger.error('Execute detection error', { error });
+
+
+    res.status(500).json({
+
+
+      error: error instanceof Error ? error.message : 'Failed to execute detection',
+
+
+    });
+
+
+  }
+
+
+});
+
+
+    logger.error('Take detection error', { error });
+
+
+    res.status(500).json({
+
+
+      error: error instanceof Error ? error.message : 'Failed to take detection',
+
+
+    });
+
+
+  }
+
+
+}
+
+
+ 
+
+
+// Primary endpoint (unified terminology)
+
+
+app.post('/api/detections/:id/take', handleTakeDetection);
+
+
+ 
+
+
+// Backwards compatibility alias
+
+
+app.post('/api/detections/:id/execute', handleTakeDetection);
+
+
+/**
+
+
+ * Dismiss a detection (user decided not to take it)
+
+
+ */
+
+
+Now update the frontend to use 'taken' terminology:
+
+Grep
+executeDetection|/execute
+Read
+/home/user/forex-decision-engine-/forex-decision-engine/public/js/app.js
+Read 40 lines
+Edit
+/home/user/forex-decision-engine-/forex-decision-engine/public/js/app.js
+  /**
+
+
+   * Execute a detection (take the trade)
+
+
+   */
+
+
+  async executeDetection(id) {
+
+
+    try {
+
+
+      const response = await fetch(`/api/detections/${id}/execute`, {
+
+
+        method: 'POST',
+
+
+        headers: { 'Content-Type': 'application/json' },
+
+
+        body: JSON.stringify({})
+
+
+      });
+
+
+ 
+
+
+      if (!response.ok) throw new Error('Failed to execute detection');
+
+
+ 
+
+
+      UI.toast('Trade executed! Added to journal.', 'success');
+
+
+      await this.loadDetections();
+
+
+    } catch (error) {
+
+
+      console.error('Failed to execute detection:', error);
+
+
+      UI.toast('Failed to execute trade', 'error');
+
+
+    }
+
+
+   * Take a detection (unified terminology)
+
+
+   */
+
+
+  async takeDetection(id) {
+
+
+    try {
+
+
+      const response = await fetch(`/api/detections/${id}/take`, {
+
+
+        method: 'POST',
+
+
+        headers: { 'Content-Type': 'application/json' },
+
+
+        body: JSON.stringify({})
+
+
+      });
+
+
+ 
+
+
+      if (!response.ok) throw new Error('Failed to take detection');
+
+
+ 
+
+
+      UI.toast('Trade taken! Added to journal.', 'success');
+
+
+      await this.loadDetections();
+
+
+      await this.loadJournal();
+
+
+    } catch (error) {
+
+
+      console.error('Failed to take detection:', error);
+
+
+      UI.toast('Failed to take trade', 'error');
+
+
+    }
+
+
+  },
+
+
+ 
+
+
+  /**
+
+
+   * @deprecated Use takeDetection instead - kept for backwards compatibility
+
+
+   */
+
+
+  async executeDetection(id) {
+
+
+    return this.takeDetection(id);
+
+
+  },
+
+
+Edit
+/home/user/forex-decision-engine-/forex-decision-engine/public/js/app.js
+      <button class="btn btn-small btn-primary ${isCooling ? 'cooling' : ''}" onclick="App.executeDetection('${detection.id}')"
+
+
+      <button class="btn btn-small btn-primary ${isCooling ? 'cooling' : ''}" onclick="App.takeDetection('${detection.id}')"
+
+

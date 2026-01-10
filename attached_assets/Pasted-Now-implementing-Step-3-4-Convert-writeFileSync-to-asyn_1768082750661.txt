@@ -1,0 +1,431 @@
+Now implementing Step 3.4: Convert writeFileSync to async
+
+Grep
+writeFileSync
+Update journalStore to use async file operations:
+
+Read
+/home/user/forex-decision-engine-/forex-decision-engine/src/storage/journalStore.ts
+Read 70 lines
+Edit
+/home/user/forex-decision-engine-/forex-decision-engine/src/storage/journalStore.ts
+import fs from 'fs';
+
+
+import fsPromises from 'fs/promises';
+
+
+import path from 'path';
+
+
+Edit
+/home/user/forex-decision-engine-/forex-decision-engine/src/storage/journalStore.ts
+  private archiveOverflow(): void {
+
+
+    if (this.entries.length <= MAX_JOURNAL_ENTRIES) return;
+
+
+    
+
+
+    const overflow = this.entries.length - MAX_JOURNAL_ENTRIES;
+
+
+    const archiveEntries = this.entries.slice(0, overflow);
+
+
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+
+
+    const archiveFile = path.join(JOURNAL_ARCHIVE_DIR, `journal-archive-${timestamp}.json`);
+
+
+    
+
+
+    try {
+
+
+      if (!fs.existsSync(JOURNAL_ARCHIVE_DIR)) {
+
+
+        fs.mkdirSync(JOURNAL_ARCHIVE_DIR, { recursive: true });
+
+
+      }
+
+
+      fs.writeFileSync(archiveFile, JSON.stringify({
+
+
+  private async archiveOverflow(): Promise<void> {
+
+
+    if (this.entries.length <= MAX_JOURNAL_ENTRIES) return;
+
+
+ 
+
+
+    const overflow = this.entries.length - MAX_JOURNAL_ENTRIES;
+
+
+    const archiveEntries = this.entries.slice(0, overflow);
+
+
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+
+
+    const archiveFile = path.join(JOURNAL_ARCHIVE_DIR, `journal-archive-${timestamp}.json`);
+
+
+ 
+
+
+    try {
+
+
+      await fsPromises.mkdir(JOURNAL_ARCHIVE_DIR, { recursive: true });
+
+
+      await fsPromises.writeFile(archiveFile, JSON.stringify({
+
+
+      logger.error('Failed to archive old journal entries', { error });
+
+
+    }
+
+
+  }
+
+
+Edit
+/home/user/forex-decision-engine-/forex-decision-engine/src/storage/journalStore.ts
+  private persist(): void {
+
+
+    const tempPath = `${this.filePath}.tmp`;
+
+
+    try {
+
+
+      this.archiveOverflow();
+
+
+      const dir = path.dirname(this.filePath);
+
+
+      if (!fs.existsSync(dir)) {
+
+
+        fs.mkdirSync(dir, { recursive: true });
+
+
+      }
+
+
+      fs.writeFileSync(tempPath, JSON.stringify({
+
+
+        entries: this.entries,
+
+
+      }, null, 2));
+
+
+      fs.renameSync(tempPath, this.filePath);
+
+
+    } catch (e) {
+
+
+      logger.error('Failed to save journal', e);
+
+
+      if (fs.existsSync(tempPath)) {
+
+
+        try { fs.unlinkSync(tempPath); } catch {}
+
+
+      }
+
+
+  private async persist(): Promise<void> {
+
+
+    const tempPath = `${this.filePath}.tmp`;
+
+
+    try {
+
+
+      await this.archiveOverflow();
+
+
+      const dir = path.dirname(this.filePath);
+
+
+      await fsPromises.mkdir(dir, { recursive: true });
+
+
+      await fsPromises.writeFile(tempPath, JSON.stringify({
+
+
+        entries: this.entries,
+
+
+      }, null, 2));
+
+
+      await fsPromises.rename(tempPath, this.filePath);
+
+
+    } catch (e) {
+
+
+      logger.error('Failed to save journal', e);
+
+
+      try {
+
+
+        await fsPromises.unlink(tempPath);
+
+
+      } catch { /* ignore cleanup errors */ }
+
+
+    }
+
+
+  }
+
+
+Grep
+this\.persist\(\)
+Edit
+/home/user/forex-decision-engine-/forex-decision-engine/src/storage/journalStore.ts
+this.persist();
+
+
+await this.persist();
+
+
+Now update signalStore.ts similarly:
+
+Edit
+/home/user/forex-decision-engine-/forex-decision-engine/src/storage/signalStore.ts
+import fs from 'fs';
+
+
+import fsPromises from 'fs/promises';
+
+
+import path from 'path';
+
+
+Edit
+/home/user/forex-decision-engine-/forex-decision-engine/src/storage/signalStore.ts
+  private archiveOverflow(): void {
+
+
+    if (this.signals.length <= MAX_SIGNAL_ENTRIES) return;
+
+
+    
+
+
+    const overflow = this.signals.length - MAX_SIGNAL_ENTRIES;
+
+
+    const archiveSignals = this.signals.slice(0, overflow);
+
+
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+
+
+    const archiveFile = path.join(SIGNAL_ARCHIVE_DIR, `signals-archive-${timestamp}.json`);
+
+
+    
+
+
+    try {
+
+
+      if (!fs.existsSync(SIGNAL_ARCHIVE_DIR)) {
+
+
+        fs.mkdirSync(SIGNAL_ARCHIVE_DIR, { recursive: true });
+
+
+      }
+
+
+      fs.writeFileSync(archiveFile, JSON.stringify({
+
+
+  private async archiveOverflow(): Promise<void> {
+
+
+    if (this.signals.length <= MAX_SIGNAL_ENTRIES) return;
+
+
+ 
+
+
+    const overflow = this.signals.length - MAX_SIGNAL_ENTRIES;
+
+
+    const archiveSignals = this.signals.slice(0, overflow);
+
+
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+
+
+    const archiveFile = path.join(SIGNAL_ARCHIVE_DIR, `signals-archive-${timestamp}.json`);
+
+
+ 
+
+
+    try {
+
+
+      await fsPromises.mkdir(SIGNAL_ARCHIVE_DIR, { recursive: true });
+
+
+      await fsPromises.writeFile(archiveFile, JSON.stringify({
+
+
+      logger.error('Failed to archive old signals', { error });
+
+
+    }
+
+
+  }
+
+
+Edit
+/home/user/forex-decision-engine-/forex-decision-engine/src/storage/signalStore.ts
+  private persist(): void {
+
+
+    const tempPath = `${this.filePath}.tmp`;
+
+
+    try {
+
+
+      this.archiveOverflow();
+
+
+      const dir = path.dirname(this.filePath);
+
+
+      if (!fs.existsSync(dir)) {
+
+
+        fs.mkdirSync(dir, { recursive: true });
+
+
+      }
+
+
+      fs.writeFileSync(tempPath, JSON.stringify({
+
+
+        signals: this.signals,
+
+
+        nextId: this.nextId,
+
+
+      }, null, 2));
+
+
+      fs.renameSync(tempPath, this.filePath);
+
+
+    } catch (e) {
+
+
+      logger.error('Failed to save signals', e);
+
+
+      if (fs.existsSync(tempPath)) {
+
+
+        try { fs.unlinkSync(tempPath); } catch {}
+
+
+      }
+
+
+  private async persist(): Promise<void> {
+
+
+    const tempPath = `${this.filePath}.tmp`;
+
+
+    try {
+
+
+      await this.archiveOverflow();
+
+
+      const dir = path.dirname(this.filePath);
+
+
+      await fsPromises.mkdir(dir, { recursive: true });
+
+
+      await fsPromises.writeFile(tempPath, JSON.stringify({
+
+
+        signals: this.signals,
+
+
+        nextId: this.nextId,
+
+
+      }, null, 2));
+
+
+      await fsPromises.rename(tempPath, this.filePath);
+
+
+    } catch (e) {
+
+
+      logger.error('Failed to save signals', e);
+
+
+      try {
+
+
+        await fsPromises.unlink(tempPath);
+
+
+      } catch { /* ignore cleanup errors */ }
+
+
+    }
+
+
+  }
+
+
+Edit
+/home/user/forex-decision-engine-/forex-decision-engine/src/storage/signalStore.ts
+this.persist();
+
+
+await this.persist();
+
+

@@ -1058,8 +1058,9 @@ app.get('/api/detections/:id', async (req, res) => {
 });
 
 /**
- * Execute a detection (user took the trade)
- * Atomically: marks detection as executed AND creates linked journal entry
+ * Take a detection (user took the trade) - unified terminology
+ * Atomically: marks detection as taken AND creates linked journal entry
+ * Note: /execute endpoint kept for backwards compatibility
  */
 app.post('/api/detections/:id/execute', validateParams(IdParamSchema), validateBody(DetectionExecuteSchema), async (req, res) => {
   try {
@@ -1073,11 +1074,11 @@ app.post('/api/detections/:id/execute', validateParams(IdParamSchema), validateB
     }
     
     if (detectionData.status !== 'cooling_down' && detectionData.status !== 'eligible') {
-      return res.status(400).json({ error: `Cannot execute detection in status: ${detectionData.status}` });
+      return res.status(400).json({ error: `Cannot take detection in status: ${detectionData.status}` });
     }
     
-    // Mark detection as executed
-    const detection = await detectionService.executeDetection(req.params.id, notes);
+    // Mark detection as taken (unified terminology)
+    const detection = await detectionService.takeDetection(req.params.id, notes);
 
     if (!detection) {
       return res.status(500).json({ error: 'Failed to execute detection' });

@@ -152,10 +152,10 @@ export async function invalidateOnConditionChange(
 // ═══════════════════════════════════════════════════════════════
 
 /**
- * Execute a detection (user took the trade)
- * Allows execution from both 'cooling_down' and 'eligible' status
+ * Take a detection (user took the trade) - unified terminology
+ * Allows taking from both 'cooling_down' and 'eligible' status
  */
-export async function executeDetection(
+export async function takeDetection(
   id: string,
   notes?: string
 ): Promise<DetectedTrade | null> {
@@ -166,14 +166,24 @@ export async function executeDetection(
     return null;
   }
 
-  // Allow execution from both cooling_down and eligible
+  // Allow taking from both cooling_down and eligible
   if (!['cooling_down', 'eligible'].includes(detection.status)) {
-    logger.warn(`Cannot execute detection in status: ${detection.status}`);
+    logger.warn(`Cannot take detection in status: ${detection.status}`);
     return null;
   }
 
-  logger.info(`Executing detection: ${id}`);
-  return detectionStore.markAsExecuted(id, notes);
+  logger.info(`Taking detection: ${id}`);
+  return detectionStore.markAsTaken(id, notes);
+}
+
+/**
+ * @deprecated Use takeDetection instead - kept for backwards compatibility
+ */
+export async function executeDetection(
+  id: string,
+  notes?: string
+): Promise<DetectedTrade | null> {
+  return takeDetection(id, notes);
 }
 
 /**

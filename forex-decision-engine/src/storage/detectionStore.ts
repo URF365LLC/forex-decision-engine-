@@ -13,6 +13,7 @@ import {
   UpdateDetectionInput,
   DetectionFilters,
   DetectionSummary,
+  TERMINAL_STATUSES,
 } from '../types/detection.js';
 import { randomUUID } from 'crypto';
 import { INSTRUMENT_MAP } from '../config/e8InstrumentSpecs.js';
@@ -317,11 +318,21 @@ export async function deleteDetection(id: string): Promise<boolean> {
 // STATUS MANAGEMENT
 // ═══════════════════════════════════════════════════════════════
 
-export async function markAsExecuted(id: string, reason?: string): Promise<DetectedTrade | null> {
+/**
+ * Mark detection as taken (unified terminology)
+ */
+export async function markAsTaken(id: string, reason?: string): Promise<DetectedTrade | null> {
   return updateDetection(id, {
-    status: 'executed',
-    statusReason: reason || 'User executed trade',
+    status: 'taken',
+    statusReason: reason || 'User took trade',
   });
+}
+
+/**
+ * @deprecated Use markAsTaken instead - kept for backwards compatibility
+ */
+export async function markAsExecuted(id: string, reason?: string): Promise<DetectedTrade | null> {
+  return markAsTaken(id, reason || 'User executed trade');
 }
 
 export async function markAsDismissed(id: string, reason?: string): Promise<DetectedTrade | null> {
@@ -410,7 +421,8 @@ export async function getDetectionSummary(): Promise<DetectionSummary> {
     byStatus: {
       cooling_down: 0,
       eligible: 0,
-      executed: 0,
+      taken: 0,
+      executed: 0,  // Backwards compat
       dismissed: 0,
       expired: 0,
       invalidated: 0,
@@ -542,7 +554,7 @@ export function cleanupInMemoryStore(): number {
     }
 
     const age = now - new Date(detection.createdAt).getTime();
-    const isTerminal = ['dismissed', 'executed', 'expired', 'invalidated'].includes(detection.status);
+    const isTerminal = TERMINAL_STATUSES.includes(detection.status);
 
     // Remove old entries or terminal entries older than 1 hour
     if (age > IN_MEMORY_MAX_AGE_MS || (isTerminal && age > 60 * 60 * 1000)) {
