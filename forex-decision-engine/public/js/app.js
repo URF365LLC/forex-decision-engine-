@@ -1267,21 +1267,21 @@ const App = {
         const decision = this.currentTradeData;
         if (!decision) return;
 
+        const strategyId = decision.strategyId || this.selectedStrategy;
+
         const entry = {
           source: 'signal',
           symbol: decision.symbol,
           direction: decision.direction,
-          style: decision.style,
+          style: decision.style || 'intraday',
           grade: decision.grade,
-          // Strategy metadata (Phase 3)
-          strategyId: decision.strategyId || this.selectedStrategy,
-          strategyName: decision.strategyName || this.getStrategyName(this.selectedStrategy),
+          strategyId: strategyId,
+          strategyName: decision.strategyName || this.getStrategyName(strategyId),
           confidence: decision.confidence,
-          reasonCodes: decision.reasonCodes || [],
-          tradeType: 'pullback',
-          entryZoneLow: decision.entryZone?.low,
-          entryZoneHigh: decision.entryZone?.high,
+          riskReward: decision.riskReward,
+          tradeType: this.inferTradeType(strategyId),
           action: 'taken',
+          entryDate: new Date().toISOString(),
           ...updates,
         };
 
