@@ -935,31 +935,35 @@ const App = {
    */
   async quickLogTrade(decision, action) {
     try {
+      const strategyId = decision.strategyId || this.selectedStrategy;
+      const entryPrice = decision.entry?.price || decision.entryZone?.optimalEntry ||
+                         (decision.entryZone ? (decision.entryZone.low + decision.entryZone.high) / 2 : 0);
+
       const entry = {
         source: 'signal',
         symbol: decision.symbol,
         direction: decision.direction,
-        style: decision.style,
+        style: decision.style || 'intraday',
         grade: decision.grade,
-        // Strategy metadata (Phase 3)
-        strategyId: decision.strategyId || this.selectedStrategy,
-        strategyName: decision.strategyName || this.getStrategyName(this.selectedStrategy),
+        strategyId: strategyId,
+        strategyName: decision.strategyName || this.getStrategyName(strategyId),
         confidence: decision.confidence,
-        reasonCodes: decision.reasonCodes || [],
-        tradeType: 'pullback',
-        entryZoneLow: decision.entryZone?.low,
-        entryZoneHigh: decision.entryZone?.high,
-        entryPrice: decision.entryZone ? (decision.entryZone.low + decision.entryZone.high) / 2 : (decision.entryPrice || 0),
+        riskReward: decision.riskReward,
+        tradeType: this.inferTradeType(strategyId),
+        entry: entryPrice,
         stopLoss: decision.stopLoss?.price || 0,
-        takeProfit: decision.takeProfit?.price || 0,
-        lots: decision.position?.lots || 0,
+        takeProfit1: decision.takeProfit?.price || 0,
+        lotSize: decision.position?.lots || 0.01,
         status: 'closed',
         action: action,
+        entryDate: new Date().toISOString(),
       };
 
       await API.addJournalEntry(entry);
       UI.toast(`Trade ${action}`, 'success');
+      await this.loadJournal();
     } catch (error) {
+      console.error('Failed to log trade:', error);
       UI.toast(`Failed to log trade: ${error.message}`, 'error');
     }
   },
