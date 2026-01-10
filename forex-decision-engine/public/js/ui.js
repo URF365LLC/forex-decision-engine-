@@ -338,8 +338,19 @@ const UI = {
     const decisionKey = `${decision.strategyId}:${decision.symbol}`;
     const sentimentId = `sentiment-${decision.strategyId}-${decision.symbol}`.replace(/[^a-zA-Z0-9-]/g, '-');
 
+    // Existing trade warning for bidirectional awareness
+    const existingTrade = decision.existingTrade;
+    const hasExistingTrade = !!existingTrade;
+    const existingTradeHTML = hasExistingTrade ? `
+      <div class="existing-trade-warning">
+        <span class="warning-icon">⚠️</span>
+        <span class="warning-text">Trade already ${existingTrade.source === 'journal' ? 'RUNNING' : 'DETECTED'} @ ${existingTrade.entryPrice?.toFixed(5) || 'N/A'}</span>
+        <span class="warning-status">(${existingTrade.status})</span>
+      </div>
+    ` : '';
+
     return `
-      <div class="decision-card ${gradeClass} ${staleClass}" data-key="${decisionKey}" data-symbol="${decision.symbol}" data-strategy="${decision.strategyId}" data-grade="${decision.grade}" tabindex="0" role="article" aria-label="${decision.displayName} ${decision.direction || 'no trade'} signal, Grade ${decision.grade}">
+      <div class="decision-card ${gradeClass} ${staleClass} ${hasExistingTrade ? 'has-existing-trade' : ''}" data-key="${decisionKey}" data-symbol="${decision.symbol}" data-strategy="${decision.strategyId}" data-grade="${decision.grade}" tabindex="0" role="article" aria-label="${decision.displayName} ${decision.direction || 'no trade'} signal, Grade ${decision.grade}">
         <div class="card-header">
           <div>
             <span class="card-symbol">${decision.displayName}</span>
@@ -348,6 +359,7 @@ const UI = {
           <span class="card-direction ${directionClass}">${directionText}</span>
         </div>
         ${strategyInfo}
+        ${existingTradeHTML}
         <div class="card-body">
           ${tradeInfoHTML}
           ${noTradeReasonHTML}
@@ -368,7 +380,9 @@ const UI = {
         </div>
         ${!isNoTrade ? `
         <div class="card-journal-actions">
-          <button class="btn btn-journal btn-taken" onclick="App.logTrade('${decisionKey}', 'taken')">✓ Took Trade</button>
+          <button class="btn btn-journal btn-taken ${hasExistingTrade ? 'disabled' : ''}" onclick="App.logTrade('${decisionKey}', 'taken')" ${hasExistingTrade ? 'disabled title="Trade already exists"' : ''}>
+            ${hasExistingTrade ? '⚠️ Already Taken' : '✓ Took Trade'}
+          </button>
           <button class="btn btn-journal btn-skipped" onclick="App.logTrade('${decisionKey}', 'skipped')">✗ Skipped</button>
           <button class="btn btn-journal btn-missed" onclick="App.logTrade('${decisionKey}', 'missed')">⏰ Missed</button>
         </div>
@@ -537,10 +551,12 @@ const UI = {
       const rr = d.riskReward ? d.riskReward.toFixed(1) : '-';
       const stratName = d.strategyName || d.strategyId || '-';
       const key = `${d.strategyId || 'default'}:${d.symbol}`;
+      const hasExisting = !!d.existingTrade;
+      const existingIcon = hasExisting ? '⚠️ ' : '';
 
       return `
-        <tr data-key="${key}">
-          <td class="col-symbol">${d.symbol}</td>
+        <tr data-key="${key}" class="${hasExisting ? 'has-existing-trade' : ''}">
+          <td class="col-symbol">${existingIcon}${d.symbol}</td>
           <td class="col-direction ${dirClass}">${d.direction?.toUpperCase() || '-'}</td>
           <td class="col-grade"><span class="grade-badge ${gradeClass}">${d.grade}</span></td>
           <td class="col-price">${d.entry?.formatted || '-'}</td>
@@ -552,7 +568,9 @@ const UI = {
           <td>${stratName}</td>
           <td class="col-actions">
             ${d.grade !== 'no-trade' ? `
-              <button class="table-btn primary" onclick="App.takeSignalTrade('${key}')">Take</button>
+              <button class="table-btn primary ${hasExisting ? 'disabled' : ''}" onclick="App.takeSignalTrade('${key}')" ${hasExisting ? 'disabled title="Trade already exists"' : ''}>
+                ${hasExisting ? 'Exists' : 'Take'}
+              </button>
               <button class="table-btn" onclick="App.copySignal('${key}')">Copy</button>
             ` : ''}
           </td>

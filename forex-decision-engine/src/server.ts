@@ -51,6 +51,7 @@ import {
 } from './validation/schemas.js';
 import { z } from 'zod';
 import * as detectionService from './services/detectionService.js';
+import * as detectionStore from './storage/detectionStore.js';
 import { DetectionFilters } from './types/detection.js';
 import { initDb, runMigrations, isDbAvailable } from './db/client.js';
 
@@ -396,45 +397,60 @@ app.post('/api/scan', validateBody(ScanRequestSchema), async (req, res) => {
   }
   
   try {
-    logger.info(`Scanning with strategy: ${strategyId}`, { 
-      symbols: sanitizedSymbols.length, 
+    logger.info(`Scanning with strategy: ${strategyId}`, {
+      symbols: sanitizedSymbols.length,
       paperTrading: isPaperTrading,
     });
-    
+
     const decisions = await scanWithStrategy(sanitizedSymbols, strategyId, userSettings);
-    
-    // Save trade signals to both signalStore AND detectionStore for unified lifecycle
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // MANUAL SCAN IS EPHEMERAL - NO PERSISTENCE
+    // Only check for existing trades for dedupe awareness (bidirectional)
+    // ═══════════════════════════════════════════════════════════════════════════
+
     for (const decision of decisions) {
-      if (decision.grade !== 'no-trade') {
-        // Save to signalStore for history
-        await signalStore.saveSignal(decision as any);
-        
-        // Also save to detectionStore for unified trade lifecycle
-        // Only bridge high-quality signals (B grade or better) to detection system
-        const gradeRank: Record<string, number> = { 'A+': 5, 'A': 4, 'B+': 3, 'B': 2, 'C': 1, 'no-trade': 0 };
-        const decisionGrade = decision.grade || 'no-trade';
-        const isHighQuality = (gradeRank[decisionGrade] ?? 0) >= 2; // B grade or better
-        
-        if (isHighQuality && decision.direction && decision.entry) {
-          try {
-            const enrichedDecision = {
-              ...decision,
-              grade: decisionGrade,
-              strategyId: decision.strategyId || strategyId,
-              strategyName: decision.strategyName || strategyId,
-              timestamp: decision.timestamp || new Date().toISOString(),
-            };
-            await detectionService.processAutoScanDecision(enrichedDecision);
-          } catch (detectionError) {
-            logger.warn(`Failed to create detection for manual scan: ${decision.symbol}`, { error: detectionError });
-          }
+      if (decision.grade !== 'no-trade' && decision.direction) {
+        // Check for existing trade in Journal (running/pending)
+        const journalTrades = await journalStore.findActiveBySymbolDirection(
+          decision.symbol,
+          decision.direction,
+          ['running', 'pending']
+        );
+
+        // Check for existing detection (cooling_down/eligible)
+        const existingDetection = await detectionStore.findActiveDetection(
+          decision.strategyId || strategyId,
+          decision.symbol,
+          decision.direction
+        );
+
+        // Annotate decision with existing trade info for UI warning
+        if (journalTrades.length > 0) {
+          (decision as any).existingTrade = {
+            source: 'journal',
+            id: journalTrades[0].id,
+            status: journalTrades[0].status,
+            entryPrice: journalTrades[0].entryPrice,
+          };
+        } else if (existingDetection) {
+          (decision as any).existingTrade = {
+            source: 'detection',
+            id: existingDetection.id,
+            status: existingDetection.status,
+            entryPrice: existingDetection.entry?.price,
+          };
         }
       }
     }
 
+    // NOTE: Removed persistence to signalStore and detectionStore
+    // Manual scan is now ephemeral - only saves to Journal when user clicks "Take Trade"
+
     // Sort by grade (A+ first), then by symbol for grouping
-    const gradeOrder: Record<string, number> = { 'A+': 0, 'A': 1, 'B+': 2, 'B': 3, 'C': 4, 'no-trade': 5 };
-    decisions.sort((a, b) => {
+    // Clone array before sorting to avoid mutation
+    const sortedDecisions = [...decisions].sort((a, b) => {
+      const gradeOrder: Record<string, number> = { 'A+': 0, 'A': 1, 'B+': 2, 'B': 3, 'C': 4, 'no-trade': 5 };
       const gradeCompare = (gradeOrder[a.grade] ?? 5) - (gradeOrder[b.grade] ?? 5);
       if (gradeCompare !== 0) return gradeCompare;
       return a.symbol.localeCompare(b.symbol);
@@ -442,14 +458,14 @@ app.post('/api/scan', validateBody(ScanRequestSchema), async (req, res) => {
 
     res.json({
       success: true,
-      count: decisions.length,
-      trades: decisions.filter(d => d.grade !== 'no-trade').length,
-      decisions,
+      count: sortedDecisions.length,
+      trades: sortedDecisions.filter(d => d.grade !== 'no-trade').length,
+      decisions: sortedDecisions,
     });
   } catch (error) {
     logger.error('Scan error', { error });
-    res.status(500).json({ 
-      error: error instanceof Error ? error.message : 'Scan failed' 
+    res.status(500).json({
+      error: error instanceof Error ? error.message : 'Scan failed'
     });
   } finally {
     releaseScanLock(lockKey);
