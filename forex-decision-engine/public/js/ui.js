@@ -469,21 +469,44 @@ const UI = {
 
   /**
    * Render watchlist sidebar (Bloomberg style)
+   * Now handles multi-signal structure: signalsBySymbol[symbol] = Decision[]
    */
-  renderWatchlistSidebar(containerId, symbols, selectedSymbols = [], signals = {}) {
+  renderWatchlistSidebar(containerId, symbols, selectedSymbols = [], signalsBySymbol = {}) {
     const container = this.$(containerId);
     if (!container) return;
-    
+
     container.innerHTML = symbols.map(symbol => {
       const isSelected = selectedSymbols.includes(symbol);
-      const signal = signals[symbol];
-      const signalClass = signal ? (signal.direction === 'long' ? 'long' : 'short') : 'none';
-      
+      const signals = signalsBySymbol[symbol] || [];  // Array of decisions
+      const signalCount = signals.length;
+
+      // Determine dominant direction (most signals)
+      let longCount = 0, shortCount = 0;
+      for (const s of signals) {
+        if (s.direction === 'long') longCount++;
+        else if (s.direction === 'short') shortCount++;
+      }
+      const dominantDirection = longCount > shortCount ? 'long' : shortCount > 0 ? 'short' : 'none';
+
+      // Find best grade
+      const gradeOrder = ['A+', 'A', 'B+', 'B', 'C'];
+      let bestGrade = 'C';
+      for (const s of signals) {
+        if (gradeOrder.indexOf(s.grade) < gradeOrder.indexOf(bestGrade)) {
+          bestGrade = s.grade;
+        }
+      }
+
       return `
         <div class="watchlist-item-compact ${isSelected ? 'selected' : ''}" data-symbol="${symbol}">
           <input type="checkbox" ${isSelected ? 'checked' : ''}>
           <span class="symbol-name">${symbol}</span>
-          ${signal ? `<span class="signal-indicator" style="background:var(--${signalClass === 'long' ? 'positive' : 'negative'})"></span>` : ''}
+          ${signalCount > 0 ? `
+            <span class="signal-badge ${dominantDirection}" title="${signalCount} signal(s), best: ${bestGrade}">
+              ${signalCount > 1 ? signalCount : ''}
+            </span>
+            <span class="signal-indicator" style="background:var(--${dominantDirection === 'long' ? 'positive' : 'negative'})"></span>
+          ` : ''}
         </div>
       `;
     }).join('');
