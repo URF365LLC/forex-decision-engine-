@@ -8,6 +8,7 @@ import { getInstrumentSpec } from '../config/e8InstrumentSpecs.js';
 import { getDb, isDbAvailable } from '../db/client.js';
 import { randomUUID } from 'crypto';
 import fs from 'fs';
+import fsPromises from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -167,19 +168,17 @@ class JournalStore {
     return this.recalcExcursions(merged);
   }
   
-  private archiveOverflow(): void {
+  private async archiveOverflow(): Promise<void> {
     if (this.entries.length <= MAX_JOURNAL_ENTRIES) return;
-    
+
     const overflow = this.entries.length - MAX_JOURNAL_ENTRIES;
     const archiveEntries = this.entries.slice(0, overflow);
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     const archiveFile = path.join(JOURNAL_ARCHIVE_DIR, `journal-archive-${timestamp}.json`);
-    
+
     try {
-      if (!fs.existsSync(JOURNAL_ARCHIVE_DIR)) {
-        fs.mkdirSync(JOURNAL_ARCHIVE_DIR, { recursive: true });
-      }
-      fs.writeFileSync(archiveFile, JSON.stringify({
+      await fsPromises.mkdir(JOURNAL_ARCHIVE_DIR, { recursive: true });
+      await fsPromises.writeFile(archiveFile, JSON.stringify({
         archivedAt: new Date().toISOString(),
         count: archiveEntries.length,
         entries: archiveEntries,
@@ -205,23 +204,21 @@ class JournalStore {
     }
   }
 
-  private persist(): void {
+  private async persist(): Promise<void> {
     const tempPath = `${this.filePath}.tmp`;
     try {
-      this.archiveOverflow();
+      await this.archiveOverflow();
       const dir = path.dirname(this.filePath);
-      if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
-      }
-      fs.writeFileSync(tempPath, JSON.stringify({
+      await fsPromises.mkdir(dir, { recursive: true });
+      await fsPromises.writeFile(tempPath, JSON.stringify({
         entries: this.entries,
       }, null, 2));
-      fs.renameSync(tempPath, this.filePath);
+      await fsPromises.rename(tempPath, this.filePath);
     } catch (e) {
       logger.error('Failed to save journal', e);
-      if (fs.existsSync(tempPath)) {
-        try { fs.unlinkSync(tempPath); } catch {}
-      }
+      try {
+        await fsPromises.unlink(tempPath);
+      } catch { /* ignore cleanup errors */ }
     }
   }
 
@@ -348,7 +345,7 @@ class JournalStore {
     }
 
     this.entries.push(normalized);
-    this.persist();
+    await this.persist();
 
     logger.info(`Added journal entry ${normalized.id} for ${entry.symbol} (${entry.action})`);
     return normalized;
@@ -399,7 +396,7 @@ class JournalStore {
     const updatedEntry = this.mergeAndNormalize(entry, updates);
 
     this.entries[index] = updatedEntry;
-    this.persist();
+    await this.persist();
 
     logger.info(`Updated journal entry ${id}`);
     return updatedEntry;
@@ -524,7 +521,7 @@ class JournalStore {
     if (index === -1) return false;
 
     this.entries.splice(index, 1);
-    this.persist();
+    await this.persist();
 
     logger.info(`Deleted journal entry ${id}`);
     return true;

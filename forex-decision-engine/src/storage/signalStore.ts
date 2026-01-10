@@ -64,7 +64,29 @@ class SignalStore {
     this.load();
   }
 
-  private archiveOverflow(): void {
+  private async archiveOverflowAsync(): Promise<void> {
+    if (this.signals.length <= MAX_SIGNAL_ENTRIES) return;
+
+    const overflow = this.signals.length - MAX_SIGNAL_ENTRIES;
+    const archiveSignals = this.signals.slice(0, overflow);
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const archiveFile = path.join(SIGNAL_ARCHIVE_DIR, `signals-archive-${timestamp}.json`);
+
+    try {
+      await fsPromises.mkdir(SIGNAL_ARCHIVE_DIR, { recursive: true });
+      await fsPromises.writeFile(archiveFile, JSON.stringify({
+        archivedAt: new Date().toISOString(),
+        count: archiveSignals.length,
+        signals: archiveSignals,
+      }, null, 2));
+      this.signals = this.signals.slice(overflow);
+      logger.warn(`Archived ${archiveSignals.length} signals to control storage growth (${archiveFile})`);
+    } catch (error) {
+      logger.error('Failed to archive old signals', { error });
+    }
+  }
+
+  private archiveOverflowSync(): void {
     if (this.signals.length <= MAX_SIGNAL_ENTRIES) return;
     
     const overflow = this.signals.length - MAX_SIGNAL_ENTRIES;
@@ -94,7 +116,7 @@ class SignalStore {
         const data = JSON.parse(fs.readFileSync(this.filePath, 'utf-8'));
         this.signals = data.signals || [];
         this.nextId = data.nextId || 1;
-        this.archiveOverflow();
+        this.archiveOverflowSync();
         logger.info(`Loaded ${this.signals.length} signals from file`);
       }
     } catch (e) {
@@ -135,7 +157,7 @@ class SignalStore {
     const tempPath = `${this.filePath}.tmp`;
     
     try {
-      this.archiveOverflow();
+      await this.archiveOverflowAsync();
       const dir = path.dirname(this.filePath);
       
       try {
@@ -178,7 +200,7 @@ class SignalStore {
     
     const tempPath = `${this.filePath}.tmp`;
     try {
-      this.archiveOverflow();
+      this.archiveOverflowSync();
       const dir = path.dirname(this.filePath);
       if (!fs.existsSync(dir)) {
         fs.mkdirSync(dir, { recursive: true });
