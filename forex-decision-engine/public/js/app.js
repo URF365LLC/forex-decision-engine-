@@ -18,6 +18,26 @@ const App = {
   upgradeEventSource: null,
 
   /**
+   * Infer trade type from strategy ID
+   */
+  inferTradeType(strategyId) {
+    const typeMap = {
+      'ema-pullback-intra': 'pullback',
+      'rsi-bounce': 'counter-trend',
+      'rsi-oversold': 'counter-trend',
+      'stochastic-oversold': 'counter-trend',
+      'bollinger-mr': 'mean-reversion',
+      'williams-ema': 'momentum',
+      'triple-ema': 'trend',
+      'break-retest': 'breakout',
+      'cci-zero-line': 'momentum',
+      'multi-oscillator-momentum': 'momentum',
+      'liquidity-sweep': 'liquidity-grab',
+    };
+    return typeMap[strategyId] || 'other';
+  },
+
+  /**
    * Initialize the application
    */
   async init() {
@@ -256,21 +276,37 @@ const App = {
    * Render dashboard watchlist sidebar
    */
   renderDashboardWatchlist() {
-    // Build signal map from current results
-    const signalMap = {};
+    // Dual structure to prevent collision when multiple strategies detect same symbol
+    const decisionsBySymbol = {};  // symbol → Decision[] (for lists/rendering)
+    const decisionsByKey = {};     // composite key → Decision (for direct lookups)
+
     for (const decision of this.results) {
       if (decision.grade !== 'no-trade') {
-        signalMap[decision.symbol] = decision;
+        // Composite key: symbol::strategyId::style::timeframe
+        const timeframe = decision.timeframes?.entry || 'H1';
+        const key = `${decision.symbol}::${decision.strategyId}::${decision.style || 'intraday'}::${timeframe}`;
+
+        decisionsByKey[key] = decision;
+
+        // Array per symbol for multi-signal display
+        if (!decisionsBySymbol[decision.symbol]) {
+          decisionsBySymbol[decision.symbol] = [];
+        }
+        decisionsBySymbol[decision.symbol].push(decision);
       }
     }
-    
-    // Render each asset class
-    UI.renderWatchlistSidebar('forex-watchlist', this.universe.forex, this.selectedSymbols, signalMap);
-    UI.renderWatchlistSidebar('metals-watchlist', this.universe.metals, this.selectedSymbols, signalMap);
-    UI.renderWatchlistSidebar('indices-watchlist', this.universe.indices, this.selectedSymbols, signalMap);
-    UI.renderWatchlistSidebar('commodities-watchlist', this.universe.commodities, this.selectedSymbols, signalMap);
-    UI.renderWatchlistSidebar('crypto-watchlist', this.universe.crypto, this.selectedSymbols, signalMap);
-    
+
+    // Store for later lookups
+    this.decisionsByKey = decisionsByKey;
+    this.decisionsBySymbol = decisionsBySymbol;
+
+    // Render each asset class with multi-signal aware structure
+    UI.renderWatchlistSidebar('forex-watchlist', this.universe.forex, this.selectedSymbols, decisionsBySymbol);
+    UI.renderWatchlistSidebar('metals-watchlist', this.universe.metals, this.selectedSymbols, decisionsBySymbol);
+    UI.renderWatchlistSidebar('indices-watchlist', this.universe.indices, this.selectedSymbols, decisionsBySymbol);
+    UI.renderWatchlistSidebar('commodities-watchlist', this.universe.commodities, this.selectedSymbols, decisionsBySymbol);
+    UI.renderWatchlistSidebar('crypto-watchlist', this.universe.crypto, this.selectedSymbols, decisionsBySymbol);
+
     // Add event listeners for watchlist items
     this.setupWatchlistEventListeners();
   },
@@ -900,31 +936,35 @@ const App = {
    */
   async quickLogTrade(decision, action) {
     try {
+      const strategyId = decision.strategyId || this.selectedStrategy;
+      const entryPrice = decision.entry?.price || decision.entryZone?.optimalEntry ||
+                         (decision.entryZone ? (decision.entryZone.low + decision.entryZone.high) / 2 : 0);
+
       const entry = {
         source: 'signal',
         symbol: decision.symbol,
         direction: decision.direction,
-        style: decision.style,
+        style: decision.style || 'intraday',
         grade: decision.grade,
-        // Strategy metadata (Phase 3)
-        strategyId: decision.strategyId || this.selectedStrategy,
-        strategyName: decision.strategyName || this.getStrategyName(this.selectedStrategy),
+        strategyId: strategyId,
+        strategyName: decision.strategyName || this.getStrategyName(strategyId),
         confidence: decision.confidence,
-        reasonCodes: decision.reasonCodes || [],
-        tradeType: 'pullback',
-        entryZoneLow: decision.entryZone?.low,
-        entryZoneHigh: decision.entryZone?.high,
-        entryPrice: decision.entryZone ? (decision.entryZone.low + decision.entryZone.high) / 2 : (decision.entryPrice || 0),
+        riskReward: decision.riskReward,
+        tradeType: this.inferTradeType(strategyId),
+        entry: entryPrice,
         stopLoss: decision.stopLoss?.price || 0,
-        takeProfit: decision.takeProfit?.price || 0,
-        lots: decision.position?.lots || 0,
+        takeProfit1: decision.takeProfit?.price || 0,
+        lotSize: decision.position?.lots || 0.01,
         status: 'closed',
         action: action,
+        entryDate: new Date().toISOString(),
       };
 
       await API.addJournalEntry(entry);
       UI.toast(`Trade ${action}`, 'success');
+      await this.loadJournal();
     } catch (error) {
+      console.error('Failed to log trade:', error);
       UI.toast(`Failed to log trade: ${error.message}`, 'error');
     }
   },
@@ -1228,21 +1268,21 @@ const App = {
         const decision = this.currentTradeData;
         if (!decision) return;
 
+        const strategyId = decision.strategyId || this.selectedStrategy;
+
         const entry = {
           source: 'signal',
           symbol: decision.symbol,
           direction: decision.direction,
-          style: decision.style,
+          style: decision.style || 'intraday',
           grade: decision.grade,
-          // Strategy metadata (Phase 3)
-          strategyId: decision.strategyId || this.selectedStrategy,
-          strategyName: decision.strategyName || this.getStrategyName(this.selectedStrategy),
+          strategyId: strategyId,
+          strategyName: decision.strategyName || this.getStrategyName(strategyId),
           confidence: decision.confidence,
-          reasonCodes: decision.reasonCodes || [],
-          tradeType: 'pullback',
-          entryZoneLow: decision.entryZone?.low,
-          entryZoneHigh: decision.entryZone?.high,
+          riskReward: decision.riskReward,
+          tradeType: this.inferTradeType(strategyId),
           action: 'taken',
+          entryDate: new Date().toISOString(),
           ...updates,
         };
 
@@ -1804,6 +1844,8 @@ const App = {
   renderDetectionCard(detection) {
     const isEligible = detection.status === 'eligible';
     const isCooling = detection.status === 'cooling_down';
+    // Allow taking trade from both eligible AND cooling_down states
+    const canTake = isEligible || isCooling;
 
     const statusClass = isEligible ? 'eligible' : (isCooling ? 'cooling' : 'other');
     const statusIcon = isEligible ? '✅' : (isCooling ? '⏱️' : '📋');
@@ -1818,8 +1860,10 @@ const App = {
       cooldownHtml = `<span class="cooldown-timer" data-ends="${detection.cooldownEndsAt}">${remaining}</span>`;
     }
 
-    const actionsHtml = isEligible ? `
-      <button class="btn btn-small btn-primary" onclick="App.executeDetection('${detection.id}')">Take Trade</button>
+    const actionsHtml = canTake ? `
+      <button class="btn btn-small btn-primary ${isCooling ? 'cooling' : ''}" onclick="App.executeDetection('${detection.id}')">
+        ${isCooling ? 'Take (Cooling)' : 'Take Trade'}
+      </button>
       <button class="btn btn-small btn-secondary" onclick="App.dismissDetection('${detection.id}')">Dismiss</button>
     ` : `
       <button class="btn btn-small btn-secondary" onclick="App.dismissDetection('${detection.id}')">Dismiss</button>

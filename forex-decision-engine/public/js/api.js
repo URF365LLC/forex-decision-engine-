@@ -69,12 +69,30 @@ const API = {
 
   /**
    * Analyze single symbol
+   * Routes through /api/scan with single-symbol array (analyze endpoint deprecated)
    */
-  async analyze(symbol, settings) {
-    return this.request('/api/analyze', {
+  async analyze(symbol, settings, strategyId = 'ema-pullback-intra') {
+    const response = await this.request('/api/scan', {
       method: 'POST',
-      body: { symbol, settings },
+      body: {
+        symbols: [symbol],
+        settings,
+        strategyId
+      },
     });
+
+    // Extract first decision from array response
+    // /api/scan returns { decisions: [...] }
+    if (response.decisions && response.decisions.length > 0) {
+      return response.decisions[0];
+    }
+
+    return {
+      symbol,
+      grade: 'no-trade',
+      reason: 'No decision returned',
+      direction: null
+    };
   },
 
   /**
