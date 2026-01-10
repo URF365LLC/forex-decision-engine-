@@ -1,0 +1,193 @@
+Now update the cache lookup in analyzeWithStrategy to use the fingerprinted key:
+
+Edit
+/home/user/forex-decision-engine-/forex-decision-engine/src/engine/strategyAnalyzer.ts
+  logger.info(`Analyzing ${symbol} with strategy ${strategyId}`);
+
+
+  
+
+
+  // Check for cached actionable decision first (skip if force refresh)
+
+
+  if (!options.skipCache) {
+
+
+    const cacheKey = makeDecisionCacheKey(symbol, strategyId);
+
+
+    const cachedDecision = cache.get<StrategyDecision>(cacheKey);
+
+
+    if (cachedDecision) {
+
+
+      logger.debug(`Cache HIT for decision: ${symbol}:${strategyId}`);
+
+
+      return {
+
+
+        decision: cachedDecision,
+
+
+        fromCache: true,
+
+
+        strategyId,
+
+
+        errors: [],
+
+
+      };
+
+
+    }
+
+
+    
+
+
+    // Check for cached no-trade decision (shorter TTL to allow quick re-checks)
+
+
+    const noTradeCacheKey = makeNoTradeCacheKey(symbol, strategyId);
+
+
+    const cachedNoTrade = cache.get<StrategyDecision>(noTradeCacheKey);
+
+
+    if (cachedNoTrade) {
+
+
+      logger.debug(`Cache HIT for no-trade: ${symbol}:${strategyId}`);
+
+
+      return {
+
+
+        decision: cachedNoTrade,
+
+
+        fromCache: true,
+
+
+        strategyId,
+
+
+        errors: [],
+
+
+      };
+
+
+    }
+
+
+  }
+
+
+  
+
+
+  const strategy = strategyRegistry.get(strategyId);
+
+
+ 
+
+
+  // Get strategy metadata for timeframe info (needed for fingerprinted cache)
+
+
+  const strategy = strategyRegistry.get(strategyId);
+
+
+  if (!strategy) {
+
+
+    logger.error(`Strategy not found: ${strategyId}`);
+
+
+    return {
+
+
+      decision: null,
+
+
+      fromCache: false,
+
+
+      strategyId,
+
+
+      errors: [`Strategy not found: ${strategyId}`],
+
+
+    };
+
+
+  }
+
+
+  const meta = strategyRegistry.getMeta(strategyId);
+
+
+  const entryTimeframe = meta?.timeframes?.entry || 'H1';
+
+
+ 
+
+
+  // Note: We can't check fingerprinted cache until we have bars data
+
+
+  // Check for cached no-trade decision first (these don't need bar fingerprint)
+
+
+  if (!options.skipCache) {
+
+
+    const noTradeCacheKey = makeNoTradeCacheKey(symbol, strategyId);
+
+
+    const cachedNoTrade = cache.get<StrategyDecision>(noTradeCacheKey);
+
+
+    if (cachedNoTrade) {
+
+
+      logger.debug(`Cache HIT for no-trade: ${symbol}:${strategyId}`);
+
+
+      return {
+
+
+        decision: cachedNoTrade,
+
+
+        fromCache: true,
+
+
+        strategyId,
+
+
+        errors: [],
+
+
+      };
+
+
+    }
+
+
+  }
+
+
+ 
+
+
+  // Strategy already validated above
+
+

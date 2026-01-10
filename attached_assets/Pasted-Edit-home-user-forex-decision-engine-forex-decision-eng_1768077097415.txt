@@ -1,0 +1,229 @@
+Edit
+/home/user/forex-decision-engine-/forex-decision-engine/src/engine/strategyAnalyzer.ts
+  // Strategy already validated above
+
+
+  if (!strategy) {
+
+
+    logger.error(`Strategy not found: ${strategyId}`);
+
+
+    return {
+
+
+      decision: null,
+
+
+      fromCache: false,
+
+
+      strategyId,
+
+
+      errors: [`Strategy not found: ${strategyId}`],
+
+
+    };
+
+
+  }
+
+
+  
+
+
+  let oldIndicators: AnyIndicatorData;
+
+
+Now add the fingerprinted cache check after we have bars data:
+
+Edit
+/home/user/forex-decision-engine-/forex-decision-engine/src/engine/strategyAnalyzer.ts
+      errors: ['Insufficient price data'],
+
+
+    };
+
+
+  }
+
+
+  
+
+
+  const strategyData = convertToStrategyIndicatorData(symbol, oldIndicators);
+
+
+  
+
+
+ 
+
+
+  const strategyData = convertToStrategyIndicatorData(symbol, oldIndicators);
+
+
+ 
+
+
+  // Get last closed bar timestamp for fingerprinted cache key
+
+
+  const lastClosedBarTs = getLastClosedBar(strategyData.bars, entryTimeframe);
+
+
+ 
+
+
+  // Check for cached actionable decision with fingerprinted key
+
+
+  if (!options.skipCache && lastClosedBarTs) {
+
+
+    const cacheKey = makeDecisionCacheKey(symbol, strategyId, entryTimeframe, lastClosedBarTs);
+
+
+    const cachedDecision = cache.get<StrategyDecision>(cacheKey);
+
+
+    if (cachedDecision) {
+
+
+      logger.debug(`Cache HIT (fingerprinted): ${cacheKey}`);
+
+
+      return {
+
+
+        decision: cachedDecision,
+
+
+        fromCache: true,
+
+
+        strategyId,
+
+
+        errors: [],
+
+
+      };
+
+
+    }
+
+
+  }
+
+
+ 
+
+
+  let decision: StrategyDecision | null = null;
+
+
+Now update the cache SET section to use the fingerprinted key:
+
+Edit
+/home/user/forex-decision-engine-/forex-decision-engine/src/engine/strategyAnalyzer.ts
+    // ════════════════════════════════════════════════════════════════════════════
+
+
+    // CACHE DECISION
+
+
+    // ════════════════════════════════════════════════════════════════════════════
+
+
+    
+
+
+    const cacheKey = makeDecisionCacheKey(symbol, strategyId);
+
+
+    const noTradeCacheKey = makeNoTradeCacheKey(symbol, strategyId);
+
+
+    
+
+
+    if (!options.skipCache) {
+
+
+      // Don't cache blocked decisions as actionable - treat them as no-trade for caching
+
+
+      if (decision.grade === 'no-trade' || isBlocked) {
+
+
+        cache.set(noTradeCacheKey, decision, NO_TRADE_CACHE_TTL);
+
+
+        logger.debug(`Cached no-trade/blocked decision: ${symbol}:${strategyId} (TTL: ${NO_TRADE_CACHE_TTL}s)`);
+
+
+      } else {
+
+
+        cache.set(cacheKey, decision, DECISION_CACHE_TTL);
+
+
+        logger.debug(`Cached actionable decision: ${symbol}:${strategyId}`);
+
+
+    // CACHE DECISION (with fingerprinted key for staleness prevention)
+
+
+    // ════════════════════════════════════════════════════════════════════════════
+
+
+ 
+
+
+    const noTradeCacheKey = makeNoTradeCacheKey(symbol, strategyId);
+
+
+ 
+
+
+    if (!options.skipCache) {
+
+
+      // Don't cache blocked decisions as actionable - treat them as no-trade for caching
+
+
+      if (decision.grade === 'no-trade' || isBlocked) {
+
+
+        cache.set(noTradeCacheKey, decision, NO_TRADE_CACHE_TTL);
+
+
+        logger.debug(`Cached no-trade/blocked decision: ${symbol}:${strategyId} (TTL: ${NO_TRADE_CACHE_TTL}s)`);
+
+
+      } else if (lastClosedBarTs) {
+
+
+        // Use fingerprinted cache key for actionable decisions
+
+
+        const fingerprintedKey = makeDecisionCacheKey(symbol, strategyId, entryTimeframe, lastClosedBarTs);
+
+
+        cache.set(fingerprintedKey, decision, DECISION_CACHE_TTL);
+
+
+        logger.debug(`Cached actionable decision (fingerprinted): ${fingerprintedKey}`);
+
+
+      }
+
+
+    }
+
+
+  }
+
+
