@@ -12,10 +12,14 @@ import { Decision as StrategyDecision } from '../strategies/types.js';
 export type DetectionStatus =
   | 'cooling_down'   // Just detected, in 60-minute cooldown period
   | 'eligible'       // Cooldown complete, ready for action
-  | 'executed'       // User took the trade
+  | 'taken'          // User took the trade (unified terminology)
+  | 'executed'       // DEPRECATED: Use 'taken' - kept for backwards compatibility
   | 'dismissed'      // User explicitly dismissed
   | 'expired'        // Signal validity window passed
   | 'invalidated';   // Market conditions changed (e.g., direction flip)
+
+// Terminal statuses (trade lifecycle complete)
+export const TERMINAL_STATUSES: DetectionStatus[] = ['taken', 'executed', 'dismissed', 'expired', 'invalidated'];
 
 // ═══════════════════════════════════════════════════════════════
 // DETECTED TRADE (for UI/API)
@@ -219,7 +223,15 @@ function calculateBarExpiration(timeframe: string): string {
 
 export interface DetectionSummary {
   total: number;
-  byStatus: Record<DetectionStatus, number>;
+  byStatus: {
+    cooling_down: number;
+    eligible: number;
+    taken: number;
+    executed: number;  // Backwards compat
+    dismissed: number;
+    expired: number;
+    invalidated: number;
+  };
   byStrategy: Record<string, number>;
   coolingDown: number;
   eligible: number;

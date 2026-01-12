@@ -1078,38 +1078,39 @@ app.get('/api/detections/:id', async (req, res) => {
 });
 
 /**
- * Execute a detection (user took the trade)
- * Atomically: marks detection as executed AND creates linked journal entry
+ * Take a detection (user took the trade) - unified terminology
+ * Atomically: marks detection as taken AND creates linked journal entry
+ * Endpoint: /api/detections/:id/take (also /execute for backwards compat)
  */
-app.post('/api/detections/:id/execute', async (req, res) => {
+async function handleTakeDetection(req: any, res: any) {
   try {
     const { notes } = req.body || {};
-    
+
     // First get the detection to capture all data before status change
     const detectionData = await detectionService.getDetection(req.params.id);
-    
+
     if (!detectionData) {
       return res.status(404).json({ error: 'Detection not found' });
     }
-    
+
     if (detectionData.status !== 'cooling_down' && detectionData.status !== 'eligible') {
-      return res.status(400).json({ error: `Cannot execute detection in status: ${detectionData.status}` });
+      return res.status(400).json({ error: `Cannot take detection in status: ${detectionData.status}` });
     }
-    
-    // Mark detection as executed
-    const detection = await detectionService.executeDetection(req.params.id, notes);
+
+    // Mark detection as taken (unified terminology)
+    const detection = await detectionService.takeDetection(req.params.id, notes);
 
     if (!detection) {
-      return res.status(500).json({ error: 'Failed to execute detection' });
+      return res.status(500).json({ error: 'Failed to take detection' });
     }
-    
+
     // Extract prices with null safety - only create journal if we have valid entry price
     const entryPrice = detection.entry?.price;
     const stopLoss = detection.stopLoss?.price;
     const takeProfit = detection.takeProfit?.price;
-    
+
     let journalEntry = null;
-    
+
     // Only create journal entry if we have essential price data
     if (entryPrice && entryPrice > 0) {
       try {
@@ -1134,27 +1135,33 @@ app.post('/api/detections/:id/execute', async (req, res) => {
         logger.info(`Journal entry created for detection ${detection.id}: ${journalEntry.id}`);
       } catch (journalError) {
         logger.warn('Failed to create journal entry for detection', { error: journalError, detectionId: detection.id });
-        // Continue - detection was executed successfully, journal is optional
+        // Continue - detection was taken successfully, journal is optional
       }
     } else {
-      logger.warn(`Detection ${detection.id} executed but journal skipped - no entry price`);
+      logger.warn(`Detection ${detection.id} taken but journal skipped - no entry price`);
     }
 
     // Broadcast status change via SSE
     broadcastUpgrade({
-      type: 'detection_executed',
+      type: 'detection_taken',
       detection,
       journalEntry,
     });
 
     res.json({ success: true, detection, journalEntry });
   } catch (error) {
-    logger.error('Execute detection error', { error });
+    logger.error('Take detection error', { error });
     res.status(500).json({
-      error: error instanceof Error ? error.message : 'Failed to execute detection',
+      error: error instanceof Error ? error.message : 'Failed to take detection',
     });
   }
-});
+}
+
+// Primary endpoint (unified terminology)
+app.post('/api/detections/:id/take', handleTakeDetection);
+
+// Backwards compatibility alias
+app.post('/api/detections/:id/execute', handleTakeDetection);
 
 /**
  * Dismiss a detection (user decided not to take it)

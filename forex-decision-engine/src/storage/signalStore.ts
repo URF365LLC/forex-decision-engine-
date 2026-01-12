@@ -8,6 +8,7 @@ import { createLogger } from '../services/logger.js';
 import { getDb, isDbAvailable } from '../db/client.js';
 import { randomUUID } from 'crypto';
 import fs from 'fs';
+import fsPromises from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -58,19 +59,17 @@ class SignalStore {
     this.load();
   }
   
-  private archiveOverflow(): void {
+  private async archiveOverflow(): Promise<void> {
     if (this.signals.length <= MAX_SIGNAL_ENTRIES) return;
-    
+
     const overflow = this.signals.length - MAX_SIGNAL_ENTRIES;
     const archiveSignals = this.signals.slice(0, overflow);
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     const archiveFile = path.join(SIGNAL_ARCHIVE_DIR, `signals-archive-${timestamp}.json`);
-    
+
     try {
-      if (!fs.existsSync(SIGNAL_ARCHIVE_DIR)) {
-        fs.mkdirSync(SIGNAL_ARCHIVE_DIR, { recursive: true });
-      }
-      fs.writeFileSync(archiveFile, JSON.stringify({
+      await fsPromises.mkdir(SIGNAL_ARCHIVE_DIR, { recursive: true });
+      await fsPromises.writeFile(archiveFile, JSON.stringify({
         archivedAt: new Date().toISOString(),
         count: archiveSignals.length,
         signals: archiveSignals,
@@ -98,24 +97,22 @@ class SignalStore {
     }
   }
 
-  private persist(): void {
+  private async persist(): Promise<void> {
     const tempPath = `${this.filePath}.tmp`;
     try {
-      this.archiveOverflow();
+      await this.archiveOverflow();
       const dir = path.dirname(this.filePath);
-      if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
-      }
-      fs.writeFileSync(tempPath, JSON.stringify({
+      await fsPromises.mkdir(dir, { recursive: true });
+      await fsPromises.writeFile(tempPath, JSON.stringify({
         signals: this.signals,
         nextId: this.nextId,
       }, null, 2));
-      fs.renameSync(tempPath, this.filePath);
+      await fsPromises.rename(tempPath, this.filePath);
     } catch (e) {
       logger.error('Failed to save signals', e);
-      if (fs.existsSync(tempPath)) {
-        try { fs.unlinkSync(tempPath); } catch {}
-      }
+      try {
+        await fsPromises.unlink(tempPath);
+      } catch { /* ignore cleanup errors */ }
     }
   }
 
@@ -207,7 +204,7 @@ class SignalStore {
     }
 
     this.signals.push(signal);
-    this.persist();
+    await this.persist();
 
     logger.debug(`Saved signal ${signal.id} for ${decision.symbol}`);
     return signalId;
@@ -260,7 +257,7 @@ class SignalStore {
 
     signal.result = result;
     signal.result_notes = notes ?? null;
-    this.persist();
+    await this.persist();
     return true;
   }
 
@@ -430,7 +427,7 @@ class SignalStore {
     );
     const removed = before - this.signals.length;
     if (removed > 0) {
-      this.persist();
+      await this.persist();
       logger.info(`Cleaned up ${removed} old signals`);
     }
     return removed;
@@ -440,7 +437,7 @@ class SignalStore {
    * Close (save and cleanup)
    */
   close(): void {
-    this.persist();
+    await this.persist();
     logger.info('Signal store closed');
   }
 }

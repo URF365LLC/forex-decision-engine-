@@ -1861,7 +1861,7 @@ const App = {
     }
 
     const actionsHtml = canTake ? `
-      <button class="btn btn-small btn-primary ${isCooling ? 'cooling' : ''}" onclick="App.executeDetection('${detection.id}')">
+      <button class="btn btn-small btn-primary ${isCooling ? 'cooling' : ''}" onclick="App.takeDetection('${detection.id}')">
         ${isCooling ? 'Take (Cooling)' : 'Take Trade'}
       </button>
       <button class="btn btn-small btn-secondary" onclick="App.dismissDetection('${detection.id}')">Dismiss</button>
@@ -2045,24 +2045,32 @@ const App = {
   },
 
   /**
-   * Execute a detection (take the trade)
+   * Take a detection (unified terminology)
    */
-  async executeDetection(id) {
+  async takeDetection(id) {
     try {
-      const response = await fetch(`/api/detections/${id}/execute`, {
+      const response = await fetch(`/api/detections/${id}/take`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({})
       });
 
-      if (!response.ok) throw new Error('Failed to execute detection');
+      if (!response.ok) throw new Error('Failed to take detection');
 
-      UI.toast('Trade executed! Added to journal.', 'success');
+      UI.toast('Trade taken! Added to journal.', 'success');
       await this.loadDetections();
+      await this.loadJournal();
     } catch (error) {
-      console.error('Failed to execute detection:', error);
-      UI.toast('Failed to execute trade', 'error');
+      console.error('Failed to take detection:', error);
+      UI.toast('Failed to take trade', 'error');
     }
+  },
+
+  /**
+   * @deprecated Use takeDetection instead - kept for backwards compatibility
+   */
+  async executeDetection(id) {
+    return this.takeDetection(id);
   },
 
   /**
