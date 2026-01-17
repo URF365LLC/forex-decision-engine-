@@ -1,6 +1,6 @@
 {
   "enabled": true,
-  "intervalMs": 300000,
+  "intervalMs": 600000,
   "symbols": [
     "BTCUSD",
     "ETHUSD",
@@ -57,9 +57,9 @@
       "intervalMs": 600000
     }
   ],
-  "minGrade": "A",
-  "email": "Ecomtriumph2020@gmail.com",
+  "minGrade": "B+",
+  "email": "ing.logixtics24@gmail.com",
   "watchlistPreset": "crypto",
   "customSymbols": [],
-  "respectMarketHours": true
+  "respectMarketHours": false
 }
