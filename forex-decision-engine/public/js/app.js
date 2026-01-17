@@ -1910,6 +1910,7 @@ const App = {
         <div class="detection-status">
           <span class="status-badge ${statusClass}">${statusIcon} ${statusText}</span>
           ${cooldownHtml}
+          ${detection.statusReason ? `<span class="status-reason" title="${detection.statusReason}">${detection.statusReason}</span>` : ''}
         </div>
 
         <div class="detection-prices">
@@ -1928,7 +1929,7 @@ const App = {
           ${detection.lotSize ? `
           <div class="price-row position">
             <span class="price-label">Size:</span>
-            <span class="price-value">${detection.lotSize} lots</span>
+            <span class="price-value">${detection.lotSize} lots${detection.riskAmount ? ` ($${detection.riskAmount.toFixed(2)} risk)` : ''}</span>
           </div>
           ` : ''}
         </div>

@@ -2831,6 +2831,16 @@ textarea:focus {
   font-family: var(--font-mono);
 }
 
+.status-reason {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-style: italic;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* Detection prices */
 .detection-prices {
   display: grid;

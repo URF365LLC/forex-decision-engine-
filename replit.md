@@ -73,3 +73,23 @@ Core API endpoints cover system health, symbol retrieval, signal analysis and sc
 ### NPM Dependencies
 -   **Runtime**: `express`, `cors`, `dotenv`, `zod`, `openai`, `kysely`, `pg`.
 -   **Development**: `typescript`, `tsx`, `@types/pg`, and other `@types/*` packages.
+
+## Recent Changes
+
+### January 2026 - UI/Backend Data Integrity Audit
+
+#### Fixed Bugs
+1. **CRITICAL: TieredExits Data Transformation** - `formatTieredExits()` in `detectionStore.ts` now correctly handles both array format (`TieredExitInfo[]`) and legacy object format (`{tp1, tp2}`). Backend stores tieredExits as array with `level` property; frontend expects object with `tp1`/`tp2` keys. The function now converts array format to object format for UI consumption.
+
+2. **Journal Table Field Mismatch** - Fixed `e.lotSize` to `e.lots` in `ui.js` `renderJournalTable()` and `renderRunningTrades()` functions. Backend `journalStore.ts` uses field name `lots`.
+
+#### New UI Features
+1. **Risk Amount Display** - Detection cards now show dollar risk amount alongside lot size when available (e.g., "0.5 lots ($125.00 risk)").
+
+2. **Status Reason Display** - Detection cards now display `statusReason` for terminal statuses (dismissed, invalidated, expired) with tooltip for full text.
+
+#### Key Data Contracts
+- **DetectedTrade.tieredExits**: Stored as `TieredExitInfo[]` (array with `level`, `price`, `pips`, `rr` properties)
+- **API Response tieredExits**: Transformed to `{tp1: {price, formatted, pips, rr}, tp2: {...}}` object format
+- **Journal Entry lots field**: Backend uses `lots`, not `lotSize`
+- **Detection statuses**: 'taken' is canonical; 'executed' deprecated but supported for backwards compatibility
