@@ -76,6 +76,24 @@ Core API endpoints cover system health, symbol retrieval, signal analysis and sc
 
 ## Recent Changes
 
+### January 2026 - E8 Account Presets Implementation
+
+#### New Features
+1. **E8 Account Presets** - Added dropdown to Settings tab with 4 E8 Markets account presets:
+   - $10k Challenge (Daily: $400, Max DD: $600)
+   - $25k Challenge (Daily: $1,000, Max DD: $1,500)
+   - $50k Challenge (Daily: $2,000, Max DD: $3,000)
+   - $100k Challenge (Daily: $4,000, Max DD: $6,000)
+
+2. **Dynamic Account Settings API** - GET/PUT `/api/settings/account` endpoints for retrieving and persisting account configuration. Settings sync to autoScanService for position sizing.
+
+3. **Position Sizing Integration** - AutoScan and strategy analysis now use dynamic account settings instead of hardcoded $100k. Lot sizes scale appropriately per account tier.
+
+#### Key Architecture
+- **E8_ACCOUNT_PRESETS** array in `defaults.ts` defines all preset configurations
+- **accountSettings** in-memory state on server synced via PUT endpoint
+- **autoScanService.updateAccountSettings()** propagates changes to scanning engine
+
 ### January 2026 - UI/Backend Data Integrity Audit
 
 #### Fixed Bugs
