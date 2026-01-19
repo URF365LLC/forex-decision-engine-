@@ -20,7 +20,7 @@ import {
   FOREX_SPECS, METAL_SPECS, CRYPTO_SPECS, INDEX_SPECS, COMMODITY_SPECS,
   ALL_INSTRUMENTS, getInstrumentSpec, validateInstrumentSpecs 
 } from './config/e8InstrumentSpecs.js';
-import { DEFAULTS, RISK_OPTIONS } from './config/defaults.js';
+import { DEFAULTS, RISK_OPTIONS, E8_ACCOUNT_PRESETS, getE8Preset } from './config/defaults.js';
 import { STYLE_PRESETS } from './config/strategy.js';
 import { scanWithStrategy, clearStrategyCache } from './engine/strategyAnalyzer.js';
 import { strategyRegistry } from './strategies/index.js';
@@ -63,7 +63,7 @@ import { z } from 'zod';
 import * as detectionService from './services/detectionService.js';
 import { DetectionFilters } from './types/detection.js';
 import { findActiveDetection as detectionStoreFindActive } from './storage/detectionStore.js';
-import { initDb, runMigrations, isDbAvailable } from './db/client.js';
+import { initDb, runMigrations, isDbAvailable, loadAccountSettings, saveAccountSettings } from './db/client.js';
 import { signalCooldown } from './services/signalCooldown.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -763,18 +763,40 @@ app.get('/api/settings/account', (req, res) => {
 });
 
 app.put('/api/settings/account', (req, res) => {
-  const { accountPreset, accountSize, riskPercent } = req.body;
+  const { accountPreset, riskPercent } = req.body;
   
-  if (accountPreset) serverAccountSettings.accountPreset = accountPreset;
-  if (accountSize && accountSize >= 100 && accountSize <= 1000000) {
-    serverAccountSettings.accountSize = accountSize;
+  // Validate preset ID against known presets
+  const validPresetIds = E8_ACCOUNT_PRESETS.map(p => p.id);
+  if (!accountPreset || !validPresetIds.includes(accountPreset)) {
+    return res.status(400).json({ 
+      success: false, 
+      error: `Invalid preset. Must be one of: ${validPresetIds.join(', ')}` 
+    });
   }
-  if (riskPercent && riskPercent >= 0.1 && riskPercent <= 5) {
+  
+  // Derive accountSize from preset (don't trust client values)
+  const preset = getE8Preset(accountPreset);
+  serverAccountSettings.accountPreset = accountPreset;
+  serverAccountSettings.accountSize = preset.size;
+  
+  // Validate riskPercent if provided
+  if (riskPercent !== undefined) {
+    if (typeof riskPercent !== 'number' || riskPercent < 0.1 || riskPercent > 2) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Risk percent must be between 0.1% and 2%' 
+      });
+    }
     serverAccountSettings.riskPercent = riskPercent;
   }
   
   // Update autoScanService with new settings
   autoScanService.updateAccountSettings(serverAccountSettings);
+  
+  // Persist to database
+  saveAccountSettings(serverAccountSettings).catch(err => {
+    logger.warn('Failed to persist account settings', { error: err });
+  });
   
   logger.info(`Account settings updated: ${JSON.stringify(serverAccountSettings)}`);
   res.json({ success: true, settings: serverAccountSettings });
@@ -1238,6 +1260,20 @@ async function startServer() {
 
   // Load cooldowns from database AFTER DB is initialized
   await signalCooldown.loadFromDatabase();
+  
+  // Load account settings from database, fallback to defaults
+  if (isDbAvailable()) {
+    const savedSettings = await loadAccountSettings();
+    if (savedSettings) {
+      serverAccountSettings.accountPreset = savedSettings.account_preset;
+      serverAccountSettings.accountSize = Number(savedSettings.account_size);
+      serverAccountSettings.riskPercent = Number(savedSettings.risk_percent);
+      autoScanService.updateAccountSettings(serverAccountSettings);
+      logger.info(`Loaded account settings from database: $${serverAccountSettings.accountSize} (${serverAccountSettings.accountPreset})`);
+    } else {
+      logger.info('No saved account settings found, using defaults');
+    }
+  }
 
   // Start cooldown checker AFTER DB is initialized
   detectionService.startCooldownChecker(60000);
