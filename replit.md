@@ -91,8 +91,10 @@ Core API endpoints cover system health, symbol retrieval, signal analysis and sc
 
 #### Key Architecture
 - **E8_ACCOUNT_PRESETS** array in `defaults.ts` defines all preset configurations
-- **accountSettings** in-memory state on server synced via PUT endpoint
+- **account_settings** PostgreSQL table persists settings across restarts
+- **Server-side validation** enforces preset ID against known presets, derives accountSize from preset (not trusted from client)
 - **autoScanService.updateAccountSettings()** propagates changes to scanning engine
+- **Startup loading** retrieves saved settings from database, falls back to $10k default if none exists
 
 ### January 2026 - UI/Backend Data Integrity Audit
 
