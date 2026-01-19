@@ -749,6 +749,42 @@ app.get('/api/upgrades/recent', validateQuery(UpgradesQuerySchema), (req, res) =
 });
 
 // ═══════════════════════════════════════════════════════════════
+// ACCOUNT SETTINGS ENDPOINTS
+// ═══════════════════════════════════════════════════════════════
+
+let serverAccountSettings = {
+  accountPreset: 'e8-10k' as string,
+  accountSize: 10000,
+  riskPercent: 0.5,
+};
+
+app.get('/api/settings/account', (req, res) => {
+  res.json(serverAccountSettings);
+});
+
+app.put('/api/settings/account', (req, res) => {
+  const { accountPreset, accountSize, riskPercent } = req.body;
+  
+  if (accountPreset) serverAccountSettings.accountPreset = accountPreset;
+  if (accountSize && accountSize >= 100 && accountSize <= 1000000) {
+    serverAccountSettings.accountSize = accountSize;
+  }
+  if (riskPercent && riskPercent >= 0.1 && riskPercent <= 5) {
+    serverAccountSettings.riskPercent = riskPercent;
+  }
+  
+  // Update autoScanService with new settings
+  autoScanService.updateAccountSettings(serverAccountSettings);
+  
+  logger.info(`Account settings updated: ${JSON.stringify(serverAccountSettings)}`);
+  res.json({ success: true, settings: serverAccountSettings });
+});
+
+export function getServerAccountSettings() {
+  return serverAccountSettings;
+}
+
+// ═══════════════════════════════════════════════════════════════
 // AUTO-SCAN ENDPOINTS
 // ═══════════════════════════════════════════════════════════════
 

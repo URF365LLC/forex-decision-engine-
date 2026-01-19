@@ -341,11 +341,11 @@ const App = {
     const settings = Storage.getSettings();
     
     // Update form inputs if they exist
-    const accountSizeInput = UI.$('account-size');
+    const accountPresetInput = UI.$('account-preset');
     const riskPercentInput = UI.$('risk-percent');
     const timezoneInput = UI.$('timezone');
     
-    if (accountSizeInput) accountSizeInput.value = settings.accountSize;
+    if (accountPresetInput) accountPresetInput.value = settings.accountPreset || 'e8-10k';
     if (riskPercentInput) riskPercentInput.value = settings.riskPercent;
     if (timezoneInput) timezoneInput.value = settings.timezone;
     
@@ -358,6 +358,7 @@ const App = {
     if (styleRadio) styleRadio.checked = true;
 
     this.updateRiskHint();
+    this.updateAccountLimitsHint();
     
     // Update ticker bar with account info
     this.updateTickerBar(settings);
@@ -392,25 +393,34 @@ const App = {
     
     try {
       const tradingMode = document.querySelector('input[name="trading-mode"]:checked')?.value || 'paper';
-      const accountSizeEl = UI.$('account-size');
+      const accountPresetEl = UI.$('account-preset');
       const riskPercentEl = UI.$('risk-percent');
       const timezoneEl = UI.$('timezone');
       
+      const accountPreset = accountPresetEl ? accountPresetEl.value : 'e8-10k';
+      const accountSize = this.getAccountSizeFromPreset(accountPreset);
+      
       const settings = {
-        accountSize: accountSizeEl ? parseFloat(accountSizeEl.value) || 10000 : 10000,
+        accountPreset,
+        accountSize,
         riskPercent: riskPercentEl ? parseFloat(riskPercentEl.value) || 0.5 : 0.5,
         style: document.querySelector('input[name="style"]:checked')?.value || 'intraday',
         timezone: timezoneEl ? timezoneEl.value || 'America/Chicago' : 'America/Chicago',
         paperTrading: tradingMode === 'paper',
       };
 
-      // Validate
-      if (settings.accountSize < 100 || settings.accountSize > 1000000) {
-        UI.toast('Account size must be between $100 and $1,000,000', 'error');
-        return false;
-      }
-
       Storage.saveSettings(settings);
+      
+      // Also sync to server for auto-scan
+      try {
+        await fetch('/api/settings/account', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ accountPreset, accountSize, riskPercent: settings.riskPercent })
+        });
+      } catch (e) {
+        console.warn('Failed to sync settings to server:', e);
+      }
       
       // Brief delay to show loading state
       await new Promise(r => setTimeout(r, 300));
@@ -421,18 +431,50 @@ const App = {
       UI.setButtonLoading(submitBtn, false);
     }
   },
+  
+  getAccountSizeFromPreset(presetId) {
+    const presets = {
+      'e8-10k': 10000,
+      'e8-25k': 25000,
+      'e8-50k': 50000,
+      'e8-100k': 100000
+    };
+    return presets[presetId] || 10000;
+  },
+  
+  getAccountLimitsFromPreset(presetId) {
+    const limits = {
+      'e8-10k': { dailyLoss: 400, maxDrawdown: 600 },
+      'e8-25k': { dailyLoss: 1000, maxDrawdown: 1500 },
+      'e8-50k': { dailyLoss: 2000, maxDrawdown: 3000 },
+      'e8-100k': { dailyLoss: 4000, maxDrawdown: 6000 }
+    };
+    return limits[presetId] || limits['e8-10k'];
+  },
+  
+  updateAccountLimitsHint() {
+    const accountPresetEl = UI.$('account-preset');
+    const hintEl = UI.$('account-limits-hint');
+    
+    if (!accountPresetEl || !hintEl) return;
+    
+    const preset = accountPresetEl.value || 'e8-10k';
+    const limits = this.getAccountLimitsFromPreset(preset);
+    hintEl.textContent = `Daily Loss: $${limits.dailyLoss.toLocaleString()} | Max Drawdown: $${limits.maxDrawdown.toLocaleString()}`;
+  },
 
   /**
    * Update risk amount hint
    */
   updateRiskHint() {
-    const accountSizeEl = UI.$('account-size');
+    const accountPresetEl = UI.$('account-preset');
     const riskPercentEl = UI.$('risk-percent');
     const hintEl = UI.$('risk-amount-hint');
     
-    if (!accountSizeEl || !riskPercentEl || !hintEl) return;
+    if (!riskPercentEl || !hintEl) return;
     
-    const accountSize = parseFloat(accountSizeEl.value) || 10000;
+    const preset = accountPresetEl ? accountPresetEl.value : 'e8-10k';
+    const accountSize = this.getAccountSizeFromPreset(preset);
     const riskPercent = parseFloat(riskPercentEl.value) || 0.5;
     const riskAmount = (accountSize * riskPercent / 100).toFixed(0);
     hintEl.textContent = `Risk: $${riskAmount} per trade`;
@@ -1491,7 +1533,10 @@ const App = {
     });
 
     // Risk hint update
-    UI.$('account-size')?.addEventListener('input', () => this.updateRiskHint());
+    UI.$('account-preset')?.addEventListener('change', () => {
+      this.updateRiskHint();
+      this.updateAccountLimitsHint();
+    });
     UI.$('risk-percent')?.addEventListener('change', () => this.updateRiskHint());
 
     // Watchlist

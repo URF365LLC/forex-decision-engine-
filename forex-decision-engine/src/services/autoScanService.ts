@@ -175,9 +175,15 @@ export interface AutoScanStatus {
   } | null;
 }
 
-const DEFAULT_SETTINGS: UserSettings = {
-  accountSize: 100000,
+let accountSettings = {
+  accountPreset: 'e8-10k',
+  accountSize: 10000,
   riskPercent: 0.5,
+};
+
+const DEFAULT_SETTINGS: UserSettings = {
+  accountSize: accountSettings.accountSize,
+  riskPercent: accountSettings.riskPercent,
   style: 'intraday',
 };
 
@@ -543,11 +549,18 @@ class AutoScanService {
       delayBetweenStarts: 50, // Small stagger to smooth API load
       handler: async (symbol: string, index: number) => {
         try {
+          // Use dynamic account settings for position sizing
+          const dynamicSettings: UserSettings = {
+            accountSize: accountSettings.accountSize,
+            riskPercent: accountSettings.riskPercent,
+            style: 'intraday',
+          };
+          
           // Use individual API calls via analyzeWithStrategy
           const result = await analyzeWithStrategy(
             symbol,
             schedule.strategyId,
-            DEFAULT_SETTINGS,
+            dynamicSettings,
             { skipCache: false, skipCooldown: false, skipVolatility: false }
           );
 
@@ -795,6 +808,18 @@ class AutoScanService {
     } else {
       logger.debug('AUTO_SCAN: No enabled config to auto-start');
     }
+  }
+  
+  updateAccountSettings(settings: { accountPreset?: string; accountSize?: number; riskPercent?: number }): void {
+    if (settings.accountPreset) accountSettings.accountPreset = settings.accountPreset;
+    if (settings.accountSize) accountSettings.accountSize = settings.accountSize;
+    if (settings.riskPercent) accountSettings.riskPercent = settings.riskPercent;
+    
+    logger.info(`AUTO_SCAN: Account settings updated - $${accountSettings.accountSize}, ${accountSettings.riskPercent}% risk`);
+  }
+  
+  getAccountSettings(): typeof accountSettings {
+    return { ...accountSettings };
   }
 }
 

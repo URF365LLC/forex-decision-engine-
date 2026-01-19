@@ -3,12 +3,63 @@
  * Based on $10,000 account with standard E8 rules
  */
 
+// ═══════════════════════════════════════════════════════════════
+// E8 MARKETS ACCOUNT PRESETS
+// Source: https://e8markets.com/e8-one/
+// ═══════════════════════════════════════════════════════════════
+
+export const E8_ACCOUNT_PRESETS = [
+  { 
+    id: 'e8-10k',
+    size: 10000, 
+    label: 'E8 $10,000',
+    dailyLossLimit: 400,      // 4% of $10k
+    maxDrawdown: 600,         // 6% of $10k
+    profitTarget: 800,        // 8% Phase 1
+  },
+  { 
+    id: 'e8-25k',
+    size: 25000, 
+    label: 'E8 $25,000',
+    dailyLossLimit: 1000,     // 4% of $25k
+    maxDrawdown: 1500,        // 6% of $25k
+    profitTarget: 2000,       // 8% Phase 1
+  },
+  { 
+    id: 'e8-50k',
+    size: 50000, 
+    label: 'E8 $50,000',
+    dailyLossLimit: 2000,     // 4% of $50k
+    maxDrawdown: 3000,        // 6% of $50k
+    profitTarget: 4000,       // 8% Phase 1
+  },
+  { 
+    id: 'e8-100k',
+    size: 100000, 
+    label: 'E8 $100,000',
+    dailyLossLimit: 4000,     // 4% of $100k
+    maxDrawdown: 6000,        // 6% of $100k
+    profitTarget: 8000,       // 8% Phase 1
+  },
+] as const;
+
+export type E8AccountPresetId = typeof E8_ACCOUNT_PRESETS[number]['id'];
+
+export function getE8Preset(id: E8AccountPresetId) {
+  return E8_ACCOUNT_PRESETS.find(p => p.id === id) || E8_ACCOUNT_PRESETS[0];
+}
+
+export function getE8PresetBySize(size: number) {
+  return E8_ACCOUNT_PRESETS.find(p => p.size === size) || E8_ACCOUNT_PRESETS[0];
+}
+
 export const DEFAULTS = {
   // ═══════════════════════════════════════════════════════════════
   // ACCOUNT SETTINGS
   // ═══════════════════════════════════════════════════════════════
   account: {
     size: 10000,               // $10,000 initial balance
+    presetId: 'e8-10k' as E8AccountPresetId,
     currency: 'USD',
   },
 
