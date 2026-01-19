@@ -93,6 +93,10 @@
     {
       "strategyId": "liquidity-sweep",
       "intervalMs": 600000
+    },
+    {
+      "strategyId": "ema-pullback-swing",
+      "intervalMs": 600000
     }
   ],
   "minGrade": "A",
