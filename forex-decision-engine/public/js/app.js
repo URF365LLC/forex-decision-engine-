@@ -1347,6 +1347,65 @@ const App = {
   },
 
   /**
+   * Open close trade dialog - prompts user for exit type
+   */
+  async openCloseTrade(id) {
+    const entry = this.journalEntries.find(e => e.id === id);
+    if (!entry) {
+      UI.toast('Trade not found', 'error');
+      return;
+    }
+
+    const choice = prompt(
+      `Close ${entry.symbol} trade:\n\n` +
+      `1 = Hit TP (${entry.takeProfit})\n` +
+      `2 = Hit SL (${entry.stopLoss})\n` +
+      `3 = Manual exit (enter price)\n\n` +
+      `Enter 1, 2, or 3:`
+    );
+
+    if (!choice) return;
+
+    try {
+      let exitPrice;
+      let outcome;
+
+      if (choice === '1') {
+        exitPrice = entry.takeProfit;
+        outcome = 'win';
+      } else if (choice === '2') {
+        exitPrice = entry.stopLoss;
+        outcome = 'loss';
+      } else if (choice === '3') {
+        const manualPrice = prompt('Enter exit price:');
+        if (!manualPrice || isNaN(parseFloat(manualPrice))) {
+          UI.toast('Invalid price', 'error');
+          return;
+        }
+        exitPrice = parseFloat(manualPrice);
+        outcome = exitPrice > entry.entryPrice ? 
+          (entry.direction === 'long' ? 'win' : 'loss') :
+          (entry.direction === 'long' ? 'loss' : 'win');
+      } else {
+        UI.toast('Invalid choice', 'error');
+        return;
+      }
+
+      await API.updateJournalEntry(id, {
+        status: 'closed',
+        exitPrice: exitPrice,
+        outcome: outcome,
+        closedAt: new Date().toISOString()
+      });
+
+      UI.toast(`Trade closed at ${exitPrice}`, 'success');
+      this.loadJournal();
+    } catch (error) {
+      UI.toast(`Failed to close trade: ${error.message}`, 'error');
+    }
+  },
+
+  /**
    * Fill pending order (move to running)
    */
   async fillPendingTrade(id) {
