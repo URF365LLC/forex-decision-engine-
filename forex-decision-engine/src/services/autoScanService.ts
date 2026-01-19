@@ -1,11 +1,11 @@
 /**
- * Auto-Scan Service v3.0 - PARALLEL EXECUTION
+ * Auto-Scan Service v3.1 - OPTIMIZED PARALLEL EXECUTION
  *
- * Key Changes from v2.1:
- * - Parallel symbol processing with controlled concurrency (5 concurrent)
- * - 5-10x faster scans: 46 symbols in ~7s vs ~40s sequential
- * - Real-time SSE progress broadcasting
- * - Maintains 50% headroom on Twelve Data rate limits (610/min)
+ * Key Changes from v3.0:
+ * - Increased concurrency to 10 (from 5) with optimized rate limiter
+ * - Rate limiter now uses sliding window to maximize 610 calls/min
+ * - Adaptive throttling only kicks in when approaching limits
+ * - Expected ~3-5s scan time for 46 symbols (vs ~7s previously)
  *
  * Features:
  * 1. Symbol watchlist presets (majors, minors, crypto, metals, custom)
@@ -532,15 +532,16 @@ class AutoScanService {
     let newSignals = 0;
     let errors = 0;
 
-    // Concurrency limit: 5 keeps us at ~50% of Twelve Data rate limit (610/min)
-    // This provides 5-10x speedup while maintaining API headroom
-    const CONCURRENCY = 5;
+    // Concurrency increased to 10 with optimized rate limiter (sliding window protection)
+    // The rate limiter now has 150 token burst capacity and adaptive throttling
+    // This enables faster scans while the sliding window prevents exceeding 610/min
+    const CONCURRENCY = 10;
 
     // Process symbols in parallel with controlled concurrency
     const poolResult = await promisePool({
       items: symbolsToScan,
       concurrency: CONCURRENCY,
-      delayBetweenStarts: 50, // Small stagger to smooth API load
+      delayBetweenStarts: 25, // Reduced stagger since rate limiter handles throttling
       handler: async (symbol: string, index: number) => {
         try {
           // Use individual API calls via analyzeWithStrategy

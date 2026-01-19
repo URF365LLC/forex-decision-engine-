@@ -181,7 +181,7 @@ app.get('/api/metrics', async (req, res) => {
   const signalStats = await signalStore.getStats();
 
   res.json({
-    version: '2.0.0',
+    version: '2.1.0',
     uptime: process.uptime(),
     timestamp: new Date().toISOString(),
     cache: {
@@ -193,7 +193,12 @@ app.get('/api/metrics', async (req, res) => {
     rateLimit: {
       tokens: rateLimitState.availableTokens,
       maxTokens: rateLimitState.maxTokens,
-      utilization: 1 - (rateLimitState.availableTokens / rateLimitState.maxTokens),
+      queueLength: rateLimitState.queueLength,
+      slidingWindow: rateLimitState.slidingWindow,
+      // Utilization based on sliding window (actual API usage)
+      utilizationPercent: rateLimitState.slidingWindow.utilizationPercent,
+      callsPerMinute: rateLimitState.slidingWindow.callsInWindow,
+      remainingCapacity: rateLimitState.slidingWindow.effectiveLimit - rateLimitState.slidingWindow.callsInWindow,
     },
     signals: {
       total: signalStats.total,
