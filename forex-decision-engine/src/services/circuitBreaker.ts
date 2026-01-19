@@ -153,6 +153,35 @@ export class CircuitBreaker {
   getState(): CircuitState {
     return this.state;
   }
+
+  /**
+   * Get time until next retry attempt is allowed (ms)
+   * Returns 0 if circuit is closed or retry time has passed
+   */
+  getTimeUntilRetry(): number {
+    if (this.state !== 'OPEN' || !this.nextRetry) return 0;
+    const remaining = this.nextRetry.getTime() - Date.now();
+    return Math.max(0, remaining);
+  }
+
+  /**
+   * Wait for circuit to become available (for rate limit pause/resume)
+   * Returns immediately if closed, waits up to maxWaitMs if open
+   */
+  async waitForAvailability(maxWaitMs: number = 65000): Promise<boolean> {
+    if (this.state === 'CLOSED' || this.state === 'HALF_OPEN') {
+      return true;
+    }
+
+    const waitTime = Math.min(this.getTimeUntilRetry(), maxWaitMs);
+    if (waitTime <= 0) {
+      return true;
+    }
+
+    logger.info(`Circuit "${this.config.name}" is OPEN - waiting ${Math.ceil(waitTime / 1000)}s for reset`);
+    await new Promise(resolve => setTimeout(resolve, waitTime));
+    return this.shouldAttemptReset();
+  }
 }
 
 export class CircuitOpenError extends Error {

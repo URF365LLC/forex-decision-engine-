@@ -27,11 +27,67 @@ import { processAutoScanDecision, invalidateOnConditionChange } from './detectio
 import { broadcastDetectionError, broadcastScanProgress, broadcastScanComplete } from './sseBroadcaster.js';
 import { promisePool } from '../utils/promisePool.js';
 import { UserSettings, Decision, SignalGrade } from '../strategies/types.js';
+import { twelveDataCircuit, CircuitOpenError } from './circuitBreaker.js';
 import * as fs from 'fs';
 import * as path from 'path';
 
 const logger = createLogger('AutoScanService');
 const CONFIG_FILE = path.join(process.cwd(), 'data', 'autoScanConfig.json');
+
+// Rate limit pause state - shared across all concurrent workers
+let rateLimitPausePromise: Promise<void> | null = null;
+
+/**
+ * Global rate limit pause handler
+ * Ensures only one wait occurs even with concurrent workers
+ * Re-checks circuit state after waiting and re-arms if still open
+ */
+async function waitForRateLimitReset(): Promise<void> {
+  // If we're already paused, just wait for the existing pause to complete
+  if (rateLimitPausePromise) {
+    await rateLimitPausePromise;
+    // After shared wait, re-check if circuit is still open
+    if (twelveDataCircuit.getState() === 'OPEN') {
+      return waitForRateLimitReset(); // Re-arm if still open
+    }
+    return;
+  }
+
+  const circuitState = twelveDataCircuit.getState();
+  if (circuitState !== 'OPEN') {
+    return;
+  }
+
+  const waitTime = twelveDataCircuit.getTimeUntilRetry();
+  if (waitTime <= 0) {
+    // Circuit should transition to HALF_OPEN on next request
+    return;
+  }
+
+  // Set up a single shared pause - first worker to detect sets this up
+  logger.warn(`AUTO_SCAN: Rate limit hit - ALL workers pausing for ${Math.ceil(waitTime / 1000)}s`);
+  
+  rateLimitPausePromise = new Promise<void>(resolve => {
+    setTimeout(() => {
+      rateLimitPausePromise = null;
+      // Check if circuit is ready after waiting
+      const newState = twelveDataCircuit.getState();
+      if (newState === 'OPEN') {
+        logger.warn(`AUTO_SCAN: Circuit still OPEN after wait - will re-pause on next check`);
+      } else {
+        logger.info(`AUTO_SCAN: Rate limit wait complete - circuit ${newState}, resuming scan`);
+      }
+      resolve();
+    }, waitTime + 2000); // Add 2s buffer for safety
+  });
+
+  await rateLimitPausePromise;
+  
+  // After wait, verify circuit state and re-arm if needed
+  if (twelveDataCircuit.getState() === 'OPEN') {
+    return waitForRateLimitReset();
+  }
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // WATCHLIST PRESETS
@@ -549,6 +605,9 @@ class AutoScanService {
       delayBetweenStarts: 50, // Small stagger to smooth API load
       handler: async (symbol: string, index: number) => {
         try {
+          // Check if we need to wait for rate limit reset (global shared pause)
+          await waitForRateLimitReset();
+          
           // Use dynamic account settings for position sizing
           const dynamicSettings: UserSettings = {
             accountSize: accountSettings.accountSize,
@@ -566,6 +625,29 @@ class AutoScanService {
 
           return { symbol, result, error: null };
         } catch (error) {
+          // If circuit opened during request, wait for reset and retry once
+          if (error instanceof CircuitOpenError) {
+            await waitForRateLimitReset();
+            
+            // Retry once after the shared wait completes
+            try {
+              const dynamicSettings: UserSettings = {
+                accountSize: accountSettings.accountSize,
+                riskPercent: accountSettings.riskPercent,
+                style: 'intraday',
+              };
+              const result = await analyzeWithStrategy(
+                symbol,
+                schedule.strategyId,
+                dynamicSettings,
+                { skipCache: false, skipCooldown: false, skipVolatility: false }
+              );
+              logger.debug(`AUTO_SCAN: ${symbol} succeeded after rate limit retry`);
+              return { symbol, result, error: null };
+            } catch (retryError) {
+              return { symbol, result: null, error: retryError instanceof Error ? retryError : new Error(String(retryError)) };
+            }
+          }
           return { symbol, result: null, error: error instanceof Error ? error : new Error(String(error)) };
         }
       },
