@@ -54,10 +54,13 @@ const App = {
     // Load universe
     await this.loadUniverse();
 
-    // Load saved state
+    // Load saved state (local storage first, then sync from server)
     this.loadSettings();
     this.loadWatchlist();
     this.loadResults();
+    
+    // Sync account settings from server (updates ticker bar)
+    await this.syncAccountSettingsFromServer();
     
     // Load strategies
     await this.loadStrategyOptions();
@@ -368,17 +371,47 @@ const App = {
    * Update ticker bar with account info and stats
    */
   updateTickerBar(settings) {
-    const tickerBalance = UI.$('ticker-balance');
+    const tickerAccount = UI.$('ticker-account');
     const tickerRisk = UI.$('ticker-risk');
     const tickerDailyLimit = UI.$('metric-daily-limit');
     const tickerMaxDD = UI.$('metric-max-dd');
     
-    if (tickerBalance) tickerBalance.textContent = `$${settings.accountSize.toLocaleString()}`;
+    if (tickerAccount) tickerAccount.textContent = `$${settings.accountSize.toLocaleString()}`;
     if (tickerRisk) tickerRisk.textContent = `${settings.riskPercent}%`;
     
     // E8 Markets limits: 4% daily, 6% max drawdown
     if (tickerDailyLimit) tickerDailyLimit.textContent = `$${(settings.accountSize * 0.04).toFixed(0)}`;
     if (tickerMaxDD) tickerMaxDD.textContent = `$${(settings.accountSize * 0.06).toFixed(0)}`;
+  },
+
+  /**
+   * Sync account settings from server to update ticker bar
+   */
+  async syncAccountSettingsFromServer() {
+    try {
+      const response = await fetch('/api/settings/account');
+      if (!response.ok) return;
+      
+      const serverSettings = await response.json();
+      
+      // Update local storage with server settings
+      const localSettings = Storage.getSettings();
+      localSettings.accountPreset = serverSettings.accountPreset;
+      localSettings.accountSize = serverSettings.accountSize;
+      localSettings.riskPercent = serverSettings.riskPercent;
+      Storage.saveSettings(localSettings);
+      
+      // Update the preset dropdown if on settings screen
+      const accountPresetInput = UI.$('account-preset');
+      if (accountPresetInput) accountPresetInput.value = serverSettings.accountPreset;
+      
+      // Update ticker bar with server values
+      this.updateTickerBar(serverSettings);
+      this.updateRiskHint();
+      this.updateAccountLimitsHint();
+    } catch (error) {
+      console.warn('Failed to sync account settings from server:', error);
+    }
   },
 
   /**
