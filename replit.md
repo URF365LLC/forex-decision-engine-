@@ -76,6 +76,19 @@ Core API endpoints cover system health, symbol retrieval, signal analysis and sc
 
 ## Recent Changes
 
+### January 2026 - Rate Limit Pause/Resume System
+
+#### New Features
+1. **Shared Rate Limit Pause** - When Twelve Data circuit breaker opens (rate limit hit), ALL concurrent workers pause together
+2. **Auto-Resume After Reset** - Workers wait for circuit reset (60s) then re-check state before resuming
+3. **Re-Check Logic** - After wait completes, workers verify circuit is CLOSED/HALF_OPEN; if still OPEN, automatically re-waits
+
+#### Key Architecture
+- **rateLimitPausePromise** - Shared promise that all workers await (no duplicate waits)
+- **waitForRateLimitReset()** - Global handler with recursive re-check pattern
+- **CircuitOpenError catch** - Handler retries once after waiting for reset
+- **Logging** - Clear messages: "ALL workers pausing for Xs" / "circuit CLOSED, resuming scan"
+
 ### January 2026 - E8 Account Presets Implementation
 
 #### New Features
