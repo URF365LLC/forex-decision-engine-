@@ -1,0 +1,123 @@
+Below is a no‑code, code‑referenced audit of your execution plan with anything that “catches my eye” based on the current repo. I only analyzed what’s already in the codebase; no changes were made.
+
+✅ High‑Impact Observations vs. the Plan
+Phase 0 — Archive legacy files
+Plan: Archive grader.ts, entryTrigger.ts, trendFilter.ts, batchDataService.ts.
+
+What I see in the code:
+
+Legacy chain is self‑contained:
+entryTrigger.ts imports trendFilter.ts, and grader.ts imports both entryTrigger.ts and trendFilter.ts. That indicates a closed legacy chain that does not participate in the main analyzer pipeline.
+
+Batch Data Service is standalone:
+batchDataService.ts is a complete Twelve Data batch client, but it is not wired into the active strategy flow (strategy analyzer uses indicatorService directly).
+
+What catches my eye (risk/impact):
+
+✅ Archiving the legacy chain (grader/entryTrigger/trendFilter) is low risk because those files only reference each other.
+
+⚠️ BatchDataService is a “future perf asset” if you later decide to use Twelve Data’s batch endpoint for speed. Archiving it is still safe, but it’s the only file in Phase 0 that could be immediately useful for the performance track.
+
+Phase 1 — Parallelize multi‑symbol scanning + SSE progress
+Plan: Concurrency‑limited Promise pool in autoScanService, plus SSE progress events.
+
+What I see in the code:
+
+Auto‑scan is currently sequential.
+autoScanService.runScan() processes symbols in a for‑loop with a 100ms delay between symbols.
+
+Regime + gating logic is in strategyAnalyzer (unchanged).
+It already uses ATR regime classification and applies confidence adjustments in post‑processing.
+
+SSE currently supports only upgrade + detection error events.
+sseBroadcaster.ts exposes a generic broadcast function, but the server only emits upgrade events and detection errors; there’s no scan progress event today.
+
+UI listens only to upgrade events.
+The client’s connectUpgradeStream() handles upgrade and heartbeat events, not scan:progress. There’s no existing UI handler for scan progress SSE updates.
+
+What catches my eye (risk/impact):
+
+✅ Parallelization is aligned with the code; it’s currently sequential and can be safely optimized if rate limiting is respected.
+
+⚠️ SSE progress will require client + server alignment. There is no existing scan progress event type or UI handler, so Phase 1 will require UI updates to actually display those progress events.
+
+⚠️ Auto‑scan already updates internal progress state (status.currentScan), but that is not broadcast. You’ll need to decide whether to reuse this existing state or emit new SSE events.
+
+Phase 2 — SMC Integration (Order Blocks + FVG)
+Plan: Integrate OB/FVG into LiquiditySweep for confidence and TP enhancements.
+
+What I see in the code:
+
+LiquiditySweep only uses sweep logic today. It does not import orderBlocks or fairValueGaps; it only uses detectLiquiditySweeps, findLiquidityZones, getRecentSweep.
+
+OB + FVG modules are fully implemented but unused.
+They are exported in modules/smartMoney/index.ts, but no strategy imports them.
+
+What catches my eye (risk/impact):
+
+✅ Modules are ready for integration without pipeline changes—both OB/FVG use only bar data.
+
+⚠️ Take‑profit logic in LiquiditySweep is singular (one TP). The plan calls for tiered exits and FVG targets; integrating that will need to align with the existing takeProfitConfig and buildDecision usage.
+
+⚠️ Confidence and reason codes are currently incremental and rely on preflight + RR checks. Adding OB/FVG reason codes is safe but should be consistent with existing conventions used in LiquiditySweep (e.g., BREAK_CONFIRMED, RETEST_CONFIRMED, etc.).
+
+🚩 Architecture Mismatches in the Plan (vs. current repo)
+1) “Archive folder” is new and not referenced in build config
+You plan to move files into /archive/legacy-engine/. The repo’s tsconfig.json includes src/**/* only, so moving files outside src/ should not affect builds, but it’s a structural change you’ll need to track in docs or tooling (no existing references).
+
+2) “SSE progress” requires a new event contract
+Current SSE stream only emits upgrades/detection errors. There’s no client listener for scan progress events yet. Plan will require new event types and UI handling (currently only upgrade/heartbeat).
+
+3) Rate‑limit risk with concurrency
+Your plan assumes concurrency=5; autoScanService currently enforces a gentle 100ms delay between symbols sequentially. Parallelizing without integrating rateLimiter or backpressure logic could increase 429 risk. There is no concurrency limit in the current loop because it is sequential; any new pool must respect Twelve Data rate limits (not visible here, but important).
+
+✅ “Safe” / “Verify‑First” Deletion Guidance (Aligned to Plan)
+Safe to archive (low risk)
+grader.ts, entryTrigger.ts, trendFilter.ts — form a closed legacy chain only referenced internally.
+
+Verify before archiving
+batchDataService.ts — unused in live flow but may be valuable if you later choose to batch API calls for Phase 1 (performance track).
+
+✅ Summary (What Should Inform Your Execution)
+Performance Track (Parallelization):
+
+Current scanning is strictly sequential; you’ll see real speedups.
+
+SSE progress is not implemented today; plan requires new events + UI updates.
+
+Consider rate‑limit risk before concurrency >1.
+
+Code Hygiene Track (Archive):
+
+Legacy engine chain is self‑contained and safe to archive together.
+
+Batch service is unused but could be leveraged later for performance.
+
+Signal Quality Track (SMC):
+
+OB/FVG modules are fully implemented and idle.
+
+LiquiditySweep is the correct integration point; its TP logic is currently single‑target.
+
+Commands I used (for verification)
+rg -n "regimeDetector|Regime" src/engine/strategyAnalyzer.ts
+
+rg -n "orderBlocks|fairValueGaps" src
+
+rg -n "batchDataService" src
+
+rg -n "positionSizer|startupValidation|entryTrigger|grader|trendFilter" src
+
+rg -n "sseBroadcaster|broadcastSSE|broadcastDetectionError" src
+
+rg -n "portfolio risk|PortfolioRisk|openPositions" src/services
+
+sed -n '...' on:
+src/services/autoScanService.ts, src/services/sseBroadcaster.ts,
+src/engine/strategyAnalyzer.ts, src/modules/regimeDetector.ts,
+src/modules/smartMoney/*.ts, src/strategies/intraday/LiquiditySweep.ts,
+src/services/batchDataService.ts, src/engine/trendFilter.ts,
+src/engine/entryTrigger.ts, src/engine/grader.ts,
+src/server.ts, public/js/app.js, tsconfig.json
+
+If you want, I can now produce a risk‑ranked checklist for each phase, or review the plan step‑by‑step with “go/no‑go” flags—still no code.
