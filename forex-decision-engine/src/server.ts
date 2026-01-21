@@ -18,7 +18,7 @@ import { fileURLToPath } from 'url';
 
 import { 
   FOREX_SPECS, METAL_SPECS, CRYPTO_SPECS, INDEX_SPECS, COMMODITY_SPECS,
-  ALL_INSTRUMENTS, getInstrumentSpec, validateInstrumentSpecs 
+  ALL_INSTRUMENTS, ACTIVE_INSTRUMENTS, getInstrumentSpec, validateInstrumentSpecs, getInstrumentCounts 
 } from './config/e8InstrumentSpecs.js';
 import { DEFAULTS, RISK_OPTIONS, E8_ACCOUNT_PRESETS, getE8Preset } from './config/defaults.js';
 import { STYLE_PRESETS } from './config/strategy.js';
@@ -1290,7 +1290,8 @@ async function startServer() {
     logger.info(`📡 Server running on port ${PORT}`);
     logger.info(`💾 Database: ${isDbAvailable() ? 'Connected' : 'Using fallback storage'}`);
   logger.info(`🔑 API Key: ${process.env.TWELVE_DATA_API_KEY ? 'Configured' : 'NOT CONFIGURED'}`);
-  logger.info(`📊 Instruments: ${FOREX_SPECS.length} forex, ${METAL_SPECS.length} metals, ${CRYPTO_SPECS.length} crypto, ${INDEX_SPECS.length} indices, ${COMMODITY_SPECS.length} commodities (${ALL_INSTRUMENTS.length} total)`);
+  const counts = getInstrumentCounts();
+  logger.info(`📊 Active Instruments: ${counts.forex} forex, ${counts.metals} metals, ${counts.crypto} crypto, ${counts.commodities} commodities (${counts.total} total, ${counts.disabled} disabled)`);
   
   // Register alert callback BEFORE auto-starting - ensures alerts work after server restart
   autoScanService.setAlertCallback((decision, isNew) => {
