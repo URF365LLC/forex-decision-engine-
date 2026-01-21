@@ -1,11 +1,13 @@
 /**
- * Auto-Scan Service v3.0 - PARALLEL EXECUTION
+ * Auto-Scan Service v3.1 - RATE LIMIT OPTIMIZED
  *
- * Key Changes from v2.1:
- * - Parallel symbol processing with controlled concurrency (5 concurrent)
- * - 5-10x faster scans: 46 symbols in ~7s vs ~40s sequential
- * - Real-time SSE progress broadcasting
- * - Maintains 50% headroom on Twelve Data rate limits (610/min)
+ * Key Changes from v3.0:
+ * - Sequential symbol processing (concurrency=1) with 3s delay between symbols
+ * - First strategy scan: ~840 API calls (40 symbols × 21 calls each)
+ * - Subsequent strategies: 0 additional calls (hit indicator bundle cache)
+ * - Stays well under 610 calls/min Twelve Data limit
+ * - Excludes indices from 'all' preset (requires upgraded Twelve Data plan)
+ * - Real-time API call counter for rate limit monitoring
  *
  * Features:
  * 1. Symbol watchlist presets (majors, minors, crypto, metals, custom)
@@ -13,6 +15,7 @@
  * 3. Per-strategy scheduling with staggered execution
  * 4. Enhanced status tracking (progress %, per-strategy results)
  * 5. SSE events: scan:progress, scan:complete
+ * 6. Shared rate limit pause when circuit breaker opens
  *
  * Persists config to data/autoScanConfig.json for auto-start on server reboot
  */
@@ -28,6 +31,7 @@ import { broadcastDetectionError, broadcastScanProgress, broadcastScanComplete }
 import { promisePool } from '../utils/promisePool.js';
 import { UserSettings, Decision, SignalGrade } from '../strategies/types.js';
 import { twelveDataCircuit, CircuitOpenError } from './circuitBreaker.js';
+import { twelveData } from './twelveDataClient.js';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -98,15 +102,18 @@ export type WatchlistPreset = 'majors' | 'majors-gold' | 'minors' | 'crypto' | '
 const MAJOR_PAIRS = ['EURUSD', 'GBPUSD', 'USDJPY', 'USDCHF', 'AUDUSD', 'NZDUSD', 'USDCAD'];
 const MINOR_PAIRS = FOREX_SPECS.map(s => s.symbol).filter(s => !MAJOR_PAIRS.includes(s));
 
+// Exclude indices from 'all' preset - requires higher Twelve Data plan for real-time data
+const ALL_EXCEPT_INDICES = ALL_INSTRUMENTS.filter(s => s.type !== 'index').map(s => s.symbol);
+
 export const WATCHLIST_PRESETS: Record<WatchlistPreset, { symbols: string[]; description: string }> = {
   'majors': { symbols: MAJOR_PAIRS, description: '7 major forex pairs' },
   'majors-gold': { symbols: [...MAJOR_PAIRS, 'XAUUSD'], description: '7 majors + gold' },
   'minors': { symbols: MINOR_PAIRS, description: '21 minor forex pairs' },
   'crypto': { symbols: CRYPTO_SPECS.map(s => s.symbol), description: '8 cryptocurrencies (24/7)' },
   'metals': { symbols: METAL_SPECS.map(s => s.symbol), description: 'Gold & silver' },
-  'indices': { symbols: INDEX_SPECS.map(s => s.symbol), description: '6 major indices' },
+  'indices': { symbols: INDEX_SPECS.map(s => s.symbol), description: '6 major indices (requires upgraded plan)' },
   'commodities': { symbols: COMMODITY_SPECS.map(s => s.symbol), description: 'Oil & energy' },
-  'all': { symbols: ALL_INSTRUMENTS.map(s => s.symbol), description: 'All 46 instruments' },
+  'all': { symbols: ALL_EXCEPT_INDICES, description: `All ${ALL_EXCEPT_INDICES.length} instruments (excl. indices)` },
   'custom': { symbols: [], description: 'Custom selection' },
 };
 
@@ -594,15 +601,20 @@ class AutoScanService {
     let newSignals = 0;
     let errors = 0;
 
-    // Concurrency limit: 5 keeps us at ~50% of Twelve Data rate limit (610/min)
-    // This provides 5-10x speedup while maintaining API headroom
-    const CONCURRENCY = 5;
+    // RATE LIMIT FIX: Sequential symbol processing (concurrency=1)
+    // - Each symbol requires 21 API calls when cache is cold
+    // - 40 symbols × 21 calls = 840 calls for first strategy scan
+    // - Subsequent strategies hit bundle cache = 0 additional calls
+    // - With delayBetweenStarts=3000ms, we spread 21 calls over ~3s = ~420 calls/min
+    // - This stays well under the 610 calls/min Twelve Data limit
+    const CONCURRENCY = 1;
+    const DELAY_BETWEEN_SYMBOLS_MS = 3000; // 3 second gap between symbols
 
-    // Process symbols in parallel with controlled concurrency
+    // Process symbols sequentially with delay to stay under rate limit
     const poolResult = await promisePool({
       items: symbolsToScan,
       concurrency: CONCURRENCY,
-      delayBetweenStarts: 50, // Small stagger to smooth API load
+      delayBetweenStarts: DELAY_BETWEEN_SYMBOLS_MS,
       handler: async (symbol: string, index: number) => {
         try {
           // Check if we need to wait for rate limit reset (global shared pause)
@@ -797,7 +809,9 @@ class AutoScanService {
       errors,
     });
 
-    logger.info(`AUTO_SCAN: ${schedule.strategyId} complete in ${elapsed}ms - ${symbolsScanned} symbols, ${signalsFound} signals (${newSignals} new), ${errors} errors`);
+    // Log API call stats for rate limit monitoring
+    const apiStats = twelveData.getApiStats();
+    logger.info(`AUTO_SCAN: ${schedule.strategyId} complete in ${elapsed}ms - ${symbolsScanned} symbols, ${signalsFound} signals (${newSignals} new), ${errors} errors | API: ${apiStats.callsLastMinute}/${apiStats.limit} (${apiStats.percentUsed}%)`);
   }
 
   private shouldNotify(decision: Decision, isNew: boolean): boolean {
