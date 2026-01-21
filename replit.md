@@ -26,7 +26,7 @@ This module detects ICT-based institutional trading patterns such as Order Block
 This module classifies volatility regimes (Compression, Normal, Expansion) using ATR percentiles to adapt strategy parameters and risk-reward multipliers.
 
 #### Configuration
-`e8InstrumentSpecs.ts` serves as a single source of truth for 46 instruments, strategy parameters, and default settings adhering to E8 Markets rules (0.5% risk, 4% daily loss limit, 6% max drawdown).
+`e8InstrumentSpecs.ts` serves as a single source of truth for 46 instruments (40 active, 6 disabled), strategy parameters, and default settings adhering to E8 Markets rules (0.5% risk, 4% daily loss limit, 6% max drawdown). Instruments can be disabled via `disabled: true` flag - disabled instruments are excluded from scanning and API responses.
 
 #### Services
 Core services include a Twelve Data Client with retry logic and normalization, an in-memory TTL Cache, a Token Bucket Rate Limiter, Signal Cooldown mechanisms, a Volatility Gate, and structured Logging. A Circuit Breaker Service is implemented for Twelve Data, Grok AI, and Database connections. A Portfolio Risk Manager tracks net currency exposure across open positions, enforcing a maximum of 2% per currency.
