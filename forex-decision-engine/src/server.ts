@@ -215,14 +215,20 @@ app.get('/api/metrics', async (req, res) => {
  * Get trading universe (v2 with full instrument specs)
  */
 app.get('/api/universe', (req, res) => {
-  const forexSymbols = FOREX_SPECS.map(s => s.symbol);
-  const metalSymbols = METAL_SPECS.map(s => s.symbol);
-  const cryptoSymbols = CRYPTO_SPECS.map(s => s.symbol);
-  const indexSymbols = INDEX_SPECS.map(s => s.symbol);
-  const commoditySymbols = COMMODITY_SPECS.map(s => s.symbol);
+  const activeForex = FOREX_SPECS.filter(s => !s.disabled);
+  const activeMetals = METAL_SPECS.filter(s => !s.disabled);
+  const activeCrypto = CRYPTO_SPECS.filter(s => !s.disabled);
+  const activeIndices = INDEX_SPECS.filter(s => !s.disabled);
+  const activeCommodities = COMMODITY_SPECS.filter(s => !s.disabled);
 
-  const metadata: Record<string, { pipDecimals: number; displayName: string; category: string }> = {};
-  for (const spec of ALL_INSTRUMENTS) {
+  const forexSymbols = activeForex.map(s => s.symbol);
+  const metalSymbols = activeMetals.map(s => s.symbol);
+  const cryptoSymbols = activeCrypto.map(s => s.symbol);
+  const indexSymbols = activeIndices.map(s => s.symbol);
+  const commoditySymbols = activeCommodities.map(s => s.symbol);
+
+  const metadata: Record<string, { pipDecimals: number; displayName: string; category: string; disabled?: boolean }> = {};
+  for (const spec of ACTIVE_INSTRUMENTS) {
     metadata[spec.symbol] = {
       pipDecimals: spec.digits,
       displayName: spec.displayName,
@@ -245,12 +251,13 @@ app.get('/api/universe', (req, res) => {
     defaultWatchlist: ['EURUSD', 'GBPUSD', 'USDJPY', 'BTCUSD', 'XAUUSD'],
     metadata,
     instruments: {
-      forex: FOREX_SPECS,
-      metals: METAL_SPECS,
-      crypto: CRYPTO_SPECS,
-      indices: INDEX_SPECS,
-      commodities: COMMODITY_SPECS,
+      forex: activeForex,
+      metals: activeMetals,
+      crypto: activeCrypto,
+      indices: activeIndices,
+      commodities: activeCommodities,
     },
+    counts: getInstrumentCounts(),
   });
 });
 
