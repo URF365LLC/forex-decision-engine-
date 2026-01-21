@@ -29,6 +29,8 @@ export interface InstrumentSpec {
   maxLotSize: number;
   tradingHours: string;
   digits: number;
+  disabled?: boolean;
+  disabledReason?: string;
 }
 
 export const FOREX_SPECS: InstrumentSpec[] = [
@@ -63,12 +65,12 @@ export const FOREX_SPECS: InstrumentSpec[] = [
 ];
 
 export const INDEX_SPECS: InstrumentSpec[] = [
-  { symbol: 'SP', dataSymbol: 'SPX', displayName: 'S&P 500', type: 'index', contractSize: 20, commission: 6, avgSpread: 0.90, avgSpreadPips: 0.9, pipSize: 1, pipValue: 20, quoteCurrency: 'USD', leverage: 15, maxLotSize: 50, tradingHours: '01:05-23:55', digits: 2 },
-  { symbol: 'NSDQ', dataSymbol: 'NDX', displayName: 'Nasdaq 100', type: 'index', contractSize: 5, commission: 6, avgSpread: 0.70, avgSpreadPips: 0.7, pipSize: 1, pipValue: 5, quoteCurrency: 'USD', leverage: 15, maxLotSize: 50, tradingHours: '01:05-23:55', digits: 1 },
-  { symbol: 'DOW', dataSymbol: 'DJI', displayName: 'Dow Jones Industrial', type: 'index', contractSize: 5, commission: 12, avgSpread: 0.47, avgSpreadPips: 0.47, pipSize: 1, pipValue: 5, quoteCurrency: 'USD', leverage: 15, maxLotSize: 50, tradingHours: '01:05-23:55', digits: 2 },
-  { symbol: 'DAX', dataSymbol: 'GDAXI', displayName: 'Germany 40 (DAX)', type: 'index', contractSize: 5, commission: 6, avgSpread: 1.2, avgSpreadPips: 1.2, pipSize: 1, pipValue: 5, quoteCurrency: 'EUR', leverage: 15, maxLotSize: 50, tradingHours: '01:05-23:55', digits: 2 },
-  { symbol: 'NIKKEI', dataSymbol: 'N225', displayName: 'Japan 225 (Nikkei)', type: 'index', contractSize: 500, commission: 6, avgSpread: 6.5, avgSpreadPips: 6.5, pipSize: 1, pipValue: 3.21, quoteCurrency: 'JPY', leverage: 15, maxLotSize: 50, tradingHours: '01:05-23:55', digits: 2 },
-  { symbol: 'ASX', dataSymbol: 'AXJO', displayName: 'Australia 200', type: 'index', contractSize: 20, commission: 12, avgSpread: 0.84, avgSpreadPips: 0.84, pipSize: 1, pipValue: 13.40, quoteCurrency: 'AUD', leverage: 15, maxLotSize: 50, tradingHours: '02:50-09:30,10:10-23:59', digits: 2 },
+  { symbol: 'SP', dataSymbol: 'SPX', displayName: 'S&P 500', type: 'index', contractSize: 20, commission: 6, avgSpread: 0.90, avgSpreadPips: 0.9, pipSize: 1, pipValue: 20, quoteCurrency: 'USD', leverage: 15, maxLotSize: 50, tradingHours: '01:05-23:55', digits: 2, disabled: true, disabledReason: 'Requires Twelve Data upgraded plan for real-time index data' },
+  { symbol: 'NSDQ', dataSymbol: 'NDX', displayName: 'Nasdaq 100', type: 'index', contractSize: 5, commission: 6, avgSpread: 0.70, avgSpreadPips: 0.7, pipSize: 1, pipValue: 5, quoteCurrency: 'USD', leverage: 15, maxLotSize: 50, tradingHours: '01:05-23:55', digits: 1, disabled: true, disabledReason: 'Requires Twelve Data upgraded plan for real-time index data' },
+  { symbol: 'DOW', dataSymbol: 'DJI', displayName: 'Dow Jones Industrial', type: 'index', contractSize: 5, commission: 12, avgSpread: 0.47, avgSpreadPips: 0.47, pipSize: 1, pipValue: 5, quoteCurrency: 'USD', leverage: 15, maxLotSize: 50, tradingHours: '01:05-23:55', digits: 2, disabled: true, disabledReason: 'Requires Twelve Data upgraded plan for real-time index data' },
+  { symbol: 'DAX', dataSymbol: 'GDAXI', displayName: 'Germany 40 (DAX)', type: 'index', contractSize: 5, commission: 6, avgSpread: 1.2, avgSpreadPips: 1.2, pipSize: 1, pipValue: 5, quoteCurrency: 'EUR', leverage: 15, maxLotSize: 50, tradingHours: '01:05-23:55', digits: 2, disabled: true, disabledReason: 'Requires Twelve Data upgraded plan for real-time index data' },
+  { symbol: 'NIKKEI', dataSymbol: 'N225', displayName: 'Japan 225 (Nikkei)', type: 'index', contractSize: 500, commission: 6, avgSpread: 6.5, avgSpreadPips: 6.5, pipSize: 1, pipValue: 3.21, quoteCurrency: 'JPY', leverage: 15, maxLotSize: 50, tradingHours: '01:05-23:55', digits: 2, disabled: true, disabledReason: 'Requires Twelve Data upgraded plan for real-time index data' },
+  { symbol: 'ASX', dataSymbol: 'AXJO', displayName: 'Australia 200', type: 'index', contractSize: 20, commission: 12, avgSpread: 0.84, avgSpreadPips: 0.84, pipSize: 1, pipValue: 13.40, quoteCurrency: 'AUD', leverage: 15, maxLotSize: 50, tradingHours: '02:50-09:30,10:10-23:59', digits: 2, disabled: true, disabledReason: 'Requires Twelve Data upgraded plan for real-time index data' },
 ];
 
 export const COMMODITY_SPECS: InstrumentSpec[] = [
@@ -101,8 +103,16 @@ export const ALL_INSTRUMENTS: InstrumentSpec[] = [
   ...CRYPTO_SPECS,
 ];
 
+export const ACTIVE_INSTRUMENTS: InstrumentSpec[] = ALL_INSTRUMENTS.filter(spec => !spec.disabled);
+
+export const DISABLED_INSTRUMENTS: InstrumentSpec[] = ALL_INSTRUMENTS.filter(spec => spec.disabled);
+
 export const INSTRUMENT_MAP: Map<string, InstrumentSpec> = new Map(
   ALL_INSTRUMENTS.map(spec => [spec.symbol, spec])
+);
+
+export const ACTIVE_INSTRUMENT_MAP: Map<string, InstrumentSpec> = new Map(
+  ACTIVE_INSTRUMENTS.map(spec => [spec.symbol, spec])
 );
 
 export const DATA_SYMBOL_MAP: Map<string, InstrumentSpec> = new Map(
@@ -214,8 +224,9 @@ export function isValidInstrument(symbol: string): boolean {
   return INSTRUMENT_MAP.has(symbol) || DATA_SYMBOL_MAP.has(symbol);
 }
 
-export function getSymbolsByType(type: AssetType): string[] {
-  return ALL_INSTRUMENTS.filter(spec => spec.type === type).map(spec => spec.symbol);
+export function getSymbolsByType(type: AssetType, includeDisabled = false): string[] {
+  const instruments = includeDisabled ? ALL_INSTRUMENTS : ACTIVE_INSTRUMENTS;
+  return instruments.filter(spec => spec.type === type).map(spec => spec.symbol);
 }
 
 export function validateInstrumentSpecs(): void {
@@ -254,7 +265,22 @@ export function validateInstrumentSpecs(): void {
     }
   }
 
-  logger.info(`Validated ${ALL_INSTRUMENTS.length} instrument specs`);
+  const activeCount = ACTIVE_INSTRUMENTS.length;
+  const disabledCount = DISABLED_INSTRUMENTS.length;
+  logger.info(`Validated ${activeCount} active instrument specs (${disabledCount} disabled)`);
+}
+
+export function getInstrumentCounts(): { forex: number; metals: number; crypto: number; indices: number; commodities: number; total: number; disabled: number } {
+  const active = ACTIVE_INSTRUMENTS;
+  return {
+    forex: active.filter(s => s.type === 'forex').length,
+    metals: active.filter(s => s.type === 'metal').length,
+    crypto: active.filter(s => s.type === 'crypto').length,
+    indices: active.filter(s => s.type === 'index').length,
+    commodities: active.filter(s => s.type === 'commodity').length,
+    total: active.length,
+    disabled: DISABLED_INSTRUMENTS.length,
+  };
 }
 
 export const E8_RULES = {
