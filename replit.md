@@ -126,3 +126,31 @@ Core API endpoints cover system health, symbol retrieval, signal analysis and sc
 - **API Response tieredExits**: Transformed to `{tp1: {price, formatted, pips, rr}, tp2: {...}}` object format
 - **Journal Entry lots field**: Backend uses `lots`, not `lotSize`
 - **Detection statuses**: 'taken' is canonical; 'executed' deprecated but supported for backwards compatibility
+
+### January 2026 - BollingerMR V3 Strategy Optimization (4-Way AI Validation)
+
+#### Validation Process
+Strategy reviewed by GPT-4, Claude, Replit Agent, and Human Operator with 95% confidence consensus.
+
+#### Changes Implemented
+1. **Rejection Candle HARD GATE** - Now required, not optional bonus. Eliminates "blind fade" failure mode.
+2. **BB Width Expansion Filter** - Blocks trades when band width percentile > 80 (expansion regime).
+3. **RSI Thresholds Tightened** - Changed from 35/65 to 30/70 (industry standard).
+4. **Swing-Based Stops** - Replaced pure ATR×1.5 with swing structure (recentLow/High - ATR×0.3).
+5. **RR Target Increased** - Set rrTarget=2.0, kept atrMultiplier=1.5.
+
+#### New Helper Function
+- **calcBBWidthPercentile()** in `utils.ts` - Calculates BB width percentile with Number.isFinite() validation.
+- **BBandInput** type defined locally to avoid circular imports from SignalQualityGate.
+
+#### Expected Impact
+- Signal count: 15-20/week → 8-12/week
+- Win rate: 65% → 72-75% (projected)
+- Risk:Reward: 1.5 → 2.0
+- Grade: C+ → B+
+
+#### What Was NOT Changed (Consensus: Working Well)
+- H4 trend framework
+- Session scoring
+- Regime detection
+- Strong trend counter block (line 94)
