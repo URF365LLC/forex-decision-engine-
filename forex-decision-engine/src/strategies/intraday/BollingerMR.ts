@@ -22,16 +22,19 @@ import {
   runPreFlight, logPreFlight, isValidBBand, allValidNumbers,
   isTrendAligned, getTrendConfidenceAdjustment,
 } from '../SignalQualityGate.js';
+import { createLogger } from '../../services/logger.js';
+
+const logger = createLogger('BollingerMR');
 
 export class BollingerMR implements IStrategy {
   meta: StrategyMeta = {
     id: 'bollinger-mr',
     name: 'Bollinger Mean Reversion',
-    description: 'Mean reversion from Bollinger Band touches. V3: rejection gate, BB expansion filter, swing stops.',
+    description: 'Mean reversion from BB touches with REQUIRED rejection candle, expansion filter, and setup-invalidation stop',
     style: 'intraday',
     timeframes: { trend: 'H4', entry: 'H1' },
     winRate: 65,
-    avgRR: 1.5,
+    avgRR: 2.0,
     signalsPerWeek: '8-12',
     requiredIndicators: ['bars', 'bbands', 'rsi', 'atr', 'ema200', 'trendBarsH4', 'ema200H4', 'adxH4'],
     version: '2026-01-23',
@@ -129,13 +132,16 @@ export class BollingerMR implements IStrategy {
     
     const entryPrice = entryBar.open;
     
+    // SETUP-INVALIDATION STOP: Not a swing stop or liquidity-aware stop.
+    // If price breaks the immediate extreme of the rejection setup,
+    // the reversal thesis is invalidated. Buffer = 0.4 ATR (Phase 1 baseline).
     let stopLossPrice: number;
     if (direction === 'long') {
       const recentLow = Math.min(signalBar.low, prevBar.low);
-      stopLossPrice = recentLow - (atrSignal! * 0.3);
+      stopLossPrice = recentLow - (atrSignal! * 0.4);
     } else {
       const recentHigh = Math.max(signalBar.high, prevBar.high);
-      stopLossPrice = recentHigh + (atrSignal! * 0.3);
+      stopLossPrice = recentHigh + (atrSignal! * 0.4);
     }
     
     const riskDistance = Math.abs(entryPrice - stopLossPrice);
@@ -149,6 +155,25 @@ export class BollingerMR implements IStrategy {
     reasonCodes.push('RR_FAVORABLE');
     confidence = clamp(confidence, 0, 100);
     if (confidence < 50) return null;
+    
+    // PHASE 1 LOGGING: Capture validation data for strategy optimization
+    const stopDistanceATR = riskDistance / atrSignal!;
+    logger.info('PHASE1_SIGNAL', {
+      symbol,
+      timestamp: signalBar.timestamp,
+      direction,
+      entryPrice,
+      stopLossPrice,
+      stopDistanceATR: Math.round(stopDistanceATR * 100) / 100,
+      takeProfitPrice,
+      targetRR: 2.0,
+      bufferUsed: 0.4,
+      bbWidthPercentile: bbWidthPercentile !== null ? Math.round(bbWidthPercentile) : null,
+      h4TrendDirection: preflight.h4Trend?.direction ?? 'unknown',
+      h4TrendStrength: preflight.h4Trend?.strength ?? 'unknown',
+      sessionAdjustment: preflight.confidenceAdjustments,
+      confidence,
+    });
     
     return buildDecision({
       symbol, strategyId: this.meta.id, strategyName: this.meta.name,
