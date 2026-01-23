@@ -1,0 +1,263 @@
+# 3-Way AI Validation: BollingerMR Strategy (Final Consensus)
+
+**Date:** January 2026
+**Participants:** GPT-4 | Claude (Opus) | Human Operator
+**Strategy Under Review:** BollingerMR.ts
+**Round:** 2 (GPT now has full infrastructure context)
+
+---
+
+## Executive Summary
+
+After GPT reviewed the complete infrastructure (types.ts, SignalQualityGate.ts, utils.ts), we have **strong consensus** on both what's working and what needs improvement.
+
+| Area | GPT Round 1 | GPT Round 2 | Claude | Final Consensus |
+|------|-------------|-------------|--------|-----------------|
+| Regime filtering | ❌ "Missing" | ✅ "Exists, reasonable" | ✅ "Exists" | **RESOLVED** |
+| Trend filtering | ❌ "Missing" | ✅ "Real defense" | ✅ "Exists" | **RESOLVED** |
+| Session awareness | ❌ "Missing" | ✅ "Solid, explainable" | ✅ "Implemented" | **RESOLVED** |
+| Execution model | ❓ "Ambiguous" | ✅ "Explicit NEXT_OPEN" | ✅ "Documented" | **RESOLVED** |
+| Rejection candle | 🔴 "Critical gap" | 🔴 "Main leak" | 🔴 "Should be required" | **CONSENSUS: FIX** |
+| BB Width filter | 🟡 "Missing" | 🟡 "Missing" | 🟡 "Valid enhancement" | **CONSENSUS: ADD** |
+| RSI redundancy | 🟡 "Correlated" | 🟡 "Double-counting" | 🟡 "Tighten or remove" | **CONSENSUS: FIX** |
+| Stop methodology | — | 🟡 "Structure-first better" | 🟡 "Swing-based superior" | **CONSENSUS: CONSIDER** |
+
+---
+
+## GPT's Revised Assessment (Key Quotes)
+
+### What GPT Now Acknowledges:
+
+> "Your infrastructure already reduces a lot of this (session + regime + H4 trend penalties)"
+
+> "Claude was right: your infrastructure is solid (trend/regime/session/execution)"
+
+> "Session awareness (strong) — This is solid, explainable, and execution-aware"
+
+> "Trend filter exists (and is meaningful) — This is a real trend defense"
+
+> "BollingerMR avoids the worst case: counter-trend in strong trends is hard blocked"
+
+### What GPT Still Criticizes (Correctly):
+
+> "The strategy trigger is still too permissive"
+
+> "A no-rejection BB touch can still clear 50 in good sessions/trend alignment"
+
+> "That is the exact 'mean reversion death spiral' pattern in production: you fade touches that are actually continuations"
+
+---
+
+## Final Consensus: The Real Issues
+
+### 🔴 CRITICAL: Rejection Candle Must Be Required
+
+**Current Behavior:**
+```
+BB touch         = +25 confidence
+Rejection candle = +20 bonus (OPTIONAL)
+RSI < 35         = +15 bonus (OPTIONAL)
+H4 aligned       = +10 to +20 bonus
+Session bonus    = +5 to +20
+Strong trend     = -15 penalty
+
+MINIMUM TO PASS: 50
+```
+
+**Problem Path:**
+- BB touch (25) + H4 aligned (15) + London/NY (20) = **60** ✅ PASSES
+- No rejection candle, no RSI confirmation
+- This is a "blind fade" — the exact failure mode
+
+**GPT's Recommendation:**
+> "Require isRejectionCandle().ok === true"
+
+**Claude's Agreement:**
+This is the #1 improvement. Currently rejection is a bonus; it should be a gate.
+
+**Consensus Fix:**
+```
+IF isRejectionCandle(signalBar, direction).ok === false:
+  return null  // HARD REJECT
+```
+
+---
+
+### 🟡 MEDIUM: Add BB Width Filter (Volatility State)
+
+**Current State:**
+- ✅ ATR minimum floor (0.05%)
+- ✅ Chop regime blocked (ADX < 15 + ATR% < 0.1)
+- ❌ No expansion detection
+
+**The Gap:**
+When Bollinger Bands are **expanding**, touches often signal continuation, not reversal. The strategy currently fades these.
+
+**GPT's Recommendation:**
+> "Allow MR only when BB width percentile is not in top X% (expansion)"
+
+**Claude's Agreement:**
+BB Width percentile is directly aligned with Bollinger theory. This is a valid, non-overfit enhancement.
+
+**Consensus Fix:**
+```
+BB Width = (upper - lower) / middle
+IF BB Width percentile > 80th (recent 50 bars):
+  return null  // Expansion regime, don't fade
+```
+
+---
+
+### 🟡 MEDIUM: RSI Redundancy
+
+**The Issue (Both AIs Agree):**
+
+GPT:
+> "RSI is directionally fine, but statistically correlated with BB deviation (not independent confirmation). It often rewards the same information twice."
+
+Claude:
+> "When price touches lower BB, RSI is typically already low. Correlation reduces independent confirmation value."
+
+**Current Thresholds:**
+- BollingerMR: RSI < 35 / > 65 (looser than standard)
+- Industry standard: RSI < 30 / > 70
+
+**Three Options (Pick One):**
+
+| Option | Description | Pros | Cons |
+|--------|-------------|------|------|
+| A | Remove RSI entirely | Cleanest, no redundancy | Loses momentum context |
+| B | Tighten to 30/70, make it a gate | More selective | May reduce signal count significantly |
+| C | Keep RSI only for divergence bonus | Independent information | More complex logic |
+
+**GPT's Preference:** Option A or B
+**Claude's Preference:** Option B (tighten to 30/70)
+
+---
+
+### 🟡 MEDIUM: Stop Methodology
+
+**Current:** Pure ATR × 1.5
+
+**Better for Mean Reversion:**
+```
+Stop = Recent swing extreme + ATR buffer
+
+Long:  Stop = min(signalBar.low, prevBar.low) - (ATR × 0.3)
+Short: Stop = max(signalBar.high, prevBar.high) + (ATR × 0.3)
+```
+
+**Why This Is Better:**
+1. Stops are "logical" to the setup (below recent swing)
+2. Reduces random-wick stopouts
+3. Tighter stops improve RR
+4. Other strategies (StochasticOversold, RsiOversold) already do this
+
+**GPT:**
+> "MR often benefits from structure-first stops (swing + buffer) to reduce random-wick stopouts"
+
+**Claude:**
+StochasticOversold uses exactly this pattern and has 68% win rate (vs BollingerMR's 65%).
+
+---
+
+## Strategy Effectiveness Matrix (Consensus)
+
+| Regime | Session | Expected Performance | Notes |
+|--------|---------|---------------------|-------|
+| **Chop** (ADX<15, ATR%<0.1) | Any | ❌ BLOCKED | Working as designed |
+| **Range** (ADX<14) | London/NY | ✅ **BEST** | Add rejection gate → even stronger |
+| **Range** (ADX<14) | Asian | ⚠️ Mixed | -15 penalty helps but still risky |
+| **Weak Trend** (ADX 14-30) | London/NY | ✅ Good | Buy dips in uptrend, sell rips in downtrend |
+| **Strong Trend** (ADX≥30) | London/NY | ⚠️ Only A+ setups | -15 penalty + rejection gate = safer |
+| **Strong Trend Counter** | Any | ❌ BLOCKED | Hard rejection at line 94 |
+
+---
+
+## Final Optimization Roadmap
+
+### Phase 1: Fix the Main Leak (Highest ROI)
+
+| Change | Risk | Benefit | Priority |
+|--------|------|---------|----------|
+| Require rejection candle | Low | High | **#1** |
+| Add BB Width expansion filter | Medium | High | **#2** |
+
+### Phase 2: Clean Confirmations
+
+| Change | Risk | Benefit | Priority |
+|--------|------|---------|----------|
+| RSI: tighten to 30/70 or remove | Low | Medium | **#3** |
+| Stop: swing + ATR buffer | Medium | Medium-High | **#4** |
+| Increase RR target to 2.0 | Low | Medium | **#5** |
+
+### What NOT to Change
+
+| Item | Reason |
+|------|--------|
+| H4 trend framework | Working well, real defense |
+| Session scoring | Solid, ICT-aligned |
+| Regime detection | Reasonable coarse layer |
+| Confidence thresholds | Don't micromanage per-symbol |
+| Add ML entry signals | AI should veto, not decide |
+
+---
+
+## 3-Way Final Grades
+
+| Assessor | Round 1 Grade | Final Grade | Notes |
+|----------|---------------|-------------|-------|
+| **GPT** | C- | C+ → **B/B+ after fixes** | "Two changes needed" |
+| **Claude** | B- | C+ → **B+ after fixes** | "Infrastructure solid, strategy trigger weak" |
+| **Consensus** | — | **C+ current, B+ achievable** | Strong agreement on path forward |
+
+---
+
+## What This Validation Proved
+
+### The Value of Multi-AI Review:
+
+1. **GPT Round 1** caught real issues but lacked infrastructure context
+2. **Claude** provided infrastructure defense and cross-strategy view
+3. **GPT Round 2** revised assessment with full context
+4. **Final consensus** is more robust than either AI alone
+
+### What Would Have Been Missed:
+
+| Single AI | Would Have Missed |
+|-----------|-------------------|
+| GPT alone | Infrastructure defenses (trend, regime, session) |
+| Claude alone | Fresh perspective on trigger permissiveness |
+| Either alone | Cross-validation of recommendations |
+
+---
+
+## Actionable Summary for Human Operator
+
+**Immediate Actions (High Confidence):**
+1. ✅ Make rejection candle REQUIRED (not optional bonus)
+2. ✅ Add BB Width expansion filter (top 80th percentile = block)
+
+**Secondary Actions (Medium Confidence):**
+3. ⚠️ Tighten RSI to 30/70 OR remove entirely
+4. ⚠️ Switch to swing-based stops (like StochasticOversold)
+5. ⚠️ Increase RR target from 1.5 to 2.0
+
+**Do Not Do:**
+- ❌ Add ML entry signals
+- ❌ Micromanage thresholds per symbol
+- ❌ Remove regime/session gating
+- ❌ Change H4 trend framework
+
+---
+
+## Next Strategy Audit
+
+Ready to audit the next strategy. Recommended order:
+
+1. **RSI Bounce** — Similar to BollingerMR, can compare
+2. **StochasticOversold** — Has rejection requirement, can contrast
+3. **CCI Zero-Line** — Weakest win rate, needs attention
+4. **EMA Pullback** — 50% win rate, fundamental questions
+
+Share GPT's audit and I'll provide the counter-analysis.
