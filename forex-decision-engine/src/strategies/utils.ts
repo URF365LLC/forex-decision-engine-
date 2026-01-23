@@ -97,6 +97,52 @@ export function normalizedSlope(series: number[] | undefined, lookback: number):
   return pct / lookback;
 }
 
+/**
+ * BBand type for width percentile calculation (local to avoid circular imports)
+ */
+export type BBandInput = { upper: number; middle: number; lower: number };
+
+/**
+ * Calculate Bollinger Band width percentile for the current bar.
+ * Used to detect expansion regimes where mean-reversion is riskier.
+ * 
+ * @param bbands - Array of Bollinger Band values
+ * @param currentIdx - Index of the current bar to evaluate
+ * @param lookback - Number of historical bars to compare (default 50)
+ * @returns Percentile (0-100) or null if insufficient data
+ */
+export function calcBBWidthPercentile(
+  bbands: BBandInput[],
+  currentIdx: number,
+  lookback = 50
+): number | null {
+  if (!bbands || currentIdx < 0 || currentIdx >= bbands.length) return null;
+  
+  const bb = bbands[currentIdx];
+  if (!bb || !Number.isFinite(bb.upper) || !Number.isFinite(bb.lower) || 
+      !Number.isFinite(bb.middle) || bb.middle === 0) return null;
+  
+  const width = (bb.upper - bb.lower) / bb.middle;
+  if (!Number.isFinite(width) || width <= 0) return null;
+  
+  const startIdx = Math.max(0, currentIdx - lookback);
+  const widths: number[] = [];
+  
+  for (let i = startIdx; i < currentIdx; i++) {
+    const hist = bbands[i];
+    if (hist && Number.isFinite(hist.upper) && Number.isFinite(hist.lower) &&
+        Number.isFinite(hist.middle) && hist.middle !== 0) {
+      const w = (hist.upper - hist.lower) / hist.middle;
+      if (Number.isFinite(w) && w > 0) widths.push(w);
+    }
+  }
+  
+  if (widths.length < 10) return null;
+  
+  const rank = widths.filter(w => w <= width).length;
+  return (rank / widths.length) * 100;
+}
+
 export function validateIndicators(
   data: Record<string, unknown>,
   required: RequiredIndicator[],
