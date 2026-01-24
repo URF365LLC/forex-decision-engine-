@@ -2345,13 +2345,32 @@ const App = {
   },
 
   applyLocalHistoryFilters() {
+    const groupFilter = UI.$('history-filter-group')?.value;
     const strategyFilter = UI.$('history-filter-strategy')?.value;
+    const gradeFilter = UI.$('history-filter-grade')?.value;
     const resultFilter = UI.$('history-filter-result')?.value;
     const fromDate = UI.$('history-filter-from')?.value;
     const toDate = UI.$('history-filter-to')?.value;
 
+    const gradeOrder = { 'A+': 5, 'A': 4, 'B+': 3, 'B': 2, 'C': 1 };
+    const minGradeScore = gradeFilter ? gradeOrder[gradeFilter] : 0;
+
+    const forexSymbols = ['EURUSD', 'GBPUSD', 'USDJPY', 'USDCHF', 'AUDUSD', 'USDCAD', 'NZDUSD', 'EURGBP', 'EURJPY', 'GBPJPY', 'AUDJPY', 'EURAUD', 'EURCHF', 'AUDNZD', 'NZDJPY', 'GBPAUD', 'GBPCAD', 'EURNZD', 'AUDCAD', 'GBPCHF', 'AUDCHF', 'EURCAD', 'CADJPY', 'GBPNZD', 'CADCHF', 'CHFJPY', 'NZDCAD', 'NZDCHF'];
+    const cryptoSymbols = ['BTCUSD', 'ETHUSD', 'XRPUSD', 'LTCUSD', 'BCHUSD', 'ADAUSD', 'SOLUSD', 'BNBUSD'];
+    const metalSymbols = ['XAUUSD', 'XAGUSD'];
+
     this.signalHistory = this.signalHistory.filter(signal => {
+      if (groupFilter) {
+        const symbol = signal.symbol || '';
+        if (groupFilter === 'forex' && !forexSymbols.includes(symbol)) return false;
+        if (groupFilter === 'crypto' && !cryptoSymbols.includes(symbol)) return false;
+        if (groupFilter === 'metals' && !metalSymbols.includes(symbol)) return false;
+      }
       if (strategyFilter && signal.strategy_id !== strategyFilter) return false;
+      if (gradeFilter) {
+        const signalGradeScore = gradeOrder[signal.grade] || 0;
+        if (signalGradeScore < minGradeScore) return false;
+      }
       if (resultFilter && signal.result !== resultFilter) return false;
       if (fromDate) {
         const signalDate = new Date(signal.created_at).toISOString().split('T')[0];
@@ -2555,6 +2574,7 @@ const App = {
   },
 
   resetHistoryFilters() {
+    UI.$('history-filter-group').value = '';
     UI.$('history-filter-strategy').value = '';
     UI.$('history-filter-symbol').value = '';
     UI.$('history-filter-grade').value = '';
