@@ -57,5 +57,5 @@
   "email": "ing.logixtics24@gmail.com",
   "watchlistPreset": "crypto",
   "customSymbols": [],
-  "respectMarketHours": true
+  "respectMarketHours": false
 }

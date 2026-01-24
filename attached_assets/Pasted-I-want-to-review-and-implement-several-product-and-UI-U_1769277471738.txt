@@ -1,0 +1,123 @@
+I want to review and implement several product and UI/UX improvements to ensure the platform remains accurate, usable, and aligned with recent system changes. Please evaluate the following items and provide clear recommendations and an execution plan.
+
+1) Archived Signals Access & Exploration
+
+We already have historical signals produced and stored in the database, but there is currently no clear or usable way to access them.
+
+Assess whether archived signals can be:
+
+surfaced via existing UI components, or
+
+whether a new dedicated tab/section is required
+
+Propose an interface that allows users to:
+
+sort (by date, strategy, symbol, confidence, outcome)
+
+filter (strategy, timeframe, instrument, status)
+
+inspect individual signals in detail
+
+Evaluate performance and UX implications of querying historical data at scale.
+
+Recommend the most maintainable and scalable approach.
+
+2) Removal of Stale Data Sources (WTI & Brent)
+
+Remove WTI and Brent from the platform, as their data is:
+
+not real-time
+
+stale or unreliable
+
+Confirm this removal is:
+
+consistent across backend data ingestion
+
+reflected in strategy logic
+
+fully removed from the UI (selectors, filters, defaults)
+
+Ensure parity with how indices were previously removed.
+
+3) UI/UX Alignment With Current System State
+
+The UI/UX currently does not fully reflect the recent changes made to the platform.
+
+Update the UI/UX to accurately reflect:
+
+removed strategies
+
+removed symbols
+
+newly added features or logic
+
+Identify any UI elements that:
+
+reference deprecated functionality
+
+expose non-functional or misleading options
+
+Ensure the UI represents the true current capabilities of the system, not legacy assumptions.
+
+4) Responsive & Adaptive UI/UX (Non-Static Layout)
+
+The current UI/UX feels static and does not adapt well across different devices or screen sizes.
+
+Evaluate current responsiveness and layout behavior.
+
+Identify limitations that prevent proper adaptation across:
+
+desktop
+
+tablet
+
+mobile
+
+Propose improvements to make the UI:
+
+responsive
+
+adaptive
+
+flexible without sacrificing clarity or performance
+
+Prioritize usability and readability across devices.
+
+Required Deliverables
+
+A) Findings & Recommendations
+
+What can be reused vs what must be built
+
+UX tradeoffs and technical implications
+
+B) Proposed UI/UX Changes
+
+New tabs/sections (if needed)
+
+Updated navigation and layouts
+
+Responsive design strategy
+
+C) Backend & Data Implications
+
+Query patterns for archived signals
+
+Performance considerations
+
+Schema or indexing changes (if required)
+
+D) Execution Plan
+
+Step-by-step implementation plan
+
+Risks and dependencies
+
+Validation and acceptance criteria
+
+Final Objective
+
+Deliver a clear plan that answers:
+
+“How do we make historical signals accessible, remove stale data cleanly, ensure the UI reflects reality, and modernize the UI so it adapts cleanly across devices—without introducing unnecessary complexity?”
