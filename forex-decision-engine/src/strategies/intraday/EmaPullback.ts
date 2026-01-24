@@ -6,7 +6,7 @@
  * 🔴 CRITICAL: ADX unconditional +15 replaced with tiered scoring
  * 🟡 Replaced candle color with close-in-range momentum confirmation (0.7/0.3)
  * 🟡 Added EMA50 reclaim bonus (conditional on touch)
- * 🟡 Added RSI extension block (>70/<30)
+ * 🟡 Added RSI extension CONDITIONAL handling (penalty in strong trends, block in weak)
  * 🟡 TP authority aligned (preferStructure: false)
  * 🟡 atrMultiplier reduced to 1.5 for consistency
  *
@@ -183,9 +183,23 @@ export class EmaPullback implements IStrategy {
 
     if (!direction) return null;
 
-    // V3: RSI extension hard block (Phase 0 - conservative)
-    if (direction === 'long' && rsiSignal! > 70) return null;
-    if (direction === 'short' && rsiSignal! < 30) return null;
+    // V3: CONDITIONAL RSI extension handling (NOT hard block)
+    // Strong trends can sustain extended RSI - only penalize, don't kill
+    // Weak/moderate trends with extended RSI = exhaustion risk = block
+    if (direction === 'long' && rsiSignal! > 70) {
+      if (!preflight.h4Trend || preflight.h4Trend.strength !== 'strong') {
+        return null; // Block only in weak/moderate trends
+      }
+      confidence -= 10;
+      triggers.push(`RSI extended but strong trend allows (${rsiSignal!.toFixed(1)})`);
+    }
+    if (direction === 'short' && rsiSignal! < 30) {
+      if (!preflight.h4Trend || preflight.h4Trend.strength !== 'strong') {
+        return null; // Block only in weak/moderate trends
+      }
+      confidence -= 10;
+      triggers.push(`RSI extended but strong trend allows (${rsiSignal!.toFixed(1)})`);
+    }
 
     // V2: H4 TREND (reject counter-trend for trend strategy)
     if (preflight.h4Trend) {
