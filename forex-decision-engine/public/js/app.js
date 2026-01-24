@@ -2315,7 +2315,7 @@ const App = {
   async loadSignalHistory() {
     try {
       const params = new URLSearchParams();
-      params.set('limit', '500');
+      params.set('limit', '100');
       
       const gradeFilter = UI.$('history-filter-grade')?.value;
       const symbolFilter = UI.$('history-filter-symbol')?.value;
