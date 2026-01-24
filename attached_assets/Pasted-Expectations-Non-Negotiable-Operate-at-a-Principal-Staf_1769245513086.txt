@@ -1,0 +1,103 @@
+Expectations (Non-Negotiable)
+
+Operate at a Principal / Staff Engineer & Systems Architect level
+
+Assume this plan will be executed directly by a senior engineering team
+
+Do not hand-wave or stay high-level—be explicit and concrete
+
+Treat this as a production-grade build, not a prototype
+
+What the Plan Must Include
+
+1) Executive Overview
+
+Clear statement of the final system state
+
+Key architectural decisions and rationale
+
+Risks, tradeoffs, and why chosen approaches win
+
+2) Full Architecture & Build Alignment
+
+Frontend, backend, data pipeline, engines, storage, integrations
+
+How all components interact end-to-end
+
+Contracts, schemas, and ownership boundaries
+
+3) Detailed Implementation Plan (Step-by-Step)
+For every major change or component:
+
+What is being built or modified
+
+Why it is necessary
+
+Exact modules/files impacted
+
+Refactor vs rewrite decisions
+
+Backward-compatibility considerations
+
+4) Code-Level Guidance
+
+Pseudocode, example implementations, or patch-style snippets
+
+Schema definitions and validation logic
+
+API contracts and versioning strategy
+
+Caching, state management, and data integrity safeguards
+
+5) Upgrades & Improvements
+
+Technical debt removal
+
+Legacy code cleanup
+
+Performance and scalability enhancements
+
+Observability, logging, metrics, and alerting
+
+6) Testing & Verification
+
+Unit, integration, and end-to-end tests required
+
+Edge cases and failure modes to cover
+
+Acceptance criteria for each subsystem
+
+7) Phased Execution Roadmap
+
+Phase 0: Immediate unblockers and safety fixes
+
+Phase 1: Core correctness and data integrity
+
+Phase 2: Structural and architectural upgrades
+
+Phase 3: Hardening, scalability, and polish
+For each phase:
+
+Entry criteria
+
+Exit criteria
+
+Rollback strategy
+
+Constraints & Principles
+
+Prefer clarity and correctness over cleverness
+
+Do not preserve broken or fragile patterns for convenience
+
+Avoid unnecessary over-engineering, but do not cut corners
+
+Assume this plan will be reviewed at an executive and architectural level
+
+Final Objective
+
+Deliver a plan that answers, without ambiguity:
+
+“Exactly what are we building, exactly how are we building it, what is changing, what is being upgraded, and why this approach is the best possible path forward.”
+
+This document should leave zero confusion about the build and establish full alignment across technical and leadership stakeholders.

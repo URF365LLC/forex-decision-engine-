@@ -1,0 +1,81 @@
+Validation Report
+Part 1: File Structure Changes (Logger Import)
+Execution Plan	Actual Implementation	Status
+Import createLogger and create logger	Lines 25-27: import { createLogger } + const logger = createLogger('EmaPullback');	MATCH
+Part 2: Header Comment Update
+Execution Plan	Actual Implementation	Status
+V3 header with all enhancements listed	Lines 1-18: Complete V3 header with all bullets	MATCH
+Part 3: Meta Object Update
+Field	Execution Plan	Actual (Lines 30-41)	Status
+description	Comprehensive with tiered ADX, close-in-range, conditional RSI	Present but slightly different wording	MINOR DIFF
+signalsPerWeek	'6-12'	'6-12'	MATCH
+version	'2026-01-24'	'2026-01-24'	MATCH
+Note: Actual description says "RSI extension filter" vs plan's "conditional RSI filter" - same meaning.
+
+Part 4-5: Long/Short Direction Blocks (ADX Tiered)
+Feature	Execution Plan	Actual Implementation	Status
+ADX >= 35: +15	✓	Lines 96-98, 144-146	MATCH
+ADX >= 25: +10	✓	Lines 99-101, 147-149	MATCH
+ADX >= 18: +5	✓	Lines 102-104, 150-152	MATCH
+ADX < 18: +0	✓	Lines 105-106, 153-154	MATCH
+Candle color removed	✓	Confirmed removed	MATCH
+Part 6: Outer-Scope Logic
+Feature	Execution Plan	Actual Implementation	Status
+closeRatio calculation	After if (!direction)	Lines 83-85: BEFORE direction check	STRUCTURAL DIFF
+ema50Reclaim calculation	Outer scope variable	Lines 129-133, 177-181: Inline	STRUCTURAL DIFF
+RSI conditional block	After direction	Lines 186-202	MATCH
+Close-in-range +15	Outer scope	Lines 122-127, 170-175: Inside direction blocks	STRUCTURAL DIFF
+EMA50 reclaim +10	Outer scope	Lines 129-133, 177-181: Inside direction blocks	STRUCTURAL DIFF
+Part 7: Take Profit Config
+Parameter	Execution Plan	Actual (Lines 256-262)	Status
+preferStructure	false	false	MATCH
+atrMultiplier	1.5	1.5	MATCH
+structureLookback	60	60	MATCH
+rrTarget	2	2	MATCH
+Part 8: PHASE1_SIGNAL Logging
+Field	Execution Plan	Actual (Lines 229-248)	Status
+adxSignal	Raw number	.toFixed(1) (formatted)	MINOR DIFF
+closeRatio	Raw number	.toFixed(2) (formatted)	MINOR DIFF
+rsiSignal	Raw number	.toFixed(1) (formatted)	MINOR DIFF
+All other fields	Present	Present	MATCH
+Validation Summary
+Structural Differences (Non-Breaking)
+The execution plan proposes outer-scope calculations after if (!direction) return null;, but the actual implementation places them:
+
+Component	Plan Location	Actual Location	Impact
+closeRatio	After direction check	Lines 83-85 (before)	NONE - calculated once
+Close-in-range bonus	Outer scope	Inside direction blocks	NONE - same logic
+EMA50 reclaim	Outer scope variable	Inside direction blocks	NONE - same logic
+These are style differences, not bugs. The actual implementation:
+
+Calculates closeRatio early (valid - doesn't depend on direction)
+Applies bonuses inside direction blocks (valid - same math)
+Minor Differences (Cosmetic)
+Item	Plan	Actual	Impact
+PHASE1_SIGNAL numbers	Raw	Formatted (.toFixed)	NONE - logging only
+Meta description wording	Verbose	Concise	NONE - documentation only
+Critical Logic Validation
+Feature	Status	Notes
+ADX tiered (0/5/10/15)	CORRECT	All 4 tiers implemented
+RSI CONDITIONAL (not hard block)	CORRECT	Block weak/moderate, penalty strong
+Close-in-range (0.7/0.3)	CORRECT	+15 for quality closes
+EMA50 touch + reclaim	CORRECT	+10 when both conditions met
+preferStructure: false	CORRECT	Deterministic RR
+atrMultiplier: 1.5	CORRECT	Tighter consistency
+Verdict
+Category	Result
+Logic correctness	PASS
+All V3 features implemented	PASS
+RSI conditional (not hard block)	PASS
+Breaking differences	NONE
+Recommended action	APPROVED
+Update Todos
+ Validate Replit execution plan against actual V3 implementation
+Execution plan is VALID. The structural differences (outer-scope vs inline) are stylistic choices that produce identical behavior. The actual V3 implementation correctly implements all planned features:
+
+ADX tiered scoring (0/5/10/15)
+Close-in-range confirmation (0.7/0.3)
+RSI CONDITIONAL (block weak/moderate, penalty strong)
+EMA50 reclaim bonus (touch + close)
+TP config (preferStructure: false, atrMultiplier: 1.5)
+PHASE1_SIGNAL logging
