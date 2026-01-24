@@ -1,0 +1,104 @@
+I need Replit Agent to perform a comprehensive, end-to-end audit of my platform with a specific focus on the integration between the frontend and backend.
+
+This audit should be conducted from a senior full-stack / systems-architecture perspective and must go beyond surface-level issues to evaluate correctness, data integrity, architectural soundness, and production readiness.
+
+Scope of the Audit (Do Not Skip)
+
+1) Frontend ↔ Backend Integration
+
+Trace all critical user flows from:
+
+UI interaction → frontend state → API calls → backend processing → responses → UI rendering
+
+Identify mismatches between frontend expectations and backend contracts.
+
+Verify that all data is transmitted, transformed, and displayed accurately.
+
+2) Data Flow & Integrity
+
+Audit the full data lifecycle:
+
+input → validation → processing → caching → persistence → display
+
+Identify data loss, duplication, stale state, or misalignment.
+
+Validate schemas, contracts, and versioning between frontend and backend.
+
+3) Frontend Architecture & Behavior
+
+Review state management, component responsibilities, and rendering logic.
+
+Identify UI bugs, race conditions, stale or misleading displays, and missing feedback (loading/error states).
+
+Confirm that frontend behavior reflects true backend state.
+
+4) Backend Architecture & APIs
+
+Review API design, service boundaries, and business logic placement.
+
+Identify silent failures, error handling gaps, and performance bottlenecks.
+
+Validate configuration, environment variables, and feature flags.
+
+5) Feature Coverage & Parity
+
+Verify that all backend capabilities (signals, engine outputs, statuses, etc.) are properly surfaced in the UI.
+
+Identify orphaned frontend features or unused backend logic.
+
+6) Observability & Debuggability
+
+Evaluate logging, metrics, and traceability across the UI ↔ backend boundary.
+
+Identify gaps that make failures difficult to detect or diagnose.
+
+Required Deliverables
+
+A) Executive Summary
+
+Overall integration health
+
+Key risks and blockers (P0 / P1 / P2)
+
+Production readiness assessment
+
+B) End-to-End Flow Map
+
+Clear description of critical UI ↔ backend flows
+
+Identification of fragile or error-prone handoffs
+
+C) Findings & Evidence
+For each issue:
+
+Description
+
+Root cause
+
+Impact
+
+Evidence (components, endpoints, data fields)
+
+Recommended fix
+
+D) Remediation Plan
+
+Prioritized fixes
+
+Architectural improvements
+
+Validation and testing requirements
+
+Constraints & Expectations
+
+Do not assume correctness—validate through actual code and flows.
+
+Avoid generic feedback; tie findings to concrete evidence.
+
+Write in a professional, executive-readable tone.
+
+Final Objective
+
+Deliver a clear, actionable audit that answers:
+
+“Does our frontend accurately, reliably, and completely reflect backend behavior—and if not, exactly what needs to be fixed?”
