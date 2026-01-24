@@ -5,7 +5,6 @@
 
 import type { IStrategy, TradingStyle, StrategyMeta, RequiredIndicator } from './types.js';
 
-import { RsiBounce } from './intraday/RsiBounce.js';
 import { RsiOversold } from './intraday/RsiOversold.js';
 import { StochasticOversold } from './intraday/StochasticOversold.js';
 import { BollingerMR } from './intraday/BollingerMR.js';
@@ -18,7 +17,6 @@ import { MultiOscillatorMomentum } from './intraday/MultiOscillatorMomentum.js';
 import { LiquiditySweep } from './intraday/LiquiditySweep.js';
 
 const STRATEGIES: Record<string, IStrategy> = {
-  'rsi-bounce': new RsiBounce(),
   'rsi-oversold': new RsiOversold(),
   'stoch-oversold': new StochasticOversold(),
   'bollinger-mr': new BollingerMR(),
@@ -32,18 +30,6 @@ const STRATEGIES: Record<string, IStrategy> = {
 };
 
 const INTRADAY_STRATEGIES: StrategyMeta[] = [
-  { 
-    id: 'rsi-bounce', 
-    name: 'RSI Oversold Bounce', 
-    description: 'Mean reversion from RSI extremes with Bollinger Band confirmation', 
-    style: 'intraday', 
-    winRate: 72, 
-    avgRR: 1.2, 
-    signalsPerWeek: '15-25', 
-    requiredIndicators: ['bars', 'rsi', 'bbands', 'atr', 'sma20'],
-    timeframes: { trend: 'H1', entry: 'H1' },
-    version: '2026-01-01'
-  },
   { 
     id: 'rsi-oversold', 
     name: 'RSI Oversold Pullback', 

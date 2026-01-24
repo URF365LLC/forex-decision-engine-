@@ -85,13 +85,18 @@ export class BollingerMR implements IStrategy {
       if (!rejection.ok) return null;
       
       direction = 'long';
-      confidence += 25;
+      confidence += 20;
       triggers.push(`Price touched lower BB at ${bbSignal.lower.toFixed(5)}`);
       reasonCodes.push('BB_TOUCH_LOWER');
       confidence += 20;
       triggers.push(`Bullish rejection (wick ${(rejection.wickRatio * 100).toFixed(0)}%)`);
       reasonCodes.push('REJECTION_CONFIRMED');
-      if (rsiSignal! < 30) {
+      // Two-tier RSI scoring (mutually exclusive)
+      if (rsiSignal! < 20) {
+        confidence += 20;
+        triggers.push(`RSI extreme oversold at ${rsiSignal!.toFixed(1)}`);
+        reasonCodes.push('RSI_EXTREME_LOW');
+      } else if (rsiSignal! < 30) {
         confidence += 15;
         triggers.push(`RSI oversold at ${rsiSignal!.toFixed(1)}`);
         reasonCodes.push('RSI_OVERSOLD');
@@ -101,13 +106,18 @@ export class BollingerMR implements IStrategy {
       if (!rejection.ok) return null;
       
       direction = 'short';
-      confidence += 25;
+      confidence += 20;
       triggers.push(`Price touched upper BB at ${bbSignal.upper.toFixed(5)}`);
       reasonCodes.push('BB_TOUCH_UPPER');
       confidence += 20;
       triggers.push(`Bearish rejection (wick ${(rejection.wickRatio * 100).toFixed(0)}%)`);
       reasonCodes.push('REJECTION_CONFIRMED');
-      if (rsiSignal! > 70) {
+      // Two-tier RSI scoring (mutually exclusive)
+      if (rsiSignal! > 80) {
+        confidence += 20;
+        triggers.push(`RSI extreme overbought at ${rsiSignal!.toFixed(1)}`);
+        reasonCodes.push('RSI_EXTREME_HIGH');
+      } else if (rsiSignal! > 70) {
         confidence += 15;
         triggers.push(`RSI overbought at ${rsiSignal!.toFixed(1)}`);
         reasonCodes.push('RSI_OVERBOUGHT');
