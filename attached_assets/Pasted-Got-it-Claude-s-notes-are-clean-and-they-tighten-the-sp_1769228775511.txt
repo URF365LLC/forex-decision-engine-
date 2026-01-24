@@ -1,0 +1,175 @@
+Got it. Claude’s notes are clean, and they tighten the spec without changing the intent. Here’s the **final, merged implementation spec (GPT+Claude consensus)** for `CciZeroLine.ts`, with the **three minor clarifications applied** and one improvement: **CCI slope as soft bonus first** (safer rollout).
+
+---
+
+## Final Implementation Spec: `CciZeroLine.ts` (Consensus)
+
+### ✅ Clarification 1 — Reuse `prevIdx` / `prevBar`
+
+You already compute:
+
+* `signalIdx = bars!.length - 2`
+* `prevIdx = bars!.length - 3`
+
+So:
+
+```ts
+const signalBar = bars![signalIdx];
+const prevBar = bars![prevIdx];
+```
+
+Use `prevBar` everywhere (stops + any setup comparisons). Cleaner, zero ambiguity.
+
+---
+
+### ✅ Clarification 2 — EMA200 Filter Placement
+
+**Place EMA filter after:**
+
+```ts
+if (!direction) return null;
+```
+
+…and **before** H4 trend adjustments.
+
+That guarantees:
+
+* direction exists
+* you don’t mix “market context hard gates” with “trend scoring” logic
+
+**Code block:**
+
+```ts
+// EMA200 DIRECTION FILTER (required indicator must be used)
+if (direction === 'long' && emaSignal != null && signalBar.close <= emaSignal) return null;
+if (direction === 'short' && emaSignal != null && signalBar.close >= emaSignal) return null;
+
+if (direction === 'long') {
+  triggers.push('Above EMA200 (momentum context)');
+  reasonCodes.push('EMA_BULLISH_STACK');
+} else {
+  triggers.push('Below EMA200 (momentum context)');
+  reasonCodes.push('EMA_BEARISH_STACK');
+}
+```
+
+---
+
+### ✅ Clarification 3 — Close-in-Range Replaces Candle Check *inside* Direction Blocks
+
+Replace the candle-color checks *inline* inside the long/short setup branches.
+
+**Shared helper lines inside each branch (or define once above branches if you prefer):**
+
+```ts
+const range = signalBar.high - signalBar.low;
+const closeRatio = range > 0 ? (signalBar.close - signalBar.low) / range : 0.5;
+```
+
+**Long branch replacement:**
+
+```ts
+if (closeRatio > 0.7) {
+  confidence += 15;
+  triggers.push('Strong close (top 30% of range)');
+  reasonCodes.push('CANDLE_CONFIRMATION');
+}
+```
+
+**Short branch replacement:**
+
+```ts
+if (closeRatio < 0.3) {
+  confidence += 15;
+  triggers.push('Strong close (bottom 30% of range)');
+  reasonCodes.push('CANDLE_CONFIRMATION');
+}
+```
+
+---
+
+## Phase 0 Required Changes (Full List)
+
+### 1) EMA200 leak fix
+
+* Keep `ema200` required/validated
+* Use EMA directional hard gate (above)
+
+### 2) Strong counter-trend block (strategy-level)
+
+Inside the counter-trend branch (after reasonCodes push):
+
+```ts
+if (preflight.h4Trend.strength === 'strong') return null;
+```
+
+### 3) Setup-invalidation stops (2-bar + 0.4 ATR)
+
+Replace pure ATR stop with:
+
+```ts
+const buffer = atrSignal! * 0.4;
+
+let stopLossPrice: number;
+if (direction === 'long') {
+  const setupLow = Math.min(signalBar.low, prevBar?.low ?? signalBar.low);
+  stopLossPrice = setupLow - buffer;
+} else {
+  const setupHigh = Math.max(signalBar.high, prevBar?.high ?? signalBar.high);
+  stopLossPrice = setupHigh + buffer;
+}
+```
+
+### 4) TP authority alignment
+
+Pick a single authority:
+
+* If your executor respects explicit TP, keep it deterministic and ensure `takeProfitConfig` doesn’t override.
+* If `preferStructure: true` overrides explicit TP in your engine, set `preferStructure: false` for this strategy to avoid “split brain.”
+
+**Non-negotiable:** explicit TP and config must not fight.
+
+---
+
+## Phase 1 Optional (Recommended) — CCI Slope as Bonus First (Not Gate)
+
+Claude’s point is right: start with a bonus, watch logs, then escalate if needed.
+
+Add **after direction is set** (before confidence threshold check is fine), as:
+
+```ts
+const cciDelta = Math.abs(cciSignal! - cciPrev!);
+if (cciDelta >= 10) {
+  confidence += 10;
+  triggers.push(`CCI momentum confirmed (Δ${cciDelta.toFixed(1)})`);
+  reasonCodes.push('CCI_SLOPE_CONFIRMED'); // add only if this reason code exists; otherwise omit
+}
+```
+
+If you don’t have `CCI_SLOPE_CONFIRMED` in `types.ts`, don’t invent it right now—either:
+
+* reuse an existing generic reason code, or
+* just add the trigger string (cleaner for now).
+
+---
+
+## Confidence Math Check (Post-Fix)
+
+Claude’s math is correct: this forces at least one “quality signal” beyond the base cross.
+
+That’s good. It means the threshold is doing its job: **no more marginal crosses passing**.
+
+---
+
+## Final Acceptance Checklist
+
+* [ ] Candle color checks are fully replaced by close-in-range logic (0.7 / 0.3)
+* [ ] EMA200 is used (hard gate)
+* [ ] Strong counter-trend in strong H4 is blocked
+* [ ] Stops are 2-bar setup invalidation + 0.4 ATR
+* [ ] TP authority is single-source (no override conflict)
+* [ ] Optional: slope is **bonus first**, not gate
+
+---
+
+If you want, paste the relevant section of `CciZeroLine.ts` (the long/short blocks + stop/TP area), and I’ll return a **surgical “replace this block with this block” patch** so your dev can apply it with near-zero risk.
