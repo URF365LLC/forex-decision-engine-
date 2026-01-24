@@ -1,0 +1,307 @@
+# BollingerMR Strategy Optimization: Implementation Specification
+ 
+## Document Purpose
+This is the implementation specification for Replit, derived from 4-way AI validation (GPT-4, Claude, Replit verification, Human approval). All parameters and logic have been validated through adversarial review.
+ 
+---
+ 
+## PHASE 0: Foundation Fixes (Implement Immediately)
+ 
+### 0.1 Fix: calcBBWidthPercentile() Helper in utils.ts
+ 
+**Location:** `forex-decision-engine/src/strategies/utils.ts`
+ 
+**Critical Requirements:**
+1. Define BBand type LOCALLY in utils.ts (do NOT import from SignalQualityGate)
+2. Use Number.isFinite() for ALL numeric checks (NOT truthy checks)
+3. Exclude current bar from percentile calculation (history only)
+4. Return null for insufficient data
+ 
+**Type Definition (add to utils.ts):**
+```
+Interface BBand with properties:
+- upper: number
+- middle: number
+- lower: number
+```
+ 
+**Function Specification:**
+```
+Function: calcBBWidthPercentile
+Parameters:
+- bbands: BBand[] (array of Bollinger Band values)
+- currentIdx: number (index of current bar)
+- lookback: number = 50 (default)
+ 
+Returns: { width: number, percentile: number } | null
+ 
+Logic:
+1. Return null if bbands invalid, currentIdx < 0, or bbands[currentIdx] missing
+2. Validate current BB using Number.isFinite() for upper, lower, middle
+3. Validate middle !== 0
+4. Calculate width = (upper - lower) / middle
+5. Return null if width is not finite or width <= 0
+6. Loop from startIdx (max of 0 or currentIdx - lookback) to currentIdx - 1 (EXCLUDE current)
+7. For each bar, validate with Number.isFinite() before adding to widths array
+8. Return null if widths.length < 10 (minimum history)
+9. Sort widths, calculate rank of current width, return percentile
+```
+ 
+### 0.2 Fix: Rejection Candle as HARD GATE in BollingerMR.ts
+ 
+**Location:** `forex-decision-engine/src/strategies/intraday/BollingerMR.ts`
+ 
+**Current Behavior (WRONG):**
+- BB touch gives +25 confidence
+- Rejection candle gives +20 bonus (optional)
+- Trade can pass without rejection
+ 
+**Required Behavior (CORRECT):**
+- Check rejection FIRST
+- If rejection.ok === false, return null immediately (hard gate)
+- If rejection passes, then proceed with confidence scoring
+- Combined confidence for touch + rejection = 40 points
+ 
+**Logic for LONG setup:**
+```
+1. Check if signalBar.low <= bbSignal.lower
+2. IMMEDIATELY check: rejection = isRejectionCandle(signalBar, 'long')
+3. IF !rejection.ok: return null  // HARD GATE
+4. THEN set direction = 'long'
+5. Add confidence += 40 (combined touch + rejection)
+6. Add trigger message including wick percentage
+7. Check RSI < 30 (TIGHTENED from 35) for bonus
+```
+ 
+**Logic for SHORT setup:**
+```
+1. Check if signalBar.high >= bbSignal.upper
+2. IMMEDIATELY check: rejection = isRejectionCandle(signalBar, 'short')
+3. IF !rejection.ok: return null  // HARD GATE
+4. THEN set direction = 'short'
+5. Add confidence += 40
+6. Check RSI > 70 (TIGHTENED from 65) for bonus
+```
+ 
+### 0.3 Fix: BB Width Expansion Filter in BollingerMR.ts
+ 
+**Location:** After BB validation, before signal logic
+ 
+**Import Required:** calcBBWidthPercentile from '../utils.js'
+ 
+**Logic:**
+```
+1. Call calcBBWidthPercentile(bbands, signalIdx, 50)
+2. If result exists AND result.percentile > 80:
+   return null  // Expansion regime - don't fade
+```
+ 
+**Rationale:** When BB width is in top 20th percentile (expanding), touches are likely continuations, not reversals.
+ 
+### 0.4 Fix: Stop Loss Methodology (Setup-Invalidation Stop)
+ 
+**Location:** Replace existing stop calculation in BollingerMR.ts
+ 
+**Current (WRONG):**
+```
+stopLossPrice = entryPrice - (atrSignal * 1.5)  // Pure ATR
+```
+ 
+**Required (CORRECT) - 2-Bar Setup-Invalidation:**
+```
+For LONG:
+1. Get prevBar = bars[signalIdx - 1]
+2. recentLow = min(signalBar.low, prevBar.low) with fallback
+3. stopLossPrice = recentLow - (atrSignal * 0.4)  // 0.4 ATR buffer
+ 
+For SHORT:
+1. Get prevBar = bars[signalIdx - 1]
+2. recentHigh = max(signalBar.high, prevBar.high) with fallback
+3. stopLossPrice = recentHigh + (atrSignal * 0.4)
+```
+ 
+**Buffer Value:** Start with 0.4 ATR (middle of test range). This will be validated in Phase 1.
+ 
+**Code Comment Required:**
+```
+// SETUP-INVALIDATION STOP: Not a swing stop or liquidity-aware stop.
+// If price breaks the immediate extreme of the rejection setup,
+// the reversal thesis is invalidated. Buffer = 0.4 ATR (Phase 1 baseline).
+```
+ 
+### 0.5 Fix: Take Profit Configuration
+ 
+**Current:**
+```
+rrTarget: 1.5
+atrMultiplier: 1.5
+```
+ 
+**Required:**
+```
+rrTarget: 2.0      // Target for structure-based TP
+atrMultiplier: 1.5 // KEEP at 1.5 for fallback (preserves MR philosophy)
+```
+ 
+**Rationale:** Mean-reversion benefits from hitting targets. Keeping ATR fallback at 1.5 prevents over-stretching.
+ 
+### 0.6 Fix: Strategy Metadata
+ 
+**Update these fields:**
+```
+description: 'Mean reversion from BB touches with REQUIRED rejection candle, expansion filter, and setup-invalidation stop'
+winRate: 65        // Keep current (don't claim unproven improvement)
+avgRR: 2.0         // Reflects new rrTarget
+signalsPerWeek: '8-12'  // Reduced due to stricter filters
+version: '2026-01-23'
+```
+ 
+**Do NOT set winRate to 72** — that's a projection, not proven.
+ 
+---
+ 
+## PHASE 1: Logging for Validation (Implement After Phase 0)
+ 
+### Purpose
+Before adding cluster detection complexity, validate whether the Phase 0 changes are sufficient.
+ 
+### Required Logging (Add to Decision Output or Separate Log)
+ 
+For EVERY signal generated, log:
+ 
+| Field | Definition |
+|-------|------------|
+| symbol | Instrument |
+| timestamp | Signal time |
+| direction | long/short |
+| entryPrice | Entry price |
+| stopLossPrice | Stop price |
+| stopDistanceATR | Stop distance in ATR units |
+| takeProfitPrice | TP price |
+| targetRR | Planned RR |
+| bufferUsed | ATR multiplier for buffer (0.4) |
+| bbWidthPercentile | From expansion filter |
+| rejectionWickRatio | From rejection candle check |
+| h4TrendDirection | From preflight |
+| h4TrendStrength | From preflight |
+| sessionScore | From preflight confidence adjustments |
+ 
+### Post-Trade Logging (If Tracking System Exists)
+ 
+| Field | Definition |
+|-------|------------|
+| outcome | win/loss/breakeven |
+| exitPrice | Actual exit price |
+| realizedRR | Actual RR achieved |
+| mae | Maximum Adverse Excursion (furthest against) |
+| mfe | Maximum Favorable Excursion (furthest in favor) |
+| barsInTrade | Duration |
+| priceAfterStopout12Bars | If stopped out, where was price 12 bars later? |
+| reachedEntryPlus1R | Boolean: did price reach entry + 1R within 12 bars of stopout? |
+ 
+### Decision Threshold for Phase 2
+ 
+```
+IF reachedEntryPlus1R rate (on stopouts) > 15%:
+  → Phase 2 cluster detection is needed
+ 
+IF reachedEntryPlus1R rate < 10%:
+  → Phase 0 is sufficient, skip Phase 2
+```
+ 
+---
+ 
+## PHASE 2: Cluster Detection (CONDITIONAL - Only If Phase 1 Fails)
+ 
+**Do NOT implement Phase 2 unless Phase 1 data shows >15% premature stopout rate.**
+ 
+### Specification (For Future Reference)
+ 
+**Cluster Detection Parameters:**
+- Lookback: 20 bars (excluding signal bar and entry bar)
+- Zone width: 0.15 ATR (clamped between 5-30 pips for FX)
+- Touch threshold: 2+ touches
+- Touch definition: Wick enters zone AND close >= level - 0.05 ATR
+ 
+**Buffer Escalation:**
+- Default: 0.4 ATR (from Phase 1)
+- Escalated: 0.5 ATR (when cluster detected)
+ 
+---
+ 
+## FILES TO MODIFY
+ 
+| File | Changes |
+|------|---------|
+| `src/strategies/utils.ts` | Add BBand type, add calcBBWidthPercentile() |
+| `src/strategies/intraday/BollingerMR.ts` | All Phase 0 fixes |
+ 
+## FILES NOT TO MODIFY
+ 
+| File | Reason |
+|------|--------|
+| `src/strategies/SignalQualityGate.ts` | Infrastructure verified working |
+| `src/strategies/types.ts` | No type changes needed |
+| Other strategy files | Isolated changes only |
+ 
+---
+ 
+## IMPLEMENTATION SEQUENCE
+ 
+1. Add BBand interface to utils.ts
+2. Add calcBBWidthPercentile() function to utils.ts
+3. Update BollingerMR.ts imports
+4. Add BB expansion filter (after BB validation)
+5. Refactor long setup with rejection hard gate
+6. Refactor short setup with rejection hard gate
+7. Replace stop loss calculation with setup-invalidation method
+8. Update takeProfitConfig (rrTarget 2.0, keep atrMultiplier 1.5)
+9. Update strategy metadata
+10. Add Phase 1 logging fields to decision output
+11. Test with sample data
+12. Restart workflow
+ 
+---
+ 
+## VALIDATION CHECKLIST
+ 
+After implementation, verify:
+ 
+- [ ] calcBBWidthPercentile returns null for invalid inputs
+- [ ] calcBBWidthPercentile uses Number.isFinite() not truthy checks
+- [ ] calcBBWidthPercentile excludes current bar from history
+- [ ] BBand type is defined in utils.ts (not imported)
+- [ ] Rejection candle is HARD GATE (return null if fails)
+- [ ] RSI thresholds are 30/70 (not 35/65)
+- [ ] BB expansion filter blocks when percentile > 80
+- [ ] Stop uses 2-bar low/high + 0.4 ATR buffer
+- [ ] Stop calculation has null-safe fallback for prevBar
+- [ ] rrTarget = 2.0, atrMultiplier = 1.5
+- [ ] winRate in metadata = 65 (not 72)
+- [ ] Version updated to 2026-01-23
+- [ ] Phase 1 logging fields included
+ 
+---
+ 
+## CONFIDENCE LEVEL
+ 
+| Aspect | Confidence |
+|--------|------------|
+| Phase 0 implementation | 98% |
+| Expected behavior | 95% |
+| Risk of regression | Low |
+| Need for Phase 2 | Unknown (data-dependent) |
+ 
+**Source:** 4-way AI validation (GPT-4 + Claude + Replit + Human)
+ 
+---
+ 
+## APPROVAL STATUS
+ 
+- [x] GPT-4: Approved
+- [x] Claude: Approved
+- [x] Replit: Ready for implementation
+- [ ] Human: Pending final approval
+ 
+**Ready to implement upon human approval.**
+ 

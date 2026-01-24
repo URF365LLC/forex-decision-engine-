@@ -1,0 +1,52 @@
+Implement BollingerMR Strategy Optimization - Phase 0
+
+Reference: docs/REPLIT_IMPLEMENTATION_SPEC.md (full specification)
+
+SUMMARY OF CHANGES:
+
+FILE 1: src/strategies/utils.ts
+- Add BBand interface locally (do NOT import from SignalQualityGate):
+  { upper: number; middle: number; lower: number }
+- Add calcBBWidthPercentile() function with:
+  - Number.isFinite() checks for ALL numeric values (NOT truthy checks)
+  - Exclude current bar from percentile calculation
+  - Return null for insufficient data (<10 bars)
+  - Guard against middle === 0 and width <= 0
+
+FILE 2: src/strategies/intraday/BollingerMR.ts
+1. Import calcBBWidthPercentile from utils
+2. Add BB expansion filter after BB validation:
+   - If percentile > 80, return null (block expansion regime)
+3. Make rejection candle a HARD GATE:
+   - Check rejection FIRST
+   - If !rejection.ok, return null immediately
+   - Combined touch + rejection = 40 confidence points
+4. Tighten RSI thresholds: 30/70 (not 35/65)
+5. Replace stop loss with setup-invalidation method:
+   - Long: min(signalBar.low, prevBar.low) - (ATR * 0.4)
+   - Short: max(signalBar.high, prevBar.high) + (ATR * 0.4)
+   - Add comment: "SETUP-INVALIDATION STOP"
+6. Update takeProfitConfig:
+   - rrTarget: 2.0
+   - atrMultiplier: 1.5 (KEEP at 1.5, not 2.0)
+7. Update metadata:
+   - winRate: 65 (NOT 72)
+   - avgRR: 2.0
+   - signalsPerWeek: '8-12'
+   - version: '2026-01-23'
+   - description: include "REQUIRED rejection candle"
+
+CRITICAL REQUIREMENTS:
+- Use Number.isFinite() not truthy checks (0 is falsy!)
+- BBand type must be LOCAL to utils.ts
+- Rejection is HARD GATE, not bonus
+- atrMultiplier stays at 1.5, only rrTarget is 2.0
+- Do NOT claim winRate 72 (unproven)
+
+VALIDATION AFTER IMPLEMENTATION:
+- Test that signals are blocked when no rejection candle
+- Test that signals are blocked when BB percentile > 80
+- Verify stop calculation uses 2-bar low/high
+- Verify TypeScript compiles without errors
+
+See docs/REPLIT_IMPLEMENTATION_SPEC.md for complete specification.

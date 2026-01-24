@@ -509,6 +509,39 @@ function formatTieredExits(tieredExits: any, symbol: string): any {
   if (typeof tieredExits !== 'object') return null;
   
   const result: any = {};
+  
+  // Handle array format (TieredExitInfo[]) - backend stores as array
+  if (Array.isArray(tieredExits)) {
+    // Find TP1 (level 1, typically 1R) and TP2 (level 2, typically 2R)
+    const tp1Exit = tieredExits.find((te: any) => te.level === 1);
+    const tp2Exit = tieredExits.find((te: any) => te.level === 2);
+    
+    if (tp1Exit && tp1Exit.price != null) {
+      const tp1Price = typeof tp1Exit.price === 'string' 
+        ? parseFloat(tp1Exit.price) 
+        : tp1Exit.price;
+      result.tp1 = {
+        price: tp1Price,
+        formatted: formatPriceForSymbol(tp1Price, symbol),
+        pips: tp1Exit.pips,
+        rr: tp1Exit.rr,
+      };
+    }
+    if (tp2Exit && tp2Exit.price != null) {
+      const tp2Price = typeof tp2Exit.price === 'string'
+        ? parseFloat(tp2Exit.price)
+        : tp2Exit.price;
+      result.tp2 = {
+        price: tp2Price,
+        formatted: formatPriceForSymbol(tp2Price, symbol),
+        pips: tp2Exit.pips,
+        rr: tp2Exit.rr,
+      };
+    }
+    return Object.keys(result).length > 0 ? result : null;
+  }
+  
+  // Handle legacy object format {tp1, tp2} for backwards compatibility
   if (tieredExits.tp1 && tieredExits.tp1.price != null) {
     const tp1Price = typeof tieredExits.tp1.price === 'string' 
       ? parseFloat(tieredExits.tp1.price) 
@@ -516,6 +549,8 @@ function formatTieredExits(tieredExits: any, symbol: string): any {
     result.tp1 = {
       price: tp1Price,
       formatted: formatPriceForSymbol(tp1Price, symbol),
+      pips: tieredExits.tp1.pips,
+      rr: tieredExits.tp1.rr,
     };
   }
   if (tieredExits.tp2 && tieredExits.tp2.price != null) {
@@ -525,6 +560,8 @@ function formatTieredExits(tieredExits: any, symbol: string): any {
     result.tp2 = {
       price: tp2Price,
       formatted: formatPriceForSymbol(tp2Price, symbol),
+      pips: tieredExits.tp2.pips,
+      rr: tieredExits.tp2.rr,
     };
   }
   return Object.keys(result).length > 0 ? result : null;

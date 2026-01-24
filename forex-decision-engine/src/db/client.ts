@@ -277,5 +277,75 @@ export async function runMigrations(): Promise<void> {
   await sql`CREATE INDEX IF NOT EXISTS idx_alerts_key ON alert_history(alert_key)`.execute(database);
   await sql`CREATE INDEX IF NOT EXISTS idx_alerts_expires ON alert_history(expires_at)`.execute(database);
 
+  // Create account_settings table for persistent settings
+  await database.schema
+    .createTable('account_settings')
+    .ifNotExists()
+    .addColumn('id', 'integer', (col) => col.primaryKey().defaultTo(1))
+    .addColumn('account_preset', 'varchar(20)', (col) => col.notNull())
+    .addColumn('account_size', 'numeric', (col) => col.notNull())
+    .addColumn('risk_percent', 'numeric', (col) => col.notNull())
+    .addColumn('updated_at', 'timestamptz', (col) => col.defaultTo(sql`NOW()`))
+    .execute();
+
   logger.info('Database migrations completed successfully');
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ACCOUNT SETTINGS PERSISTENCE
+// ═══════════════════════════════════════════════════════════════
+
+export interface AccountSettingsRow {
+  id: number;
+  account_preset: string;
+  account_size: number;
+  risk_percent: number;
+  updated_at?: Date;
+}
+
+export async function loadAccountSettings(): Promise<AccountSettingsRow | null> {
+  try {
+    const database = getDb();
+    const result = await database
+      .selectFrom('account_settings' as any)
+      .selectAll()
+      .where('id', '=', 1)
+      .executeTakeFirst();
+    
+    if (result) {
+      logger.info(`Loaded account settings from database: ${JSON.stringify(result)}`);
+      return result as AccountSettingsRow;
+    }
+    return null;
+  } catch (error) {
+    logger.warn('Failed to load account settings from database', { error });
+    return null;
+  }
+}
+
+export async function saveAccountSettings(settings: {
+  accountPreset: string;
+  accountSize: number;
+  riskPercent: number;
+}): Promise<boolean> {
+  try {
+    const database = getDb();
+    
+    // Upsert the settings (always use id=1 as single row)
+    await sql`
+      INSERT INTO account_settings (id, account_preset, account_size, risk_percent, updated_at)
+      VALUES (1, ${settings.accountPreset}, ${settings.accountSize}, ${settings.riskPercent}, NOW())
+      ON CONFLICT (id) DO UPDATE SET
+        account_preset = EXCLUDED.account_preset,
+        account_size = EXCLUDED.account_size,
+        risk_percent = EXCLUDED.risk_percent,
+        updated_at = NOW()
+    `.execute(database);
+    
+    logger.info(`Saved account settings to database: ${JSON.stringify(settings)}`);
+    return true;
+  } catch (error) {
+    logger.error('Failed to save account settings to database', { error });
+    return false;
+  }
 }

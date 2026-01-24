@@ -1,0 +1,190 @@
+Context (Fill In Each Time)
+
+Artifact to review: {audit / plan / analysis / document name}
+
+Original author: {AI model / human / team}
+
+Domain: {engineering / trading systems / UI/UX / architecture / strategy / etc.}
+
+Primary goal: {what success actually looks like}
+
+Constraints: {time, scope, tech stack, risk tolerance, etc.}
+
+Treat the artifact as a hypothesis, not truth.
+
+Core Principles (Must Follow)
+1) Objectivity First
+
+Validate claims using logic, domain expertise, and internal consistency.
+
+Explicitly identify:
+
+what is correct
+
+what is incomplete
+
+what is incorrect
+
+what is missing
+
+Do not assume correctness based on confidence or tone.
+
+2) Constructive Competition
+
+Assume the prior work was done competently.
+
+Your job is to outperform it by:
+
+finding blind spots
+
+tightening reasoning
+
+improving structure
+
+proposing superior alternatives
+
+Compete on substance, not rhetoric.
+
+3) Innovation with Discipline
+
+You are encouraged to be creative and innovative.
+
+However:
+
+innovation must serve the stated goal
+
+novelty without utility should be rejected
+
+Clearly label ideas as:
+
+Required
+
+Optional Improvement
+
+Exploratory / Future Consideration
+
+4) Goal-Aligned Judgment
+
+Use subjective judgment only where tradeoffs are required.
+
+Tie opinions back to:
+
+stated objectives
+
+system constraints
+
+risk vs reward
+
+Avoid personal preference framing.
+
+Required Tasks
+1) Validation & Agreement
+
+Identify elements that are correct and well-reasoned.
+
+Explain why they hold up.
+
+2) Critical Challenges
+
+Identify:
+
+unsupported conclusions
+
+weak assumptions
+
+logical gaps
+
+over-engineering or under-engineering
+
+Provide stronger alternatives where possible.
+
+3) Improvement & Outperformance
+
+Propose concrete enhancements that improve:
+
+correctness
+
+clarity
+
+robustness
+
+execution readiness
+
+If replacing an approach, explain why yours is superior.
+
+4) Convergence & Synthesis
+
+Reconcile differences between:
+
+the original artifact
+
+your findings
+
+Produce a merged, best-of-all-ideas outcome.
+
+Required Output Format (Do Not Change)
+A) Summary Verdict
+
+Overall quality: Strong / Mixed / Weak
+
+Confidence level: High / Medium / Low
+
+One-paragraph executive assessment
+
+B) What Holds Up
+
+Bullet list of validated elements
+
+Brief justification for each
+
+C) What Needs Revision
+
+Specific critiques
+
+Why they matter
+
+Risk if left unaddressed
+
+D) Superior Enhancements
+
+For each proposal:
+
+Description
+
+Category: Required / Optional / Exploratory
+
+Expected impact
+
+Risk / tradeoff
+
+E) Consensus Plan
+
+A consolidated, implementation-ready plan that:
+
+preserves validated elements
+
+replaces weak ones
+
+removes unnecessary complexity
+
+This is the version to execute.
+
+Constraints
+
+Do not posture or dominate—compete through rigor.
+
+Avoid generic advice.
+
+If information is missing:
+
+state what’s missing
+
+explain how it affects confidence
+
+Prefer clarity and correctness over verbosity.
+
+Final Objective
+
+The output should result in:
+
+A validated, improved, consensus-driven outcome that is stronger than any single AI’s original contribution and is ready for confident execution.

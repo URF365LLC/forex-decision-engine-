@@ -17,6 +17,40 @@ const BASE_DELAY_MS = 1000;
 const REQUEST_TIMEOUT_MS = 30000; // 30-second timeout for API calls
 const DEFAULT_CRYPTO_EXCHANGE = process.env.TWELVE_DATA_CRYPTO_EXCHANGE || 'Binance';
 
+// API Call Counter - tracks calls per minute for rate limit monitoring
+class APICallCounter {
+  private callTimestamps: number[] = [];
+  private readonly windowMs = 60000; // 1 minute window
+
+  recordCall(): void {
+    const now = Date.now();
+    this.callTimestamps.push(now);
+    this.cleanup();
+  }
+
+  private cleanup(): void {
+    const cutoff = Date.now() - this.windowMs;
+    this.callTimestamps = this.callTimestamps.filter(ts => ts > cutoff);
+  }
+
+  getCallsInLastMinute(): number {
+    this.cleanup();
+    return this.callTimestamps.length;
+  }
+
+  getStats(): { callsLastMinute: number; limit: number; percentUsed: number } {
+    const calls = this.getCallsInLastMinute();
+    const limit = 610;
+    return {
+      callsLastMinute: calls,
+      limit,
+      percentUsed: Math.round((calls / limit) * 100),
+    };
+  }
+}
+
+export const apiCallCounter = new APICallCounter();
+
 export interface OHLCVBar {
   timestamp: string;
   open: number;
@@ -118,6 +152,9 @@ class TwelveDataClient {
   private async request<T>(path: string, params: Record<string, string>): Promise<T> {
     return twelveDataCircuit.execute(async () => {
       await rateLimiter.acquire();
+      
+      // Record API call for rate limit monitoring
+      apiCallCounter.recordCall();
 
       const url = new URL(`${this.baseUrl}${path}`);
       url.searchParams.set('apikey', this.apiKey);
@@ -126,7 +163,8 @@ class TwelveDataClient {
         url.searchParams.set(key, value);
       }
 
-      logger.debug(`Fetching: ${path} for ${params.symbol || 'N/A'}`);
+      const stats = apiCallCounter.getStats();
+      logger.debug(`API CALL [${stats.callsLastMinute}/${stats.limit}]: ${path} for ${params.symbol || 'N/A'}`);
 
       for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
         const controller = new AbortController();
@@ -172,6 +210,10 @@ class TwelveDataClient {
 
   getCircuitStats() {
     return twelveDataCircuit.getStats();
+  }
+
+  getApiStats() {
+    return apiCallCounter.getStats();
   }
 
   private oldestFirst<T extends { datetime?: string; timestamp?: string }>(data: T[]): T[] {

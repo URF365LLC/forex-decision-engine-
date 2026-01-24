@@ -1,17 +1,22 @@
 /**
- * Auto-Scan Service v2.1 - INDIVIDUAL API CALLS
- * 
- * Key Changes from v2.0:
- * - Uses individual API calls per symbol (indicators cannot be batched per Twelve Data docs)
- * - Only time_series/OHLCV can be batched, but we use existing indicatorService for simplicity
- * - Each symbol analyzed independently for reliability
- * 
+ * Auto-Scan Service v3.1 - RATE LIMIT OPTIMIZED
+ *
+ * Key Changes from v3.0:
+ * - Sequential symbol processing (concurrency=1) with 3s delay between symbols
+ * - First strategy scan: ~840 API calls (40 symbols × 21 calls each)
+ * - Subsequent strategies: 0 additional calls (hit indicator bundle cache)
+ * - Stays well under 610 calls/min Twelve Data limit
+ * - Excludes indices from 'all' preset (requires upgraded Twelve Data plan)
+ * - Real-time API call counter for rate limit monitoring
+ *
  * Features:
  * 1. Symbol watchlist presets (majors, minors, crypto, metals, custom)
  * 2. Market hours filter (forex closed on weekends, crypto 24/7)
  * 3. Per-strategy scheduling with staggered execution
  * 4. Enhanced status tracking (progress %, per-strategy results)
- * 
+ * 5. SSE events: scan:progress, scan:complete
+ * 6. Shared rate limit pause when circuit breaker opens
+ *
  * Persists config to data/autoScanConfig.json for auto-start on server reboot
  */
 
@@ -22,13 +27,71 @@ import { isNewSignal, trackSignal } from '../storage/signalFreshnessTracker.js';
 import { strategyRegistry } from '../strategies/registry.js';
 import { gradeTracker } from './gradeTracker.js';
 import { processAutoScanDecision, invalidateOnConditionChange } from './detectionService.js';
-import { broadcastDetectionError } from './sseBroadcaster.js';
+import { broadcastDetectionError, broadcastScanProgress, broadcastScanComplete } from './sseBroadcaster.js';
+import { promisePool } from '../utils/promisePool.js';
 import { UserSettings, Decision, SignalGrade } from '../strategies/types.js';
+import { twelveDataCircuit, CircuitOpenError } from './circuitBreaker.js';
+import { twelveData } from './twelveDataClient.js';
 import * as fs from 'fs';
 import * as path from 'path';
 
 const logger = createLogger('AutoScanService');
 const CONFIG_FILE = path.join(process.cwd(), 'data', 'autoScanConfig.json');
+
+// Rate limit pause state - shared across all concurrent workers
+let rateLimitPausePromise: Promise<void> | null = null;
+
+/**
+ * Global rate limit pause handler
+ * Ensures only one wait occurs even with concurrent workers
+ * Re-checks circuit state after waiting and re-arms if still open
+ */
+async function waitForRateLimitReset(): Promise<void> {
+  // If we're already paused, just wait for the existing pause to complete
+  if (rateLimitPausePromise) {
+    await rateLimitPausePromise;
+    // After shared wait, re-check if circuit is still open
+    if (twelveDataCircuit.getState() === 'OPEN') {
+      return waitForRateLimitReset(); // Re-arm if still open
+    }
+    return;
+  }
+
+  const circuitState = twelveDataCircuit.getState();
+  if (circuitState !== 'OPEN') {
+    return;
+  }
+
+  const waitTime = twelveDataCircuit.getTimeUntilRetry();
+  if (waitTime <= 0) {
+    // Circuit should transition to HALF_OPEN on next request
+    return;
+  }
+
+  // Set up a single shared pause - first worker to detect sets this up
+  logger.warn(`AUTO_SCAN: Rate limit hit - ALL workers pausing for ${Math.ceil(waitTime / 1000)}s`);
+  
+  rateLimitPausePromise = new Promise<void>(resolve => {
+    setTimeout(() => {
+      rateLimitPausePromise = null;
+      // Check if circuit is ready after waiting
+      const newState = twelveDataCircuit.getState();
+      if (newState === 'OPEN') {
+        logger.warn(`AUTO_SCAN: Circuit still OPEN after wait - will re-pause on next check`);
+      } else {
+        logger.info(`AUTO_SCAN: Rate limit wait complete - circuit ${newState}, resuming scan`);
+      }
+      resolve();
+    }, waitTime + 2000); // Add 2s buffer for safety
+  });
+
+  await rateLimitPausePromise;
+  
+  // After wait, verify circuit state and re-arm if needed
+  if (twelveDataCircuit.getState() === 'OPEN') {
+    return waitForRateLimitReset();
+  }
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // WATCHLIST PRESETS
@@ -39,15 +102,18 @@ export type WatchlistPreset = 'majors' | 'majors-gold' | 'minors' | 'crypto' | '
 const MAJOR_PAIRS = ['EURUSD', 'GBPUSD', 'USDJPY', 'USDCHF', 'AUDUSD', 'NZDUSD', 'USDCAD'];
 const MINOR_PAIRS = FOREX_SPECS.map(s => s.symbol).filter(s => !MAJOR_PAIRS.includes(s));
 
+// Exclude indices from 'all' preset - requires higher Twelve Data plan for real-time data
+const ALL_EXCEPT_INDICES = ALL_INSTRUMENTS.filter(s => s.type !== 'index').map(s => s.symbol);
+
 export const WATCHLIST_PRESETS: Record<WatchlistPreset, { symbols: string[]; description: string }> = {
   'majors': { symbols: MAJOR_PAIRS, description: '7 major forex pairs' },
   'majors-gold': { symbols: [...MAJOR_PAIRS, 'XAUUSD'], description: '7 majors + gold' },
   'minors': { symbols: MINOR_PAIRS, description: '21 minor forex pairs' },
   'crypto': { symbols: CRYPTO_SPECS.map(s => s.symbol), description: '8 cryptocurrencies (24/7)' },
   'metals': { symbols: METAL_SPECS.map(s => s.symbol), description: 'Gold & silver' },
-  'indices': { symbols: INDEX_SPECS.map(s => s.symbol), description: '6 major indices' },
+  'indices': { symbols: INDEX_SPECS.map(s => s.symbol), description: '6 major indices (requires upgraded plan)' },
   'commodities': { symbols: COMMODITY_SPECS.map(s => s.symbol), description: 'Oil & energy' },
-  'all': { symbols: ALL_INSTRUMENTS.map(s => s.symbol), description: 'All 46 instruments' },
+  'all': { symbols: ALL_EXCEPT_INDICES, description: `All ${ALL_EXCEPT_INDICES.length} instruments (excl. indices)` },
   'custom': { symbols: [], description: 'Custom selection' },
 };
 
@@ -172,9 +238,15 @@ export interface AutoScanStatus {
   } | null;
 }
 
-const DEFAULT_SETTINGS: UserSettings = {
-  accountSize: 100000,
+let accountSettings = {
+  accountPreset: 'e8-10k',
+  accountSize: 10000,
   riskPercent: 0.5,
+};
+
+const DEFAULT_SETTINGS: UserSettings = {
+  accountSize: accountSettings.accountSize,
+  riskPercent: accountSettings.riskPercent,
   style: 'intraday',
 };
 
@@ -528,107 +600,176 @@ class AutoScanService {
     let signalsFound = 0;
     let newSignals = 0;
     let errors = 0;
-    
-    // Process symbols sequentially to respect rate limits
-    for (let i = 0; i < symbolsToScan.length; i++) {
-      const symbol = symbolsToScan[i];
-      
-      // Update progress
-      this.status.currentScan = {
-        strategyId: schedule.strategyId,
-        progress: i + 1,
-        total: symbolsToScan.length,
-        percent: Math.round(((i + 1) / symbolsToScan.length) * 100),
-      };
-      
-      try {
-        // Use individual API calls via analyzeWithStrategy
-        const result = await analyzeWithStrategy(
-          symbol,
-          schedule.strategyId,
-          DEFAULT_SETTINGS,
-          { skipCache: false, skipCooldown: false, skipVolatility: false }
-        );
-        
-        symbolsScanned++;
-        
-        // Count analyzer errors (non-empty errors array)
-        if (result.errors.length > 0) {
-          errors += result.errors.length;
-          logger.debug(`AUTO_SCAN: ${symbol} had ${result.errors.length} errors: ${result.errors.join(', ')}`);
-        }
-        
-        // Safely access decision (may be null if analysis failed)
-        const decision = result.decision;
-        
-        if (decision && decision.grade && meetsMinGrade(decision.grade, this.config.minGrade)) {
-          signalsFound++;
+
+    // RATE LIMIT FIX: Sequential symbol processing (concurrency=1)
+    // - Each symbol requires 21 API calls when cache is cold
+    // - 40 symbols × 21 calls = 840 calls for first strategy scan
+    // - Subsequent strategies hit bundle cache = 0 additional calls
+    // - With delayBetweenStarts=3000ms, we spread 21 calls over ~3s = ~420 calls/min
+    // - This stays well under the 610 calls/min Twelve Data limit
+    const CONCURRENCY = 1;
+    const DELAY_BETWEEN_SYMBOLS_MS = 3000; // 3 second gap between symbols
+
+    // Process symbols sequentially with delay to stay under rate limit
+    const poolResult = await promisePool({
+      items: symbolsToScan,
+      concurrency: CONCURRENCY,
+      delayBetweenStarts: DELAY_BETWEEN_SYMBOLS_MS,
+      handler: async (symbol: string, index: number) => {
+        try {
+          // Check if we need to wait for rate limit reset (global shared pause)
+          await waitForRateLimitReset();
           
-          const upgrade = gradeTracker.updateGrade(
+          // Use dynamic account settings for position sizing
+          const dynamicSettings: UserSettings = {
+            accountSize: accountSettings.accountSize,
+            riskPercent: accountSettings.riskPercent,
+            style: 'intraday',
+          };
+          
+          // Use individual API calls via analyzeWithStrategy
+          const result = await analyzeWithStrategy(
             symbol,
             schedule.strategyId,
-            decision.strategyName || schedule.strategyId,
-            decision.grade,
-            decision.direction
+            dynamicSettings,
+            { skipCache: false, skipCooldown: false, skipVolatility: false }
           );
-          
-          if (upgrade) {
-            decision.upgrade = upgrade;
-          }
-          
-          const isNew = isNewSignal(symbol, schedule.strategyId, decision.direction);
-          
-          if (isNew) {
-            newSignals++;
-            trackSignal(symbol, schedule.strategyId, decision.direction);
-            
-            // Invalidate opposite direction detections
-            await invalidateOnConditionChange(
-              schedule.strategyId,
-              symbol,
-              decision.direction as 'long' | 'short'
-            );
-          }
-          
-          // Persist detection for cooldown tracking
-          try {
-            // Ensure decision has required fields for detection
-            const enrichedDecision = {
-              ...decision,
-              strategyId: decision.strategyId || schedule.strategyId,
-              strategyName: decision.strategyName || schedule.strategyId,
-              timestamp: decision.timestamp || new Date().toISOString(),
-            };
-            await processAutoScanDecision(enrichedDecision);
-          } catch (detectionError) {
-            const errorMsg = detectionError instanceof Error ? detectionError.message : 'Unknown error';
-            logger.warn(`AUTO_SCAN: Failed to persist detection for ${symbol}: ${errorMsg}`);
-            broadcastDetectionError(symbol, errorMsg);
-          }
 
-          if (this.shouldNotify(decision, isNew)) {
-            if (this.alertCallback) {
-              this.alertCallback(decision, isNew);
-            } else {
-              logger.warn(`AUTO_SCAN: Qualifying ${decision.grade} signal found but NO ALERT CALLBACK configured - email will not be sent!`);
+          return { symbol, result, error: null };
+        } catch (error) {
+          // If circuit opened during request, wait for reset and retry once
+          if (error instanceof CircuitOpenError) {
+            await waitForRateLimitReset();
+            
+            // Retry once after the shared wait completes
+            try {
+              const dynamicSettings: UserSettings = {
+                accountSize: accountSettings.accountSize,
+                riskPercent: accountSettings.riskPercent,
+                style: 'intraday',
+              };
+              const result = await analyzeWithStrategy(
+                symbol,
+                schedule.strategyId,
+                dynamicSettings,
+                { skipCache: false, skipCooldown: false, skipVolatility: false }
+              );
+              logger.debug(`AUTO_SCAN: ${symbol} succeeded after rate limit retry`);
+              return { symbol, result, error: null };
+            } catch (retryError) {
+              return { symbol, result: null, error: retryError instanceof Error ? retryError : new Error(String(retryError)) };
             }
           }
-          
-          if (isNew) {
-            logger.info(`AUTO_SCAN: NEW SIGNAL - ${symbol} ${decision.direction} ${decision.grade} (${schedule.strategyId})`);
+          return { symbol, result: null, error: error instanceof Error ? error : new Error(String(error)) };
+        }
+      },
+      onProgress: (completed: number, total: number) => {
+        const percent = Math.round((completed / total) * 100);
+        const elapsed = Date.now() - startTime;
+
+        // Update internal status
+        this.status.currentScan = {
+          strategyId: schedule.strategyId,
+          progress: completed,
+          total,
+          percent,
+        };
+
+        // Broadcast SSE progress event
+        broadcastScanProgress({
+          strategyId: schedule.strategyId,
+          progress: completed,
+          total,
+          percent,
+          elapsedMs: elapsed,
+        });
+      },
+    });
+
+    // Process results from the parallel execution
+    for (const item of poolResult.results) {
+      if (!item) continue;
+      const { symbol, result, error: itemError } = item;
+
+      if (itemError || !result) {
+        errors++;
+        const msg = itemError?.message || 'Unknown error';
+        logger.debug(`AUTO_SCAN: Error analyzing ${symbol} with ${schedule.strategyId}: ${msg}`);
+        continue;
+      }
+
+      symbolsScanned++;
+
+      // Count analyzer errors (non-empty errors array)
+      if (result.errors.length > 0) {
+        errors += result.errors.length;
+        logger.debug(`AUTO_SCAN: ${symbol} had ${result.errors.length} errors: ${result.errors.join(', ')}`);
+      }
+
+      // Safely access decision (may be null if analysis failed)
+      const decision = result.decision;
+
+      if (decision && decision.grade && meetsMinGrade(decision.grade, this.config.minGrade)) {
+        signalsFound++;
+
+        const upgrade = gradeTracker.updateGrade(
+          symbol,
+          schedule.strategyId,
+          decision.strategyName || schedule.strategyId,
+          decision.grade,
+          decision.direction
+        );
+
+        if (upgrade) {
+          decision.upgrade = upgrade;
+        }
+
+        const isNew = isNewSignal(symbol, schedule.strategyId, decision.direction);
+
+        if (isNew) {
+          newSignals++;
+          trackSignal(symbol, schedule.strategyId, decision.direction);
+
+          // Invalidate opposite direction detections
+          await invalidateOnConditionChange(
+            schedule.strategyId,
+            symbol,
+            decision.direction as 'long' | 'short'
+          );
+        }
+
+        // Persist detection for cooldown tracking
+        try {
+          // Ensure decision has required fields for detection
+          const enrichedDecision = {
+            ...decision,
+            strategyId: decision.strategyId || schedule.strategyId,
+            strategyName: decision.strategyName || schedule.strategyId,
+            timestamp: decision.timestamp || new Date().toISOString(),
+          };
+          await processAutoScanDecision(enrichedDecision);
+        } catch (detectionError) {
+          const errorMsg = detectionError instanceof Error ? detectionError.message : 'Unknown error';
+          logger.warn(`AUTO_SCAN: Failed to persist detection for ${symbol}: ${errorMsg}`);
+          broadcastDetectionError(symbol, errorMsg);
+        }
+
+        if (this.shouldNotify(decision, isNew)) {
+          if (this.alertCallback) {
+            this.alertCallback(decision, isNew);
+          } else {
+            logger.warn(`AUTO_SCAN: Qualifying ${decision.grade} signal found but NO ALERT CALLBACK configured - email will not be sent!`);
           }
         }
-      } catch (error) {
-        errors++;
-        const msg = error instanceof Error ? error.message : String(error);
-        logger.debug(`AUTO_SCAN: Error analyzing ${symbol} with ${schedule.strategyId}: ${msg}`);
-      }
-      
-      // Small delay between symbols to be gentle on rate limits
-      if (i < symbolsToScan.length - 1) {
-        await new Promise(resolve => setTimeout(resolve, 100));
+
+        if (isNew) {
+          logger.info(`AUTO_SCAN: NEW SIGNAL - ${symbol} ${decision.direction} ${decision.grade} (${schedule.strategyId})`);
+        }
       }
     }
+
+    // Add pool-level errors
+    errors += poolResult.errors.length;
     
     const elapsed = Date.now() - startTime;
 
@@ -659,8 +800,18 @@ class AutoScanService {
 
     this.status.strategyRuns = this.getStrategyRuns();
     this.updateNextScanTime();
-    
-    logger.info(`AUTO_SCAN: ${schedule.strategyId} complete in ${elapsed}ms - ${symbolsScanned} symbols, ${signalsFound} signals (${newSignals} new), ${errors} errors`);
+
+    // Broadcast scan complete event via SSE
+    broadcastScanComplete(schedule.strategyId, elapsed, {
+      symbolsScanned,
+      signalsFound,
+      newSignals,
+      errors,
+    });
+
+    // Log API call stats for rate limit monitoring
+    const apiStats = twelveData.getApiStats();
+    logger.info(`AUTO_SCAN: ${schedule.strategyId} complete in ${elapsed}ms - ${symbolsScanned} symbols, ${signalsFound} signals (${newSignals} new), ${errors} errors | API: ${apiStats.callsLastMinute}/${apiStats.limit} (${apiStats.percentUsed}%)`);
   }
 
   private shouldNotify(decision: Decision, isNew: boolean): boolean {
@@ -753,6 +904,18 @@ class AutoScanService {
     } else {
       logger.debug('AUTO_SCAN: No enabled config to auto-start');
     }
+  }
+  
+  updateAccountSettings(settings: { accountPreset?: string; accountSize?: number; riskPercent?: number }): void {
+    if (settings.accountPreset) accountSettings.accountPreset = settings.accountPreset;
+    if (settings.accountSize) accountSettings.accountSize = settings.accountSize;
+    if (settings.riskPercent) accountSettings.riskPercent = settings.riskPercent;
+    
+    logger.info(`AUTO_SCAN: Account settings updated - $${accountSettings.accountSize}, ${accountSettings.riskPercent}% risk`);
+  }
+  
+  getAccountSettings(): typeof accountSettings {
+    return { ...accountSettings };
   }
 }
 

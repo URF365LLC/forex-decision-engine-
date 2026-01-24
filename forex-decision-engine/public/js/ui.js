@@ -604,7 +604,7 @@ const UI = {
           <td class="col-price">${e.stopLoss?.toFixed(5) || '-'}</td>
           <td class="col-price">${e.takeProfit?.toFixed(5) || '-'}</td>
           <td class="col-price">${e.exitPrice?.toFixed(5) || '-'}</td>
-          <td class="col-numeric">${e.lotSize || '-'}</td>
+          <td class="col-numeric">${e.lots || '-'}</td>
           <td class="col-pnl ${pnlClass}">${pnlDisplay}</td>
           <td class="col-numeric">${rDisplay}</td>
           <td><span class="status-badge-inline ${statusClass}">${e.status}</span></td>
@@ -643,7 +643,7 @@ const UI = {
           <td class="col-price">${e.entryPrice?.toFixed(5) || '-'}</td>
           <td class="col-price">${e.currentPrice?.toFixed(5) || '-'}</td>
           <td class="col-pnl ${pnlClass}">${e.unrealizedPnl ? `$${e.unrealizedPnl.toFixed(2)}` : '-'}</td>
-          <td class="col-numeric">${e.lotSize || '-'}</td>
+          <td class="col-numeric">${e.lots || '-'}</td>
           <td><span class="status-badge-inline ${e.status}">${e.status}</span></td>
           <td class="col-actions">
             ${e.status === 'running' ? `<button class="table-btn" onclick="App.openCloseTrade('${e.id}')">Close</button>` : ''}

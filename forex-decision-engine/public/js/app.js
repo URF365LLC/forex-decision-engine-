@@ -54,10 +54,13 @@ const App = {
     // Load universe
     await this.loadUniverse();
 
-    // Load saved state
+    // Load saved state (local storage first, then sync from server)
     this.loadSettings();
     this.loadWatchlist();
     this.loadResults();
+    
+    // Sync account settings from server (updates ticker bar)
+    await this.syncAccountSettingsFromServer();
     
     // Load strategies
     await this.loadStrategyOptions();
@@ -341,11 +344,11 @@ const App = {
     const settings = Storage.getSettings();
     
     // Update form inputs if they exist
-    const accountSizeInput = UI.$('account-size');
+    const accountPresetInput = UI.$('account-preset');
     const riskPercentInput = UI.$('risk-percent');
     const timezoneInput = UI.$('timezone');
     
-    if (accountSizeInput) accountSizeInput.value = settings.accountSize;
+    if (accountPresetInput) accountPresetInput.value = settings.accountPreset || 'e8-10k';
     if (riskPercentInput) riskPercentInput.value = settings.riskPercent;
     if (timezoneInput) timezoneInput.value = settings.timezone;
     
@@ -358,6 +361,7 @@ const App = {
     if (styleRadio) styleRadio.checked = true;
 
     this.updateRiskHint();
+    this.updateAccountLimitsHint();
     
     // Update ticker bar with account info
     this.updateTickerBar(settings);
@@ -367,17 +371,47 @@ const App = {
    * Update ticker bar with account info and stats
    */
   updateTickerBar(settings) {
-    const tickerBalance = UI.$('ticker-balance');
+    const tickerAccount = UI.$('ticker-account');
     const tickerRisk = UI.$('ticker-risk');
     const tickerDailyLimit = UI.$('metric-daily-limit');
     const tickerMaxDD = UI.$('metric-max-dd');
     
-    if (tickerBalance) tickerBalance.textContent = `$${settings.accountSize.toLocaleString()}`;
+    if (tickerAccount) tickerAccount.textContent = `$${settings.accountSize.toLocaleString()}`;
     if (tickerRisk) tickerRisk.textContent = `${settings.riskPercent}%`;
     
     // E8 Markets limits: 4% daily, 6% max drawdown
     if (tickerDailyLimit) tickerDailyLimit.textContent = `$${(settings.accountSize * 0.04).toFixed(0)}`;
     if (tickerMaxDD) tickerMaxDD.textContent = `$${(settings.accountSize * 0.06).toFixed(0)}`;
+  },
+
+  /**
+   * Sync account settings from server to update ticker bar
+   */
+  async syncAccountSettingsFromServer() {
+    try {
+      const response = await fetch('/api/settings/account');
+      if (!response.ok) return;
+      
+      const serverSettings = await response.json();
+      
+      // Update local storage with server settings
+      const localSettings = Storage.getSettings();
+      localSettings.accountPreset = serverSettings.accountPreset;
+      localSettings.accountSize = serverSettings.accountSize;
+      localSettings.riskPercent = serverSettings.riskPercent;
+      Storage.saveSettings(localSettings);
+      
+      // Update the preset dropdown if on settings screen
+      const accountPresetInput = UI.$('account-preset');
+      if (accountPresetInput) accountPresetInput.value = serverSettings.accountPreset;
+      
+      // Update ticker bar with server values
+      this.updateTickerBar(serverSettings);
+      this.updateRiskHint();
+      this.updateAccountLimitsHint();
+    } catch (error) {
+      console.warn('Failed to sync account settings from server:', error);
+    }
   },
 
   /**
@@ -392,25 +426,34 @@ const App = {
     
     try {
       const tradingMode = document.querySelector('input[name="trading-mode"]:checked')?.value || 'paper';
-      const accountSizeEl = UI.$('account-size');
+      const accountPresetEl = UI.$('account-preset');
       const riskPercentEl = UI.$('risk-percent');
       const timezoneEl = UI.$('timezone');
       
+      const accountPreset = accountPresetEl ? accountPresetEl.value : 'e8-10k';
+      const accountSize = this.getAccountSizeFromPreset(accountPreset);
+      
       const settings = {
-        accountSize: accountSizeEl ? parseFloat(accountSizeEl.value) || 10000 : 10000,
+        accountPreset,
+        accountSize,
         riskPercent: riskPercentEl ? parseFloat(riskPercentEl.value) || 0.5 : 0.5,
         style: document.querySelector('input[name="style"]:checked')?.value || 'intraday',
         timezone: timezoneEl ? timezoneEl.value || 'America/Chicago' : 'America/Chicago',
         paperTrading: tradingMode === 'paper',
       };
 
-      // Validate
-      if (settings.accountSize < 100 || settings.accountSize > 1000000) {
-        UI.toast('Account size must be between $100 and $1,000,000', 'error');
-        return false;
-      }
-
       Storage.saveSettings(settings);
+      
+      // Also sync to server for auto-scan
+      try {
+        await fetch('/api/settings/account', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ accountPreset, accountSize, riskPercent: settings.riskPercent })
+        });
+      } catch (e) {
+        console.warn('Failed to sync settings to server:', e);
+      }
       
       // Brief delay to show loading state
       await new Promise(r => setTimeout(r, 300));
@@ -421,18 +464,50 @@ const App = {
       UI.setButtonLoading(submitBtn, false);
     }
   },
+  
+  getAccountSizeFromPreset(presetId) {
+    const presets = {
+      'e8-10k': 10000,
+      'e8-25k': 25000,
+      'e8-50k': 50000,
+      'e8-100k': 100000
+    };
+    return presets[presetId] || 10000;
+  },
+  
+  getAccountLimitsFromPreset(presetId) {
+    const limits = {
+      'e8-10k': { dailyLoss: 400, maxDrawdown: 600 },
+      'e8-25k': { dailyLoss: 1000, maxDrawdown: 1500 },
+      'e8-50k': { dailyLoss: 2000, maxDrawdown: 3000 },
+      'e8-100k': { dailyLoss: 4000, maxDrawdown: 6000 }
+    };
+    return limits[presetId] || limits['e8-10k'];
+  },
+  
+  updateAccountLimitsHint() {
+    const accountPresetEl = UI.$('account-preset');
+    const hintEl = UI.$('account-limits-hint');
+    
+    if (!accountPresetEl || !hintEl) return;
+    
+    const preset = accountPresetEl.value || 'e8-10k';
+    const limits = this.getAccountLimitsFromPreset(preset);
+    hintEl.textContent = `Daily Loss: $${limits.dailyLoss.toLocaleString()} | Max Drawdown: $${limits.maxDrawdown.toLocaleString()}`;
+  },
 
   /**
    * Update risk amount hint
    */
   updateRiskHint() {
-    const accountSizeEl = UI.$('account-size');
+    const accountPresetEl = UI.$('account-preset');
     const riskPercentEl = UI.$('risk-percent');
     const hintEl = UI.$('risk-amount-hint');
     
-    if (!accountSizeEl || !riskPercentEl || !hintEl) return;
+    if (!riskPercentEl || !hintEl) return;
     
-    const accountSize = parseFloat(accountSizeEl.value) || 10000;
+    const preset = accountPresetEl ? accountPresetEl.value : 'e8-10k';
+    const accountSize = this.getAccountSizeFromPreset(preset);
     const riskPercent = parseFloat(riskPercentEl.value) || 0.5;
     const riskAmount = (accountSize * riskPercent / 100).toFixed(0);
     hintEl.textContent = `Risk: $${riskAmount} per trade`;
@@ -1347,6 +1422,65 @@ const App = {
   },
 
   /**
+   * Open close trade dialog - prompts user for exit type
+   */
+  async openCloseTrade(id) {
+    const entry = this.journalEntries.find(e => e.id === id);
+    if (!entry) {
+      UI.toast('Trade not found', 'error');
+      return;
+    }
+
+    const choice = prompt(
+      `Close ${entry.symbol} trade:\n\n` +
+      `1 = Hit TP (${entry.takeProfit})\n` +
+      `2 = Hit SL (${entry.stopLoss})\n` +
+      `3 = Manual exit (enter price)\n\n` +
+      `Enter 1, 2, or 3:`
+    );
+
+    if (!choice) return;
+
+    try {
+      let exitPrice;
+      let outcome;
+
+      if (choice === '1') {
+        exitPrice = entry.takeProfit;
+        outcome = 'win';
+      } else if (choice === '2') {
+        exitPrice = entry.stopLoss;
+        outcome = 'loss';
+      } else if (choice === '3') {
+        const manualPrice = prompt('Enter exit price:');
+        if (!manualPrice || isNaN(parseFloat(manualPrice))) {
+          UI.toast('Invalid price', 'error');
+          return;
+        }
+        exitPrice = parseFloat(manualPrice);
+        outcome = exitPrice > entry.entryPrice ? 
+          (entry.direction === 'long' ? 'win' : 'loss') :
+          (entry.direction === 'long' ? 'loss' : 'win');
+      } else {
+        UI.toast('Invalid choice', 'error');
+        return;
+      }
+
+      await API.updateJournalEntry(id, {
+        status: 'closed',
+        exitPrice: exitPrice,
+        outcome: outcome,
+        closedAt: new Date().toISOString()
+      });
+
+      UI.toast(`Trade closed at ${exitPrice}`, 'success');
+      this.loadJournal();
+    } catch (error) {
+      UI.toast(`Failed to close trade: ${error.message}`, 'error');
+    }
+  },
+
+  /**
    * Fill pending order (move to running)
    */
   async fillPendingTrade(id) {
@@ -1432,7 +1566,10 @@ const App = {
     });
 
     // Risk hint update
-    UI.$('account-size')?.addEventListener('input', () => this.updateRiskHint());
+    UI.$('account-preset')?.addEventListener('change', () => {
+      this.updateRiskHint();
+      this.updateAccountLimitsHint();
+    });
     UI.$('risk-percent')?.addEventListener('change', () => this.updateRiskHint());
 
     // Watchlist
@@ -1910,6 +2047,7 @@ const App = {
         <div class="detection-status">
           <span class="status-badge ${statusClass}">${statusIcon} ${statusText}</span>
           ${cooldownHtml}
+          ${detection.statusReason ? `<span class="status-reason" title="${detection.statusReason}">${detection.statusReason}</span>` : ''}
         </div>
 
         <div class="detection-prices">
@@ -1928,7 +2066,7 @@ const App = {
           ${detection.lotSize ? `
           <div class="price-row position">
             <span class="price-label">Size:</span>
-            <span class="price-value">${detection.lotSize} lots</span>
+            <span class="price-value">${detection.lotSize} lots${detection.riskAmount ? ` ($${detection.riskAmount.toFixed(2)} risk)` : ''}</span>
           </div>
           ` : ''}
         </div>

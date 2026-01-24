@@ -1,0 +1,137 @@
+Claude's Final Validation: GPT's Patched Merge Spec
+Verdict: ✅ APPROVED FOR IMPLEMENTATION
+GPT correctly integrated all three critical additions. The specification is now complete and implementation-ready.
+
+Validation Matrix
+Requirement	GPT Spec	Status
+BBand defined locally in utils.ts	✅ Line-by-line implementation provided	PASS
+calcBBWidthPercentile with Number.isFinite()	✅ Uses Number.isFinite() + b.middle !== 0	PASS
+Setup-invalidation stops (2-bar + 0.4 ATR)	✅ Full inline implementation provided	PASS
+Hard rejection gate	✅ if (!rejection.ok) return null before direction	PASS
+Mutually exclusive RSI scoring	✅ if/else if structure, no double-counting	PASS
+BB expansion filter (>80 blocks)	✅ Correct implementation	PASS
+rrTarget = 2.0, atrMultiplier = 1.5	✅ Explicitly locked	PASS
+Explicit TP matches riskDistance × 2.0	✅ Aligned with rrTarget	PASS
+minBars = 250	✅ Specified	PASS
+Registry deprecation	⚠️ See note below	NEEDS 1 ADDITION
+One Minor Addition Required
+GPT correctly identified removing RSI Bounce from:
+
+registry.ts import (line 8)
+STRATEGIES map (line 21)
+INTRADAY_STRATEGIES array (lines 35-46)
+Missing: Also remove the re-export from index.ts (line 10):
+
+// DELETE this line from src/strategies/index.ts
+export { RsiBounce } from './intraday/RsiBounce.js';
+
+Code Quality Verification
+calcBBWidthPercentile - Verified Correct
+const validBand = (b: BBand | undefined): b is BBand => {
+  return !!b
+    && Number.isFinite(b.upper)
+    && Number.isFinite(b.lower)
+    && Number.isFinite(b.middle)
+    && b.middle !== 0;  // ← Prevents division by zero
+};
+
+✅ Uses Number.isFinite() instead of truthy checks
+✅ Guards against middle === 0
+✅ Type guard ensures type safety
+✅ Returns null if < 10 valid samples (statistical minimum)
+
+Setup-Invalidation Stop - Verified Correct
+const prevBar = bars![signalIdx - 1];
+const buffer = atrSignal! * 0.4;
+
+let stopLossPrice: number;
+if (direction === 'long') {
+  const swingLow = Math.min(signalBar.low, prevBar?.low ?? signalBar.low);
+  stopLossPrice = swingLow - buffer;
+}
+
+✅ Uses 2-bar window (signalBar + prevBar)
+✅ 0.4 ATR buffer (not 0.5 - respects the consensus)
+✅ Null coalescing for defensive coding
+✅ Matches our earlier agreement exactly
+
+RSI Scoring - Verified Mutually Exclusive
+if (rsiSignal! < 20) {
+  confidence += 20;  // EXTREME
+} else if (rsiSignal! < 30) {
+  confidence += 15;  // STANDARD
+}
+// No else - neutral RSI adds nothing
+
+✅ if/else if prevents double-counting
+✅ Extreme < 20 gets +20 (not +35)
+✅ Standard < 30 gets +15
+✅ Neutral adds +0
+
+Confidence Math Verification
+Component	Points	Notes
+BB touch + rejection bundle	+40	Hard gate - must pass
+RSI extreme (< 20 or > 80)	+20	Mutually exclusive with standard
+RSI standard (< 30 or > 70)	+15	Mutually exclusive with extreme
+H4 trend aligned	+10	From preflight adjustments
+RR favorable	+10	Existing logic
+Max theoretical confidence: 40 + 20 + 10 + 10 = 80
+Min passing confidence: 40 + 10 = 50 (touch + rejection + RR, no RSI bonus)
+
+This is appropriate - trades require substance, not just BB touch.
+
+Final Deprecation Diff (Complete)
+registry.ts
+- import { RsiBounce } from './intraday/RsiBounce.js';
+
+const STRATEGIES: Record<string, IStrategy> = {
+-   'rsi-bounce': new RsiBounce(),
+    'rsi-oversold': new RsiOversold(),
+    // ... rest unchanged
+};
+
+const INTRADAY_STRATEGIES: StrategyMeta[] = [
+-   { 
+-     id: 'rsi-bounce', 
+-     name: 'RSI Oversold Bounce', 
+-     description: 'Mean reversion from RSI extremes with Bollinger Band confirmation', 
+-     style: 'intraday', 
+-     winRate: 72, 
+-     avgRR: 1.2, 
+-     signalsPerWeek: '15-25', 
+-     requiredIndicators: ['bars', 'rsi', 'bbands', 'atr', 'sma20'],
+-     timeframes: { trend: 'H1', entry: 'H1' },
+-     version: '2026-01-01'
+-   },
+    { 
+      id: 'rsi-oversold', 
+      // ... rest unchanged
+
+index.ts
+- export { RsiBounce } from './intraday/RsiBounce.js';
+
+Final Acceptance Checklist (All Items Verified)
+ BBand interface defined locally in utils.ts
+ calcBBWidthPercentile uses Number.isFinite() guards
+ BollingerMR fires only when BB touch + rejection confirmed
+ BB expansion filter blocks when percentile > 80
+ RSI scoring is strict (30/20 & 70/80) and mutually exclusive
+ Stop loss uses setup-invalidation (2-bar + 0.4 ATR buffer)
+ TP authority: rrTarget = 2.0, atrMultiplier = 1.5, explicit TP aligned
+ minBars = 250
+ RsiBounce removed from registry.ts (import, STRATEGIES, INTRADAY_STRATEGIES)
+ RsiBounce removed from index.ts export
+ Confidence threshold prevents low-quality passes
+Implementation Order
+utils.ts: Add BBand interface + calcBBWidthPercentile helper
+BollingerMR.ts: Apply all strategy changes (imports, filter, gates, stops, TP)
+registry.ts: Remove RSI Bounce from three locations
+index.ts: Remove RSI Bounce export
+RsiBounce.ts: Add deprecation header comment (optional, for history)
+Verdict
+GPT's patched specification is APPROVED FOR IMPLEMENTATION.
+
+All critical additions have been correctly integrated. The only minor omission (index.ts export removal) is documented above. The implementation is now fully specified with no ambiguity.
+
+Ready to implement when you give the go-ahead.
+

@@ -1,0 +1,130 @@
+You are acting as a Senior Full-Stack Engineer and Systems Architect performing a deep integration review of how the UI/UX layer connects to and interacts with the backend.
+
+The goal is to evaluate whether data is correctly transmitted, transformed (where applicable), and accurately rendered, and whether all available features, engine outputs, and signals are properly surfaced to the user in a clear, reliable, and consistent way.
+
+Scope of Review (End-to-End)
+
+1. UI ↔ Backend Interaction
+
+Trace data flow from:
+
+user action → UI state → API call → backend processing → response → UI rendering
+
+Identify mismatches between frontend expectations and backend contracts.
+
+Evaluate whether responses are complete, consistent, and version-safe.
+
+2. Data Transmission & Transformation
+
+Verify that data sent to the backend is:
+
+correctly structured
+
+validated
+
+free of unintended mutations
+
+Review any transformation logic:
+
+frontend vs backend responsibility
+
+correctness and necessity
+
+Identify redundant or conflicting transformations.
+
+3. Data Display & Accuracy
+
+Confirm that:
+
+all backend outputs (engine signals, indicators, confidence scores, statuses, etc.) are actually available to the UI
+
+values shown to the user match backend truth
+
+Identify stale, partial, or misleading UI states.
+
+4. Feature & Signal Coverage
+
+Audit whether:
+
+any backend capabilities are not surfaced in the UI
+
+any UI features rely on deprecated or incomplete backend logic
+
+Ensure signals, statuses, and warnings are presented clearly and consistently.
+
+5. State Management & Consistency
+
+Review frontend state management:
+
+caching behavior
+
+synchronization with backend updates
+
+handling of loading, error, and empty states
+
+Identify race conditions, double-fetches, or desync issues.
+
+6. Error Handling & User Feedback
+
+Evaluate how backend errors and edge cases are:
+
+detected
+
+propagated
+
+communicated to the user
+
+Identify silent failures or confusing feedback loops.
+
+Required Deliverables
+
+A) Executive Summary
+
+Overall UI ↔ backend integration health
+
+Key risks and gaps
+
+Impact on user trust and system reliability
+
+B) Data Flow Map
+
+Clear description or diagram of critical UI ↔ backend flows
+
+Identification of fragile or error-prone handoffs
+
+C) Findings & Evidence
+For each issue:
+
+Description
+
+Root cause
+
+Impact
+
+Evidence (API endpoints, components, data fields)
+
+Recommended fix
+
+D) Improvement Recommendations
+
+Short-term fixes (bugs, mismatches)
+
+Medium-term improvements (contracts, state management)
+
+Long-term enhancements (architecture, consistency)
+
+Constraints & Expectations
+
+Do not assume correctness—verify via actual flows and contracts.
+
+Tie observations to concrete UI components and backend endpoints.
+
+Prioritize correctness, clarity, and data integrity over cosmetic polish.
+
+Write findings in a professional, executive-readable format.
+
+Final Objective
+
+Deliver a clear answer to:
+
+“Does our UI accurately, reliably, and completely reflect backend truth—and if not, exactly where and how should it be improved?”

@@ -18,9 +18,9 @@ import { fileURLToPath } from 'url';
 
 import { 
   FOREX_SPECS, METAL_SPECS, CRYPTO_SPECS, INDEX_SPECS, COMMODITY_SPECS,
-  ALL_INSTRUMENTS, getInstrumentSpec, validateInstrumentSpecs 
+  ALL_INSTRUMENTS, ACTIVE_INSTRUMENTS, getInstrumentSpec, validateInstrumentSpecs, getInstrumentCounts 
 } from './config/e8InstrumentSpecs.js';
-import { DEFAULTS, RISK_OPTIONS } from './config/defaults.js';
+import { DEFAULTS, RISK_OPTIONS, E8_ACCOUNT_PRESETS, getE8Preset } from './config/defaults.js';
 import { STYLE_PRESETS } from './config/strategy.js';
 import { scanWithStrategy, clearStrategyCache } from './engine/strategyAnalyzer.js';
 import { strategyRegistry } from './strategies/index.js';
@@ -63,7 +63,7 @@ import { z } from 'zod';
 import * as detectionService from './services/detectionService.js';
 import { DetectionFilters } from './types/detection.js';
 import { findActiveDetection as detectionStoreFindActive } from './storage/detectionStore.js';
-import { initDb, runMigrations, isDbAvailable } from './db/client.js';
+import { initDb, runMigrations, isDbAvailable, loadAccountSettings, saveAccountSettings } from './db/client.js';
 import { signalCooldown } from './services/signalCooldown.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -215,14 +215,20 @@ app.get('/api/metrics', async (req, res) => {
  * Get trading universe (v2 with full instrument specs)
  */
 app.get('/api/universe', (req, res) => {
-  const forexSymbols = FOREX_SPECS.map(s => s.symbol);
-  const metalSymbols = METAL_SPECS.map(s => s.symbol);
-  const cryptoSymbols = CRYPTO_SPECS.map(s => s.symbol);
-  const indexSymbols = INDEX_SPECS.map(s => s.symbol);
-  const commoditySymbols = COMMODITY_SPECS.map(s => s.symbol);
+  const activeForex = FOREX_SPECS.filter(s => !s.disabled);
+  const activeMetals = METAL_SPECS.filter(s => !s.disabled);
+  const activeCrypto = CRYPTO_SPECS.filter(s => !s.disabled);
+  const activeIndices = INDEX_SPECS.filter(s => !s.disabled);
+  const activeCommodities = COMMODITY_SPECS.filter(s => !s.disabled);
 
-  const metadata: Record<string, { pipDecimals: number; displayName: string; category: string }> = {};
-  for (const spec of ALL_INSTRUMENTS) {
+  const forexSymbols = activeForex.map(s => s.symbol);
+  const metalSymbols = activeMetals.map(s => s.symbol);
+  const cryptoSymbols = activeCrypto.map(s => s.symbol);
+  const indexSymbols = activeIndices.map(s => s.symbol);
+  const commoditySymbols = activeCommodities.map(s => s.symbol);
+
+  const metadata: Record<string, { pipDecimals: number; displayName: string; category: string; disabled?: boolean }> = {};
+  for (const spec of ACTIVE_INSTRUMENTS) {
     metadata[spec.symbol] = {
       pipDecimals: spec.digits,
       displayName: spec.displayName,
@@ -245,12 +251,13 @@ app.get('/api/universe', (req, res) => {
     defaultWatchlist: ['EURUSD', 'GBPUSD', 'USDJPY', 'BTCUSD', 'XAUUSD'],
     metadata,
     instruments: {
-      forex: FOREX_SPECS,
-      metals: METAL_SPECS,
-      crypto: CRYPTO_SPECS,
-      indices: INDEX_SPECS,
-      commodities: COMMODITY_SPECS,
+      forex: activeForex,
+      metals: activeMetals,
+      crypto: activeCrypto,
+      indices: activeIndices,
+      commodities: activeCommodities,
     },
+    counts: getInstrumentCounts(),
   });
 });
 
@@ -749,6 +756,64 @@ app.get('/api/upgrades/recent', validateQuery(UpgradesQuerySchema), (req, res) =
 });
 
 // ═══════════════════════════════════════════════════════════════
+// ACCOUNT SETTINGS ENDPOINTS
+// ═══════════════════════════════════════════════════════════════
+
+let serverAccountSettings = {
+  accountPreset: 'e8-10k' as string,
+  accountSize: 10000,
+  riskPercent: 0.5,
+};
+
+app.get('/api/settings/account', (req, res) => {
+  res.json(serverAccountSettings);
+});
+
+app.put('/api/settings/account', (req, res) => {
+  const { accountPreset, riskPercent } = req.body;
+  
+  // Validate preset ID against known presets
+  const validPresetIds = E8_ACCOUNT_PRESETS.map(p => p.id);
+  if (!accountPreset || !validPresetIds.includes(accountPreset)) {
+    return res.status(400).json({ 
+      success: false, 
+      error: `Invalid preset. Must be one of: ${validPresetIds.join(', ')}` 
+    });
+  }
+  
+  // Derive accountSize from preset (don't trust client values)
+  const preset = getE8Preset(accountPreset);
+  serverAccountSettings.accountPreset = accountPreset;
+  serverAccountSettings.accountSize = preset.size;
+  
+  // Validate riskPercent if provided
+  if (riskPercent !== undefined) {
+    if (typeof riskPercent !== 'number' || riskPercent < 0.1 || riskPercent > 2) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Risk percent must be between 0.1% and 2%' 
+      });
+    }
+    serverAccountSettings.riskPercent = riskPercent;
+  }
+  
+  // Update autoScanService with new settings
+  autoScanService.updateAccountSettings(serverAccountSettings);
+  
+  // Persist to database
+  saveAccountSettings(serverAccountSettings).catch(err => {
+    logger.warn('Failed to persist account settings', { error: err });
+  });
+  
+  logger.info(`Account settings updated: ${JSON.stringify(serverAccountSettings)}`);
+  res.json({ success: true, settings: serverAccountSettings });
+});
+
+export function getServerAccountSettings() {
+  return serverAccountSettings;
+}
+
+// ═══════════════════════════════════════════════════════════════
 // AUTO-SCAN ENDPOINTS
 // ═══════════════════════════════════════════════════════════════
 
@@ -1202,6 +1267,20 @@ async function startServer() {
 
   // Load cooldowns from database AFTER DB is initialized
   await signalCooldown.loadFromDatabase();
+  
+  // Load account settings from database, fallback to defaults
+  if (isDbAvailable()) {
+    const savedSettings = await loadAccountSettings();
+    if (savedSettings) {
+      serverAccountSettings.accountPreset = savedSettings.account_preset;
+      serverAccountSettings.accountSize = Number(savedSettings.account_size);
+      serverAccountSettings.riskPercent = Number(savedSettings.risk_percent);
+      autoScanService.updateAccountSettings(serverAccountSettings);
+      logger.info(`Loaded account settings from database: $${serverAccountSettings.accountSize} (${serverAccountSettings.accountPreset})`);
+    } else {
+      logger.info('No saved account settings found, using defaults');
+    }
+  }
 
   // Start cooldown checker AFTER DB is initialized
   detectionService.startCooldownChecker(60000);
@@ -1218,7 +1297,8 @@ async function startServer() {
     logger.info(`📡 Server running on port ${PORT}`);
     logger.info(`💾 Database: ${isDbAvailable() ? 'Connected' : 'Using fallback storage'}`);
   logger.info(`🔑 API Key: ${process.env.TWELVE_DATA_API_KEY ? 'Configured' : 'NOT CONFIGURED'}`);
-  logger.info(`📊 Instruments: ${FOREX_SPECS.length} forex, ${METAL_SPECS.length} metals, ${CRYPTO_SPECS.length} crypto, ${INDEX_SPECS.length} indices, ${COMMODITY_SPECS.length} commodities (${ALL_INSTRUMENTS.length} total)`);
+  const counts = getInstrumentCounts();
+  logger.info(`📊 Active Instruments: ${counts.forex} forex, ${counts.metals} metals, ${counts.crypto} crypto, ${counts.commodities} commodities (${counts.total} total, ${counts.disabled} disabled)`);
   
   // Register alert callback BEFORE auto-starting - ensures alerts work after server restart
   autoScanService.setAlertCallback((decision, isNew) => {

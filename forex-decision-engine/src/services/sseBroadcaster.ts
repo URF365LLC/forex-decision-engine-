@@ -44,3 +44,31 @@ export function broadcastError(source: string, message: string, details?: Record
 export function broadcastDetectionError(symbol: string, error: string): void {
   broadcastSSE({ type: 'detection_error', symbol, error, timestamp: new Date().toISOString() });
 }
+
+export interface ScanProgressPayload {
+  strategyId: string;
+  progress: number;
+  total: number;
+  percent: number;
+  elapsedMs: number;
+  currentSymbol?: string;
+}
+
+export function broadcastScanProgress(payload: ScanProgressPayload): void {
+  broadcastSSE({ type: 'scan:progress', ...payload, timestamp: new Date().toISOString() });
+}
+
+export function broadcastScanComplete(strategyId: string, durationMs: number, results: {
+  symbolsScanned: number;
+  signalsFound: number;
+  newSignals: number;
+  errors: number;
+}): void {
+  broadcastSSE({
+    type: 'scan:complete',
+    strategyId,
+    durationMs,
+    ...results,
+    timestamp: new Date().toISOString()
+  });
+}

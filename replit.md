@@ -26,7 +26,7 @@ This module detects ICT-based institutional trading patterns such as Order Block
 This module classifies volatility regimes (Compression, Normal, Expansion) using ATR percentiles to adapt strategy parameters and risk-reward multipliers.
 
 #### Configuration
-`e8InstrumentSpecs.ts` serves as a single source of truth for 46 instruments, strategy parameters, and default settings adhering to E8 Markets rules (0.5% risk, 4% daily loss limit, 6% max drawdown).
+`e8InstrumentSpecs.ts` serves as a single source of truth for 46 instruments (40 active, 6 disabled), strategy parameters, and default settings adhering to E8 Markets rules (0.5% risk, 4% daily loss limit, 6% max drawdown). Instruments can be disabled via `disabled: true` flag - disabled instruments are excluded from scanning and API responses.
 
 #### Services
 Core services include a Twelve Data Client with retry logic and normalization, an in-memory TTL Cache, a Token Bucket Rate Limiter, Signal Cooldown mechanisms, a Volatility Gate, and structured Logging. A Circuit Breaker Service is implemented for Twelve Data, Grok AI, and Database connections. A Portfolio Risk Manager tracks net currency exposure across open positions, enforcing a maximum of 2% per currency.
@@ -73,3 +73,111 @@ Core API endpoints cover system health, symbol retrieval, signal analysis and sc
 ### NPM Dependencies
 -   **Runtime**: `express`, `cors`, `dotenv`, `zod`, `openai`, `kysely`, `pg`.
 -   **Development**: `typescript`, `tsx`, `@types/pg`, and other `@types/*` packages.
+
+## Recent Changes
+
+### January 2026 - Rate Limit Pause/Resume System
+
+#### New Features
+1. **Shared Rate Limit Pause** - When Twelve Data circuit breaker opens (rate limit hit), ALL concurrent workers pause together
+2. **Auto-Resume After Reset** - Workers wait for circuit reset (60s) then re-check state before resuming
+3. **Re-Check Logic** - After wait completes, workers verify circuit is CLOSED/HALF_OPEN; if still OPEN, automatically re-waits
+
+#### Key Architecture
+- **rateLimitPausePromise** - Shared promise that all workers await (no duplicate waits)
+- **waitForRateLimitReset()** - Global handler with recursive re-check pattern
+- **CircuitOpenError catch** - Handler retries once after waiting for reset
+- **Logging** - Clear messages: "ALL workers pausing for Xs" / "circuit CLOSED, resuming scan"
+
+### January 2026 - E8 Account Presets Implementation
+
+#### New Features
+1. **E8 Account Presets** - Added dropdown to Settings tab with 4 E8 Markets account presets:
+   - $10k Challenge (Daily: $400, Max DD: $600)
+   - $25k Challenge (Daily: $1,000, Max DD: $1,500)
+   - $50k Challenge (Daily: $2,000, Max DD: $3,000)
+   - $100k Challenge (Daily: $4,000, Max DD: $6,000)
+
+2. **Dynamic Account Settings API** - GET/PUT `/api/settings/account` endpoints for retrieving and persisting account configuration. Settings sync to autoScanService for position sizing.
+
+3. **Position Sizing Integration** - AutoScan and strategy analysis now use dynamic account settings instead of hardcoded $100k. Lot sizes scale appropriately per account tier.
+
+#### Key Architecture
+- **E8_ACCOUNT_PRESETS** array in `defaults.ts` defines all preset configurations
+- **account_settings** PostgreSQL table persists settings across restarts
+- **Server-side validation** enforces preset ID against known presets, derives accountSize from preset (not trusted from client)
+- **autoScanService.updateAccountSettings()** propagates changes to scanning engine
+- **Startup loading** retrieves saved settings from database, falls back to $10k default if none exists
+
+### January 2026 - UI/Backend Data Integrity Audit
+
+#### Fixed Bugs
+1. **CRITICAL: TieredExits Data Transformation** - `formatTieredExits()` in `detectionStore.ts` now correctly handles both array format (`TieredExitInfo[]`) and legacy object format (`{tp1, tp2}`). Backend stores tieredExits as array with `level` property; frontend expects object with `tp1`/`tp2` keys. The function now converts array format to object format for UI consumption.
+
+2. **Journal Table Field Mismatch** - Fixed `e.lotSize` to `e.lots` in `ui.js` `renderJournalTable()` and `renderRunningTrades()` functions. Backend `journalStore.ts` uses field name `lots`.
+
+#### New UI Features
+1. **Risk Amount Display** - Detection cards now show dollar risk amount alongside lot size when available (e.g., "0.5 lots ($125.00 risk)").
+
+2. **Status Reason Display** - Detection cards now display `statusReason` for terminal statuses (dismissed, invalidated, expired) with tooltip for full text.
+
+#### Key Data Contracts
+- **DetectedTrade.tieredExits**: Stored as `TieredExitInfo[]` (array with `level`, `price`, `pips`, `rr` properties)
+- **API Response tieredExits**: Transformed to `{tp1: {price, formatted, pips, rr}, tp2: {...}}` object format
+- **Journal Entry lots field**: Backend uses `lots`, not `lotSize`
+- **Detection statuses**: 'taken' is canonical; 'executed' deprecated but supported for backwards compatibility
+
+### January 2026 - BollingerMR V3 Strategy Optimization (4-Way AI Validation)
+
+#### Validation Process
+Strategy reviewed by GPT-4, Claude, Replit Agent, and Human Operator with 95% confidence consensus.
+
+#### Changes Implemented
+1. **Rejection Candle HARD GATE** - Now required, not optional bonus. Eliminates "blind fade" failure mode.
+2. **BB Width Expansion Filter** - Blocks trades when band width percentile > 80 (expansion regime).
+3. **RSI Thresholds Tightened** - Changed from 35/65 to 30/70 (industry standard).
+4. **Swing-Based Stops** - Replaced pure ATR×1.5 with swing structure (recentLow/High - ATR×0.3).
+5. **RR Target Increased** - Set rrTarget=2.0, kept atrMultiplier=1.5.
+
+#### New Helper Function
+- **calcBBWidthPercentile()** in `utils.ts` - Calculates BB width percentile with Number.isFinite() validation.
+- **BBandInput** type defined locally to avoid circular imports from SignalQualityGate.
+
+#### Expected Impact
+- Signal count: 15-20/week → 8-12/week
+- Win rate: 65% → 72-75% (projected)
+- Risk:Reward: 1.5 → 2.0
+- Grade: C+ → B+
+
+#### What Was NOT Changed (Consensus: Working Well)
+- H4 trend framework
+- Session scoring
+- Regime detection
+- Strong trend counter block (line 94)
+
+### January 2026 - Spec Alignment & RsiBounce Deprecation
+
+#### Confidence Scoring Correction
+1. **Touch + Rejection = 40pts** - Adjusted from 45 (25+20) to 40 (20+20) per spec
+2. **Two-Tier RSI Scoring** - Implemented mutually exclusive scoring:
+   - Extreme (<20/>80): +20 pts with RSI_EXTREME_LOW/RSI_EXTREME_HIGH codes
+   - Standard (<30/>70): +15 pts with RSI_OVERSOLD/RSI_OVERBOUGHT codes
+   - Neutral: +0 pts (no bonus)
+
+#### Max Confidence Math (Updated)
+| Component | Points | Notes |
+|-----------|--------|-------|
+| BB touch + rejection bundle | +40 | Hard gate - must pass |
+| RSI extreme (<20/>80) | +20 | Mutually exclusive with standard |
+| RSI standard (<30/>70) | +15 | Mutually exclusive with extreme |
+| H4 trend aligned | +10 | From preflight adjustments |
+| RR favorable | +10 | Existing logic |
+
+Max theoretical: 40 + 20 + 10 + 10 = **80 pts**
+Min passing: 40 + 10 = **50 pts** (touch + rejection + RR, no RSI bonus)
+
+#### RsiBounce Strategy Deprecated
+- Removed from `registry.ts` (import, STRATEGIES map, INTRADAY_STRATEGIES array)
+- Removed from `index.ts` export
+- Strategy count: 11 → 10 active intraday strategies
+- File `RsiBounce.ts` retained for history, but not loaded

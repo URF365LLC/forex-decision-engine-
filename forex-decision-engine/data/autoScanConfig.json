@@ -2,6 +2,38 @@
   "enabled": true,
   "intervalMs": 300000,
   "symbols": [
+    "EURUSD",
+    "GBPUSD",
+    "AUDUSD",
+    "NZDUSD",
+    "USDJPY",
+    "EURJPY",
+    "GBPJPY",
+    "AUDJPY",
+    "NZDJPY",
+    "CADJPY",
+    "CHFJPY",
+    "USDCAD",
+    "EURCAD",
+    "GBPCAD",
+    "AUDCAD",
+    "NZDCAD",
+    "USDCHF",
+    "EURCHF",
+    "GBPCHF",
+    "AUDCHF",
+    "NZDCHF",
+    "CADCHF",
+    "EURGBP",
+    "EURAUD",
+    "GBPAUD",
+    "AUDNZD",
+    "EURNZD",
+    "GBPNZD",
+    "WTI",
+    "BRENT",
+    "XAUUSD",
+    "XAGUSD",
     "BTCUSD",
     "ETHUSD",
     "XRPUSD",
@@ -12,10 +44,6 @@
     "BNBUSD"
   ],
   "strategies": [
-    {
-      "strategyId": "rsi-bounce",
-      "intervalMs": 600000
-    },
     {
       "strategyId": "rsi-oversold",
       "intervalMs": 600000
@@ -58,8 +86,8 @@
     }
   ],
   "minGrade": "A",
-  "email": "Ecomtriumph2020@gmail.com",
-  "watchlistPreset": "crypto",
+  "email": "ing.logixtics24@gmail.com",
+  "watchlistPreset": "all",
   "customSymbols": [],
   "respectMarketHours": true
 }

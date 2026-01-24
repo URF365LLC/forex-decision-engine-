@@ -1,0 +1,164 @@
+Yep — this plan is **90% solid** and it *does* implement the consensus. But before you ship it, there are **3 gotchas** that will bite you (one is a real bug), plus **2 “don’t lie to yourself” notes**.
+
+Below is my “last look” sign-off review — blunt, surgical, actionable.
+
+---
+
+## ✅ What’s excellent (ship-worthy)
+
+### 1) Rejection candle as **hard gate**
+
+That’s the #1 ROI change. This removes the “touch-only fade” failure mode.
+
+### 2) BB Width expansion filter
+
+Also excellent. It’s the cleanest way to avoid fading **expansion/continuation**.
+
+### 3) Swing-based stops (structure + ATR buffer)
+
+This aligns the stop with the thesis (reversal should not break the local extreme).
+
+---
+
+## 🔴 Critical issue #1 (real bug): **truthy checks will drop valid BB values**
+
+In your helper:
+
+```ts
+if (bb && bb.upper && bb.lower && bb.middle) {
+  widths.push((bb.upper - bb.lower) / bb.middle);
+}
+```
+
+This is wrong because `0` is falsy. Any zero-ish value (or very small) gets skipped and silently biases your sample.
+
+**Fix: use finite-number checks**
+
+```ts
+if (
+  bb &&
+  Number.isFinite(bb.upper) &&
+  Number.isFinite(bb.lower) &&
+  Number.isFinite(bb.middle) &&
+  bb.middle !== 0
+) {
+  widths.push((bb.upper - bb.lower) / bb.middle);
+}
+```
+
+Also add a guard for `width` itself:
+
+```ts
+if (!Number.isFinite(width) || width <= 0) return null;
+```
+
+**Severity:** 🔴 High (silent logic corruption)
+
+---
+
+## 🟠 Critical issue #2: importing `BBand` from `SignalQualityGate` is the wrong dependency direction
+
+Plan says: *“Import BBand from SignalQualityGate.js”*.
+
+Technically it can compile, but architecturally it’s messy:
+
+* `utils.ts` is shared core
+* `SignalQualityGate.ts` is an infra module
+* You don’t want utils depending on infra types (and it can create circular pressure later)
+
+**Best fix (no type-file changes required):**
+Define a local structural type in utils:
+
+```ts
+export type BBand = { upper: number; middle: number; lower: number };
+```
+
+or just inline it in the function signature:
+
+```ts
+bbands: Array<{ upper: number; middle: number; lower: number }>
+```
+
+**Severity:** 🟠 Medium (design debt / future breakage risk)
+
+---
+
+## 🟠 Critical issue #3: percentile math is okay, but the implementation is inefficient and slightly sloppy
+
+This line:
+
+```ts
+const rank = widths.filter(w => w < width).length;
+```
+
+O(n) inside an already O(n log n) block — fine for 50 bars, but also:
+
+* duplicates all count the same
+* including the current width inside the sorted array changes percentile slightly
+
+Not fatal, but if you want clean:
+
+* compute widths from `currentIdx-lookback` to `currentIdx-1` (history only)
+* use `<=` or `<` intentionally
+
+**Severity:** 🟠 Medium-Low (not wrong, just not clean)
+
+---
+
+## 🟡 Important reality check #1: RR = 2.0 + ATR multiplier = 2.0 may harm MR hit-rate
+
+Your TP resolver does this:
+
+* prefers structure **if** structureRR ≥ `max(1, rrTarget*0.65)`
+* otherwise falls back to ATR distance = `atrMultiplier` × ATR
+
+If you raise `rrTarget` to 2.0, your structure acceptance threshold becomes **≥ 1.3R**.
+That will reject more realistic MR structure targets (mid-band-ish), and push you into **ATR 2x** targets more often.
+
+That’s *fine* if you explicitly want fewer trades and higher RR, but it’s a philosophical shift:
+
+* **Mean reversion** often monetizes via **high hit-rate + moderate RR**
+* forcing 2R can turn it into “MR setup, trend-follow exit” (not always bad, but be aware)
+
+**Recommendation:** keep `rrTarget = 2.0` if you want, but consider leaving `atrMultiplier` at **1.5** so fallback doesn’t go wild.
+
+**Severity:** 🟡 Medium (performance behavior change)
+
+---
+
+## 🟡 Important reality check #2: don’t hardcode “winRate 72” in metadata
+
+This:
+
+```ts
+winRate: 72,
+avgRR: 2.0,
+signalsPerWeek: '8-12',
+```
+
+Those are **projections**, not facts. Hardcoding them will mislead you later (and anyone reading dashboards).
+
+**Recommendation:**
+
+* either keep historical stats as-is
+* or label them as “target/projection” in description, not numeric fields
+
+**Severity:** 🟡 Medium (operational truth / reporting integrity)
+
+---
+
+## Final verdict: **Approved with 3 required edits**
+
+### ✅ Required before merge
+
+1. Fix `calcBBWidthPercentile()` numeric checks (`Number.isFinite`, `middle !== 0`)
+2. Don’t import `BBand` from `SignalQualityGate` — define type locally in `utils.ts` (or inline)
+3. Decide if `atrMultiplier` should remain **1.5** even if RR target is **2.0** (recommended)
+
+### ✅ Good to proceed after those
+
+Everything else is aligned with the 4-way consensus.
+
+---
+
+If you want, paste the **actual modified** `utils.ts` and `BollingerMR.ts` code chunks after Replit applies them, and I’ll do a final compile-risk scan (imports, null safety, index safety, type correctness) in one pass.
