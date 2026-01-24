@@ -85,3 +85,28 @@ All strategies undergo 4-Way AI Validation (GPT-4, Claude, Replit Agent, Human) 
 
 ### Deprecated Strategies
 - **RsiBounce** (deprecated 2026-01-22): Removed from registry due to poor automation performance
+
+## Integration Audit Summary (Jan 2026)
+
+### Audit Date: 2026-01-24
+Full audit report: `forex-decision-engine/AUDIT_REPORT.md`
+
+### Key Findings
+- **13 items** identified across Critical (2), High (2), Medium (4), Low/Optional (5)
+- **Risk Assessment**: LOW-MODERATE - core integration flows work correctly; issues are primarily UX polish
+
+### Critical Issues
+1. **Silent API Failure Pattern**: Non-critical bootstrap API errors logged to console without user feedback
+2. **SSE Reconnection Visibility Gap**: Real-time feed disconnects hidden from users for first 3 attempts
+
+### High Priority Items
+1. TypeScript type casting errors in server.ts (3 LSP errors on lines 480, 753, 1000)
+2. Detection refresh leaves stale state on error
+
+### Low/Optional
+Backend maintenance functions (`resetDrawdownState`, `archiveOverflow`, etc.) are intentionally internal - not defects
+
+### Remediation Priority
+1. Week 1: Add user feedback to critical API calls, SSE connection status indicator
+2. Week 2: Fix TypeScript type casting with Zod validation
+3. Backlog: Loading state improvements, toast standardization
