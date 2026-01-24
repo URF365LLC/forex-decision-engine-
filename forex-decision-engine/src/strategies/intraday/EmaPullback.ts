@@ -186,19 +186,28 @@ export class EmaPullback implements IStrategy {
     // V3: CONDITIONAL RSI extension handling (NOT hard block)
     // Strong trends can sustain extended RSI - only penalize, don't kill
     // Weak/moderate trends with extended RSI = exhaustion risk = block
+    // Unknown/missing trend = allow with bigger penalty
     if (direction === 'long' && rsiSignal! > 70) {
-      if (!preflight.h4Trend || preflight.h4Trend.strength !== 'strong') {
-        return null; // Block only in weak/moderate trends
+      if (preflight.h4Trend?.strength === 'weak' || preflight.h4Trend?.strength === 'moderate') {
+        return null; // Block only in EXPLICITLY weak/moderate trends
+      } else if (preflight.h4Trend?.strength === 'strong') {
+        confidence -= 10;
+        triggers.push(`RSI extended but strong trend allows (${rsiSignal!.toFixed(1)})`);
+      } else {
+        confidence -= 15; // Unknown/missing H4 trend = bigger penalty
+        triggers.push(`RSI extended, H4 trend unknown (${rsiSignal!.toFixed(1)})`);
       }
-      confidence -= 10;
-      triggers.push(`RSI extended but strong trend allows (${rsiSignal!.toFixed(1)})`);
     }
     if (direction === 'short' && rsiSignal! < 30) {
-      if (!preflight.h4Trend || preflight.h4Trend.strength !== 'strong') {
-        return null; // Block only in weak/moderate trends
+      if (preflight.h4Trend?.strength === 'weak' || preflight.h4Trend?.strength === 'moderate') {
+        return null; // Block only in EXPLICITLY weak/moderate trends
+      } else if (preflight.h4Trend?.strength === 'strong') {
+        confidence -= 10;
+        triggers.push(`RSI extended but strong trend allows (${rsiSignal!.toFixed(1)})`);
+      } else {
+        confidence -= 15; // Unknown/missing H4 trend = bigger penalty
+        triggers.push(`RSI extended, H4 trend unknown (${rsiSignal!.toFixed(1)})`);
       }
-      confidence -= 10;
-      triggers.push(`RSI extended but strong trend allows (${rsiSignal!.toFixed(1)})`);
     }
 
     // V2: H4 TREND (reject counter-trend for trend strategy)
@@ -226,8 +235,10 @@ export class EmaPullback implements IStrategy {
     confidence = clamp(confidence, 0, 100);
     if (confidence < 50) return null;
 
-    // V3: PHASE1_SIGNAL logging for validation tracking
+    // V3: PHASE1_SIGNAL logging for validation tracking (raw numbers for analysis)
     const adxTier = adxSignal! >= 35 ? 'very-strong' : adxSignal! >= 25 ? 'strong' : adxSignal! >= 18 ? 'moderate' : 'weak';
+    const ema50Touched = direction === 'long' ? signalBar.low <= ema50Signal! : signalBar.high >= ema50Signal!;
+    const ema50Reclaim = direction === 'long' ? signalBar.close > ema50Signal! : signalBar.close < ema50Signal!;
     logger.info('PHASE1_SIGNAL', {
       symbol,
       timestamp: signalBar.timestamp,
@@ -236,12 +247,12 @@ export class EmaPullback implements IStrategy {
       stopLossPrice,
       takeProfitPrice,
       targetRR: 2.0,
-      adxSignal: adxSignal!.toFixed(1),
+      adxSignal: adxSignal!,       // Raw number
       adxTier,
-      closeRatio: closeRatio.toFixed(2),
-      rsiSignal: rsiSignal!.toFixed(1),
-      ema50Touched: direction === 'long' ? signalBar.low <= ema50Signal! : signalBar.high >= ema50Signal!,
-      ema50Reclaimed: direction === 'long' ? signalBar.close > ema50Signal! : signalBar.close < ema50Signal!,
+      closeRatio,                   // Raw number
+      rsiSignal: rsiSignal!,        // Raw number
+      ema50Touched,
+      ema50Reclaim,                 // Corrected field name (was ema50Reclaimed)
       h4TrendDirection: preflight.h4Trend?.direction ?? 'unknown',
       h4TrendStrength: preflight.h4Trend?.strength ?? 'unknown',
       confidence,

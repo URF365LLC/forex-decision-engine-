@@ -17,7 +17,7 @@ The frontend, built with Vanilla JavaScript, features a mobile-first dark theme 
 The backend is an Express.js application written in TypeScript using ES modules.
 
 #### Decision Engine
-Orchestrates trade signal generation, including an Indicator Factory, Trend Filter (EMA 200, ADX), Entry Trigger (RSI confirmation), Position Sizer, and Grader for confidence scoring. It routes to 11 distinct intraday strategies, incorporates Safety Gates (volatility, signal cooldowns), and performs startup validation and signal quality checks (including ICT Killzone session bonuses).
+Orchestrates trade signal generation, including an Indicator Factory, Trend Filter (EMA 200, ADX), Entry Trigger (RSI confirmation), Position Sizer, and Grader for confidence scoring. It routes to 10 distinct intraday strategies, incorporates Safety Gates (volatility, signal cooldowns), and performs startup validation and signal quality checks (including ICT Killzone session bonuses).
 
 #### Smart Money Concepts
 Detects ICT-based institutional trading patterns like Order Blocks, Fair Value Gaps, Liquidity Sweeps, and Market Structure (BOS, CHOCH).
@@ -38,7 +38,7 @@ A hybrid PostgreSQL and JSON file storage approach is used, with PostgreSQL for 
 API endpoints cover system health, symbol retrieval, signal analysis and scanning, signal history, strategy listings, trade journaling, and statistics. Real-time grade upgrades are streamed via SSE.
 
 ### Feature Specifications
--   **Multi-Strategy System**: Implements 11 intraday strategies.
+-   **Multi-Strategy System**: Implements 10 intraday strategies (RsiBounce deprecated Jan 2026).
 -   **Confidence Scoring**: Trade decisions receive a 0-100 score, mapped to A+/A/B+/B/C grades, with reason codes.
 -   **Journaling**: Comprehensive trade journaling with P&L and statistics.
 -   **Auto-Scan v2.1**: Background scanning with configurable intervals, watchlist presets, market hours filters, and email alerts for high-grade signals.
@@ -57,3 +57,31 @@ API endpoints cover system health, symbol retrieval, signal analysis and scannin
 -   **xAI Grok (Optional)**: For market sentiment analysis. Requires `XAI_API_KEY`.
 -   **PostgreSQL**: Database for persistent storage.
 -   **NPM Dependencies**: `express`, `cors`, `dotenv`, `zod`, `openai`, `kysely`, `pg` for runtime.
+
+## V3 Strategy Optimizations (Jan 2026)
+
+All strategies undergo 4-Way AI Validation (GPT-4, Claude, Replit Agent, Human) before production deployment.
+
+### BollingerMR V3 (2026-01-22)
+- Confidence scoring corrected (40pts touch+rejection)
+- Two-tier RSI scoring implemented
+- Setup-invalidation stops with 0.4 ATR buffer
+
+### CciZeroLine V3 (2026-01-23)
+- EMA200 directional hard gate added
+- Close-in-range confirmation (0.7/0.3)
+- 2-bar + 0.4 ATR stops
+- Strong counter-trend block
+- CCI slope bonus
+
+### EmaPullback V3 (2026-01-24)
+- ADX unconditional +15 replaced with tiered scoring (0/5/10/15 by ADX tier)
+- Candle color replaced with close-in-range momentum confirmation (0.7/0.3)
+- EMA50 reclaim bonus (conditional on touch AND reclaim)
+- RSI extension CONDITIONAL handling (penalty in strong trends, block in weak/moderate)
+- TP authority aligned (preferStructure: false)
+- atrMultiplier reduced to 1.5 for consistency
+- PHASE1_SIGNAL logging for validation tracking
+
+### Deprecated Strategies
+- **RsiBounce** (deprecated 2026-01-22): Removed from registry due to poor automation performance
