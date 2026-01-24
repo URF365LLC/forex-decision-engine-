@@ -74,8 +74,8 @@ export const INDEX_SPECS: InstrumentSpec[] = [
 ];
 
 export const COMMODITY_SPECS: InstrumentSpec[] = [
-  { symbol: 'WTI', dataSymbol: 'CL', displayName: 'WTI Crude Oil', type: 'commodity', contractSize: 1000, commission: 6, avgSpread: 0.030, avgSpreadPips: 3.0, pipSize: 0.01, pipValue: 10, quoteCurrency: 'USD', leverage: 15, maxLotSize: 50, tradingHours: '01:05-23:55', digits: 3 },
-  { symbol: 'BRENT', dataSymbol: 'BZ', displayName: 'Brent Crude Oil', type: 'commodity', contractSize: 1000, commission: 6, avgSpread: 0.026, avgSpreadPips: 2.6, pipSize: 0.01, pipValue: 10, quoteCurrency: 'USD', leverage: 15, maxLotSize: 50, tradingHours: '03:05-23:55', digits: 3 },
+  { symbol: 'WTI', dataSymbol: 'CL', displayName: 'WTI Crude Oil', type: 'commodity', contractSize: 1000, commission: 6, avgSpread: 0.030, avgSpreadPips: 3.0, pipSize: 0.01, pipValue: 10, quoteCurrency: 'USD', leverage: 15, maxLotSize: 50, tradingHours: '01:05-23:55', digits: 3, disabled: true, disabledReason: 'Data not real-time - stale/unreliable quotes' },
+  { symbol: 'BRENT', dataSymbol: 'BZ', displayName: 'Brent Crude Oil', type: 'commodity', contractSize: 1000, commission: 6, avgSpread: 0.026, avgSpreadPips: 2.6, pipSize: 0.01, pipValue: 10, quoteCurrency: 'USD', leverage: 15, maxLotSize: 50, tradingHours: '03:05-23:55', digits: 3, disabled: true, disabledReason: 'Data not real-time - stale/unreliable quotes' },
 ];
 
 export const METAL_SPECS: InstrumentSpec[] = [

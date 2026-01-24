@@ -9,7 +9,7 @@ Preferred communication style: Simple, everyday language.
 ## System Architecture
 
 ### UI/UX Decisions
-The frontend, built with Vanilla JavaScript, features a mobile-first dark theme and real-time notifications via Server-Sent Events (SSE). It includes `isScanning` guards, API error displays, and accessible touch targets. Navigation consists of Scan, Auto, Journal, and Settings tabs. Detection cards show lot sizes, tiered exit targets (TP1/TP2), and bar expiration countdowns. The dashboard has a Bloomberg Terminal-inspired aesthetic with a status ticker bar and table-based rendering for signals, journal, running trades, and watchlist.
+The frontend, built with Vanilla JavaScript, features a mobile-first dark theme and real-time notifications via Server-Sent Events (SSE). It includes `isScanning` guards, API error displays, and accessible touch targets. Navigation consists of Dashboard, Auto, Journal, History, and Settings tabs. Detection cards show lot sizes, tiered exit targets (TP1/TP2), and bar expiration countdowns. The dashboard has a Bloomberg Terminal-inspired aesthetic with a status ticker bar and table-based rendering for signals, journal, running trades, and watchlist.
 
 ### Technical Implementations
 
@@ -110,3 +110,23 @@ Backend maintenance functions (`resetDrawdownState`, `archiveOverflow`, etc.) ar
 1. Week 1: Add user feedback to critical API calls, SSE connection status indicator
 2. Week 2: Fix TypeScript type casting with Zod validation
 3. Backlog: Loading state improvements, toast standardization
+
+## UI/UX Updates (Jan 2026)
+
+### Signal History Feature (2026-01-24)
+- Added new "History" tab in navigation for archived signal exploration
+- Features: sortable columns, multi-filter support (strategy, symbol, grade, result, date range)
+- Pagination for large datasets (50 signals per page)
+- Signal result tracking (mark as win/loss)
+- Stats header showing total signals, A+ count, win rate, avg confidence
+
+### Disabled Instruments (2026-01-24)
+- **WTI and Brent removed** - marked as disabled with reason "Data not real-time - stale/unreliable quotes"
+- Consistent with prior index removals (SP, NSDQ, DOW, DAX, NIKKEI, ASX)
+- Active instrument count now: 38 (28 forex, 8 crypto, 2 metals)
+
+### Responsive Design (2026-01-24)
+- Added tablet breakpoint (768px): horizontal scroll nav, stacked filters, wrapped metrics
+- Added mobile breakpoint (480px): compact typography, hidden less-important columns, full-width buttons
+- Table scroll containers for mobile horizontal scrolling
+- Navigation uses horizontal scroll on narrow screens (no hamburger menu for simplicity)

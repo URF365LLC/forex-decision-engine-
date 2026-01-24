@@ -771,6 +771,10 @@ const App = {
           this.loadSettings();
           UI.toast('Settings reloaded', 'success');
           break;
+        case 'history':
+          await this.loadSignalHistory();
+          UI.toast('Signal history refreshed', 'success');
+          break;
         default:
           await Promise.allSettled([
             this.loadDetections(),
@@ -814,6 +818,8 @@ const App = {
     } else if (screen === 'detections') {
       this.loadDetections();
       this.startDetectionRefresh();
+    } else if (screen === 'history') {
+      this.loadSignalHistory();
     } else {
       // Stop detection refresh when leaving detections screen
       this.stopDetectionRefresh();
@@ -2293,6 +2299,315 @@ const App = {
     if (this.cooldownTimerInterval) {
       clearInterval(this.cooldownTimerInterval);
       this.cooldownTimerInterval = null;
+    }
+  },
+
+  // ═══════════════════════════════════════════════════════════════
+  // SIGNAL HISTORY
+  // ═══════════════════════════════════════════════════════════════
+
+  signalHistory: [],
+  historyPage: 1,
+  historyPageSize: 50,
+  historySort: { field: 'date', direction: 'desc' },
+  historyFilters: {},
+
+  async loadSignalHistory() {
+    try {
+      const params = new URLSearchParams();
+      params.set('limit', '500');
+      
+      const gradeFilter = UI.$('history-filter-grade')?.value;
+      const symbolFilter = UI.$('history-filter-symbol')?.value;
+      
+      if (gradeFilter) params.set('grade', gradeFilter);
+      if (symbolFilter) params.set('symbol', symbolFilter);
+
+      const response = await fetch(`/api/signals?${params}`);
+      if (!response.ok) throw new Error('Failed to load signals');
+
+      const data = await response.json();
+      this.signalHistory = data.signals || [];
+
+      this.applyLocalHistoryFilters();
+      this.sortSignalHistory();
+      this.renderSignalHistory();
+      await this.loadSignalHistoryStats();
+      this.populateHistoryFilterOptions();
+    } catch (error) {
+      console.error('Failed to load signal history:', error);
+      UI.toast('Failed to load signal history', 'error');
+      const tbody = UI.$('history-tbody');
+      if (tbody) {
+        tbody.innerHTML = '<tr><td colspan="12" class="empty-cell">Failed to load. <a href="#" onclick="App.loadSignalHistory();return false;">Retry</a></td></tr>';
+      }
+    }
+  },
+
+  applyLocalHistoryFilters() {
+    const strategyFilter = UI.$('history-filter-strategy')?.value;
+    const resultFilter = UI.$('history-filter-result')?.value;
+    const fromDate = UI.$('history-filter-from')?.value;
+    const toDate = UI.$('history-filter-to')?.value;
+
+    this.signalHistory = this.signalHistory.filter(signal => {
+      if (strategyFilter && signal.strategy_id !== strategyFilter) return false;
+      if (resultFilter && signal.result !== resultFilter) return false;
+      if (fromDate) {
+        const signalDate = new Date(signal.created_at).toISOString().split('T')[0];
+        if (signalDate < fromDate) return false;
+      }
+      if (toDate) {
+        const signalDate = new Date(signal.created_at).toISOString().split('T')[0];
+        if (signalDate > toDate) return false;
+      }
+      return true;
+    });
+  },
+
+  sortSignalHistory() {
+    const { field, direction } = this.historySort;
+    const multiplier = direction === 'asc' ? 1 : -1;
+
+    this.signalHistory.sort((a, b) => {
+      let aVal, bVal;
+      switch (field) {
+        case 'date':
+          aVal = new Date(a.created_at).getTime();
+          bVal = new Date(b.created_at).getTime();
+          break;
+        case 'symbol':
+          aVal = a.symbol || '';
+          bVal = b.symbol || '';
+          break;
+        case 'strategy':
+          aVal = a.strategy_id || '';
+          bVal = b.strategy_id || '';
+          break;
+        case 'grade':
+          const gradeOrder = { 'A+': 5, 'A': 4, 'B+': 3, 'B': 2, 'C': 1 };
+          aVal = gradeOrder[a.grade] || 0;
+          bVal = gradeOrder[b.grade] || 0;
+          break;
+        case 'confidence':
+          aVal = a.confidence || 0;
+          bVal = b.confidence || 0;
+          break;
+        default:
+          return 0;
+      }
+      if (aVal < bVal) return -1 * multiplier;
+      if (aVal > bVal) return 1 * multiplier;
+      return 0;
+    });
+  },
+
+  sortHistory(field) {
+    if (this.historySort.field === field) {
+      this.historySort.direction = this.historySort.direction === 'asc' ? 'desc' : 'asc';
+    } else {
+      this.historySort.field = field;
+      this.historySort.direction = 'desc';
+    }
+    this.sortSignalHistory();
+    this.renderSignalHistory();
+    this.updateSortIndicators();
+  },
+
+  updateSortIndicators() {
+    document.querySelectorAll('#history-table th.sortable').forEach(th => {
+      th.classList.remove('sort-asc', 'sort-desc');
+      if (th.dataset.sort === this.historySort.field) {
+        th.classList.add(this.historySort.direction === 'asc' ? 'sort-asc' : 'sort-desc');
+      }
+    });
+  },
+
+  renderSignalHistory() {
+    const tbody = UI.$('history-tbody');
+    if (!tbody) return;
+
+    const start = (this.historyPage - 1) * this.historyPageSize;
+    const end = start + this.historyPageSize;
+    const pageData = this.signalHistory.slice(start, end);
+
+    if (pageData.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="12" class="empty-cell">No signals found matching your filters</td></tr>';
+      this.updateHistoryPagination();
+      return;
+    }
+
+    tbody.innerHTML = pageData.map(signal => {
+      const date = new Date(signal.created_at).toLocaleDateString();
+      const time = new Date(signal.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      const dirClass = signal.direction === 'long' ? 'positive' : 'negative';
+      const dirIcon = signal.direction === 'long' ? '↑' : '↓';
+      const gradeClass = `grade-${(signal.grade || 'c').replace('+', '-plus').toLowerCase()}`;
+      
+      const resultClass = signal.result === 'win' ? 'positive' : 
+                         signal.result === 'loss' ? 'negative' : 'muted';
+      const resultText = signal.result ? signal.result.toUpperCase() : 'PENDING';
+
+      const decision = signal.decision_data ? (typeof signal.decision_data === 'string' ? JSON.parse(signal.decision_data) : signal.decision_data) : {};
+      const entryPrice = signal.entry_price || decision.entryPrice || '--';
+      const stopLoss = signal.stop_loss || decision.stopLoss?.price || '--';
+      const takeProfit = signal.take_profit || decision.takeProfit?.price || '--';
+      const rr = decision.riskReward?.toFixed(1) || '--';
+
+      return `
+        <tr data-signal-id="${signal.id}">
+          <td><span class="date-cell">${date}</span><br><span class="time-cell">${time}</span></td>
+          <td class="symbol-cell">${signal.symbol}</td>
+          <td class="${dirClass}">${dirIcon} ${(signal.direction || '').toUpperCase()}</td>
+          <td class="strategy-cell">${signal.strategy_name || signal.strategy_id || '--'}</td>
+          <td><span class="grade-badge ${gradeClass}">${signal.grade}</span></td>
+          <td>${signal.confidence || '--'}</td>
+          <td class="col-price">${typeof entryPrice === 'number' ? entryPrice.toFixed(5) : entryPrice}</td>
+          <td class="col-price">${typeof stopLoss === 'number' ? stopLoss.toFixed(5) : stopLoss}</td>
+          <td class="col-price">${typeof takeProfit === 'number' ? takeProfit.toFixed(5) : takeProfit}</td>
+          <td class="col-numeric">${rr}</td>
+          <td class="${resultClass}">${resultText}</td>
+          <td class="col-actions">
+            <button class="table-btn" onclick="App.viewSignalDetails('${signal.id}')" title="View details">👁</button>
+            ${signal.result === 'pending' ? `
+              <button class="table-btn positive" onclick="App.markSignalResult('${signal.id}', 'win')" title="Mark as win">✓</button>
+              <button class="table-btn negative" onclick="App.markSignalResult('${signal.id}', 'loss')" title="Mark as loss">✗</button>
+            ` : ''}
+          </td>
+        </tr>
+      `;
+    }).join('');
+
+    this.updateHistoryPagination();
+  },
+
+  updateHistoryPagination() {
+    const totalPages = Math.ceil(this.signalHistory.length / this.historyPageSize);
+    const pageInfo = UI.$('history-page-info');
+    const prevBtn = UI.$('history-prev');
+    const nextBtn = UI.$('history-next');
+
+    if (pageInfo) pageInfo.textContent = `Page ${this.historyPage} of ${totalPages || 1}`;
+    if (prevBtn) prevBtn.disabled = this.historyPage <= 1;
+    if (nextBtn) nextBtn.disabled = this.historyPage >= totalPages;
+  },
+
+  historyPrevPage() {
+    if (this.historyPage > 1) {
+      this.historyPage--;
+      this.renderSignalHistory();
+    }
+  },
+
+  historyNextPage() {
+    const totalPages = Math.ceil(this.signalHistory.length / this.historyPageSize);
+    if (this.historyPage < totalPages) {
+      this.historyPage++;
+      this.renderSignalHistory();
+    }
+  },
+
+  async loadSignalHistoryStats() {
+    try {
+      const response = await fetch('/api/signals/stats');
+      if (!response.ok) return;
+
+      const data = await response.json();
+      const stats = data.stats || {};
+
+      const totalEl = UI.$('history-stat-total');
+      const aplusEl = UI.$('history-stat-aplus');
+      const winrateEl = UI.$('history-stat-winrate');
+      const avgconfEl = UI.$('history-stat-avgconf');
+
+      if (totalEl) totalEl.textContent = stats.total || 0;
+      if (aplusEl) aplusEl.textContent = stats.byGrade?.['A+'] || 0;
+      if (winrateEl) winrateEl.textContent = stats.winRate ? `${stats.winRate.toFixed(1)}%` : '--';
+      if (avgconfEl) avgconfEl.textContent = stats.avgConfidence ? stats.avgConfidence.toFixed(0) : '--';
+    } catch (error) {
+      console.error('Failed to load signal stats:', error);
+    }
+  },
+
+  populateHistoryFilterOptions() {
+    const strategySelect = UI.$('history-filter-strategy');
+    const symbolSelect = UI.$('history-filter-symbol');
+    
+    if (strategySelect && strategySelect.options.length <= 1) {
+      const strategies = [...new Set(this.signalHistory.map(s => s.strategy_id).filter(Boolean))];
+      strategies.sort().forEach(strategy => {
+        const option = document.createElement('option');
+        option.value = strategy;
+        option.textContent = strategy;
+        strategySelect.appendChild(option);
+      });
+    }
+
+    if (symbolSelect && symbolSelect.options.length <= 1) {
+      const symbols = [...new Set(this.signalHistory.map(s => s.symbol).filter(Boolean))];
+      symbols.sort().forEach(symbol => {
+        const option = document.createElement('option');
+        option.value = symbol;
+        option.textContent = symbol;
+        symbolSelect.appendChild(option);
+      });
+    }
+  },
+
+  resetHistoryFilters() {
+    UI.$('history-filter-strategy').value = '';
+    UI.$('history-filter-symbol').value = '';
+    UI.$('history-filter-grade').value = '';
+    UI.$('history-filter-result').value = '';
+    UI.$('history-filter-from').value = '';
+    UI.$('history-filter-to').value = '';
+    this.historyPage = 1;
+    this.loadSignalHistory();
+  },
+
+  async viewSignalDetails(signalId) {
+    const signal = this.signalHistory.find(s => s.id == signalId);
+    if (!signal) return;
+
+    const decision = signal.decision_data ? 
+      (typeof signal.decision_data === 'string' ? JSON.parse(signal.decision_data) : signal.decision_data) : {};
+
+    const details = `
+Signal: ${signal.symbol} ${signal.direction?.toUpperCase() || ''}
+Strategy: ${signal.strategy_name || signal.strategy_id}
+Grade: ${signal.grade} (Confidence: ${signal.confidence || '--'})
+Date: ${new Date(signal.created_at).toLocaleString()}
+
+Entry: ${signal.entry_price || decision.entryPrice || '--'}
+Stop Loss: ${signal.stop_loss || decision.stopLoss?.price || '--'}
+Take Profit: ${signal.take_profit || decision.takeProfit?.price || '--'}
+R:R: ${decision.riskReward?.toFixed(2) || '--'}
+
+Reason: ${signal.reason || decision.reason || 'Not recorded'}
+Result: ${signal.result?.toUpperCase() || 'PENDING'}
+${signal.result_notes ? `Notes: ${signal.result_notes}` : ''}
+    `.trim();
+
+    alert(details);
+  },
+
+  async markSignalResult(signalId, result) {
+    if (!confirm(`Mark this signal as ${result.toUpperCase()}?`)) return;
+
+    try {
+      const response = await fetch(`/api/signals/${signalId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ result })
+      });
+
+      if (!response.ok) throw new Error('Failed to update signal');
+
+      UI.toast(`Signal marked as ${result}`, 'success');
+      await this.loadSignalHistory();
+    } catch (error) {
+      console.error('Failed to mark signal result:', error);
+      UI.toast('Failed to update signal', 'error');
     }
   },
 };
