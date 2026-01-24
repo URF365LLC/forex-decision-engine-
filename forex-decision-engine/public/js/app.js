@@ -2315,7 +2315,7 @@ const App = {
   async loadSignalHistory() {
     try {
       const params = new URLSearchParams();
-      params.set('limit', '100');
+      params.set('limit', '500');
       
       const gradeFilter = UI.$('history-filter-grade')?.value;
       const symbolFilter = UI.$('history-filter-symbol')?.value;
@@ -2501,12 +2501,22 @@ const App = {
   },
 
   updateHistoryPagination() {
-    const totalPages = Math.ceil(this.signalHistory.length / this.historyPageSize);
+    const total = this.signalHistory.length;
+    const totalPages = Math.ceil(total / this.historyPageSize);
     const pageInfo = UI.$('history-page-info');
     const prevBtn = UI.$('history-prev');
     const nextBtn = UI.$('history-next');
 
-    if (pageInfo) pageInfo.textContent = `Page ${this.historyPage} of ${totalPages || 1}`;
+    const start = (this.historyPage - 1) * this.historyPageSize + 1;
+    const end = Math.min(this.historyPage * this.historyPageSize, total);
+    
+    if (pageInfo) {
+      if (total === 0) {
+        pageInfo.textContent = 'No signals';
+      } else {
+        pageInfo.textContent = `Showing ${start}-${end} of ${total} (Page ${this.historyPage}/${totalPages})`;
+      }
+    }
     if (prevBtn) prevBtn.disabled = this.historyPage <= 1;
     if (nextBtn) nextBtn.disabled = this.historyPage >= totalPages;
   },

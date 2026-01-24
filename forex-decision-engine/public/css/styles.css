@@ -3592,10 +3592,10 @@ textarea:focus {
    ═══════════════════════════════════════════════════════════════ */
 
 .journal-layout {
-  height: 100%;
   display: flex;
   flex-direction: column;
   background: var(--bg-secondary);
+  overflow: auto;
 }
 
 .journal-header {
@@ -3732,7 +3732,8 @@ textarea:focus {
   display: flex;
   flex-direction: column;
   gap: var(--spacing-lg);
-  height: 100%;
+  padding: var(--spacing-lg);
+  overflow: auto;
 }
 
 .history-header {

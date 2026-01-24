@@ -113,7 +113,7 @@ export const StrategiesQuerySchema = z.object({
 });
 
 export const SignalsQuerySchema = z.object({
-  limit: z.coerce.number().min(1).max(100).optional().default(50),
+  limit: z.coerce.number().min(1).max(500).optional().default(100),
   grade: z.enum(['A+', 'A', 'B+', 'B', 'C', 'no-trade']).optional(),
   symbol: z.string().min(1).max(20).optional(),
 });
