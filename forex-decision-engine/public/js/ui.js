@@ -611,6 +611,7 @@ const UI = {
           <td class="col-actions">
             ${e.status === 'running' ? `<button class="table-btn" onclick="App.openCloseTrade('${e.id}')">Close</button>` : ''}
             ${e.status === 'pending' ? `<button class="table-btn" onclick="App.fillPendingTrade('${e.id}')">Fill</button>` : ''}
+            <button class="table-btn" onclick="App.editJournalEntry('${e.id}')">Edit</button>
             <button class="table-btn danger" onclick="App.cancelTrade('${e.id}')">Del</button>
           </td>
         </tr>

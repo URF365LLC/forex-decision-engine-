@@ -1083,9 +1083,12 @@ const App = {
    */
   openTradeModal(decision) {
     this.currentTradeData = decision;
+    this.currentEditId = null;
 
     const titleEl = UI.$('trade-modal-title');
     const symbolEl = UI.$('trade-symbol');
+    const directionEl = UI.$('trade-direction');
+    const manualFieldsEl = UI.$('trade-manual-fields');
     const actionEl = UI.$('trade-action');
     const entryPriceEl = UI.$('trade-entry-price');
     const lotsEl = UI.$('trade-lots');
@@ -1094,7 +1097,9 @@ const App = {
     const notesEl = UI.$('trade-notes');
 
     if (titleEl) titleEl.textContent = `Log Trade: ${decision.displayName} ${decision.direction.toUpperCase()}`;
+    if (manualFieldsEl) manualFieldsEl.style.display = 'none';
     if (symbolEl) symbolEl.value = decision.symbol;
+    if (directionEl) directionEl.value = decision.direction;
     if (actionEl) actionEl.value = 'taken';
     
     const entryMid = decision.entryZone ? (decision.entryZone.low + decision.entryZone.high) / 2 : 0;
@@ -1112,12 +1117,62 @@ const App = {
   },
 
   /**
+   * Open manual trade modal for adding new trades
+   */
+  openManualTradeModal() {
+    this.currentEditId = null;
+    this.currentTradeData = null;
+
+    const titleEl = UI.$('trade-modal-title');
+    const symbolEl = UI.$('trade-symbol');
+    const actionEl = UI.$('trade-action');
+    const entryPriceEl = UI.$('trade-entry-price');
+    const lotsEl = UI.$('trade-lots');
+    const stopLossEl = UI.$('trade-stop-loss');
+    const takeProfitEl = UI.$('trade-take-profit');
+    const notesEl = UI.$('trade-notes');
+    const directionEl = UI.$('trade-direction');
+    const manualFieldsEl = UI.$('trade-manual-fields');
+
+    if (titleEl) titleEl.textContent = 'Add Manual Trade';
+    if (symbolEl) {
+      symbolEl.value = '';
+      symbolEl.disabled = false;
+    }
+    if (actionEl) actionEl.value = 'taken';
+    if (entryPriceEl) entryPriceEl.value = '';
+    if (lotsEl) lotsEl.value = '';
+    if (stopLossEl) stopLossEl.value = '';
+    if (takeProfitEl) takeProfitEl.value = '';
+    if (notesEl) notesEl.value = '';
+    if (directionEl) {
+      directionEl.value = 'long';
+      directionEl.disabled = false;
+    }
+    if (manualFieldsEl) manualFieldsEl.style.display = 'flex';
+
+    const statusRadio = document.querySelector('input[name="trade-status"][value="running"]');
+    if (statusRadio) statusRadio.checked = true;
+
+    UI.hide('trade-closed-fields');
+    UI.show('trade-modal');
+  },
+
+  /**
    * Close trade modal
    */
   closeTradeModal() {
     UI.hide('trade-modal');
     this.currentTradeData = null;
     this.currentEditId = null;
+    
+    const symbolEl = UI.$('trade-symbol');
+    const directionEl = UI.$('trade-direction');
+    const manualFieldsEl = UI.$('trade-manual-fields');
+    
+    if (symbolEl) symbolEl.disabled = false;
+    if (directionEl) directionEl.disabled = false;
+    if (manualFieldsEl) manualFieldsEl.style.display = 'flex';
   },
 
   /**
@@ -1306,6 +1361,8 @@ const App = {
 
     const titleEl = UI.$('trade-modal-title');
     const symbolEl = UI.$('trade-symbol');
+    const directionEl = UI.$('trade-direction');
+    const manualFieldsEl = UI.$('trade-manual-fields');
     const actionEl = UI.$('trade-action');
     const entryPriceEl = UI.$('trade-entry-price');
     const lotsEl = UI.$('trade-lots');
@@ -1314,7 +1371,15 @@ const App = {
     const notesEl = UI.$('trade-notes');
 
     if (titleEl) titleEl.textContent = `Edit Trade: ${entry.symbol} ${entry.direction.toUpperCase()}`;
-    if (symbolEl) symbolEl.value = entry.symbol;
+    if (manualFieldsEl) manualFieldsEl.style.display = 'flex';
+    if (symbolEl) {
+      symbolEl.value = entry.symbol;
+      symbolEl.disabled = true;
+    }
+    if (directionEl) {
+      directionEl.value = entry.direction;
+      directionEl.disabled = true;
+    }
     if (actionEl) actionEl.value = entry.action || 'taken';
     if (entryPriceEl) entryPriceEl.value = entry.entryPrice;
     if (lotsEl) lotsEl.value = entry.lots;
@@ -1375,25 +1440,50 @@ const App = {
         this.loadJournal();
       } else {
         const decision = this.currentTradeData;
-        if (!decision) return;
-
-        const strategyId = decision.strategyId || this.selectedStrategy;
-
-        const entry = {
-          source: 'signal',
-          symbol: decision.symbol,
-          direction: decision.direction,
-          style: decision.style || 'intraday',
-          grade: decision.grade,
-          strategyId: strategyId,
-          strategyName: decision.strategyName || this.getStrategyName(strategyId),
-          confidence: decision.confidence,
-          riskReward: decision.riskReward,
-          tradeType: this.inferTradeType(strategyId),
-          action: 'taken',
-          entryDate: new Date().toISOString(),
-          ...updates,
-        };
+        const symbolEl = UI.$('trade-symbol');
+        const directionEl = UI.$('trade-direction');
+        
+        let entry;
+        
+        if (decision) {
+          const strategyId = decision.strategyId || this.selectedStrategy;
+          entry = {
+            source: 'signal',
+            symbol: decision.symbol,
+            direction: decision.direction,
+            style: decision.style || 'intraday',
+            grade: decision.grade,
+            strategyId: strategyId,
+            strategyName: decision.strategyName || this.getStrategyName(strategyId),
+            confidence: decision.confidence,
+            riskReward: decision.riskReward,
+            tradeType: this.inferTradeType(strategyId),
+            action: 'taken',
+            entryDate: new Date().toISOString(),
+            ...updates,
+          };
+        } else {
+          const symbol = symbolEl?.value?.toUpperCase();
+          const direction = directionEl?.value || 'long';
+          
+          if (!symbol) {
+            UI.toast('Please enter a symbol', 'error');
+            return;
+          }
+          
+          entry = {
+            source: 'manual',
+            symbol: symbol,
+            direction: direction,
+            style: 'intraday',
+            grade: 'C',
+            strategyId: 'manual',
+            strategyName: 'Manual Entry',
+            action: 'taken',
+            entryDate: new Date().toISOString(),
+            ...updates,
+          };
+        }
 
         await API.addJournalEntry(entry);
         UI.toast('Trade logged successfully', 'success');
@@ -2311,23 +2401,19 @@ const App = {
   historyPageSize: 50,
   historySort: { field: 'date', direction: 'desc' },
   historyFilters: {},
+  signalHistoryRaw: [],
 
   async loadSignalHistory() {
     try {
       const params = new URLSearchParams();
       params.set('limit', '500');
-      
-      const gradeFilter = UI.$('history-filter-grade')?.value;
-      const symbolFilter = UI.$('history-filter-symbol')?.value;
-      
-      if (gradeFilter) params.set('grade', gradeFilter);
-      if (symbolFilter) params.set('symbol', symbolFilter);
 
       const response = await fetch(`/api/signals?${params}`);
       if (!response.ok) throw new Error('Failed to load signals');
 
       const data = await response.json();
-      this.signalHistory = data.signals || [];
+      this.signalHistoryRaw = data.signals || [];
+      this.historyPage = 1;
 
       this.applyLocalHistoryFilters();
       this.sortSignalHistory();
@@ -2359,7 +2445,7 @@ const App = {
     const cryptoSymbols = ['BTCUSD', 'ETHUSD', 'XRPUSD', 'LTCUSD', 'BCHUSD', 'ADAUSD', 'SOLUSD', 'BNBUSD'];
     const metalSymbols = ['XAUUSD', 'XAGUSD'];
 
-    this.signalHistory = this.signalHistory.filter(signal => {
+    this.signalHistory = this.signalHistoryRaw.filter(signal => {
       if (groupFilter) {
         const symbol = signal.symbol || '';
         if (groupFilter === 'forex' && !forexSymbols.includes(symbol)) return false;
@@ -2382,6 +2468,13 @@ const App = {
       }
       return true;
     });
+    this.historyPage = 1;
+  },
+
+  applyHistoryFilters() {
+    this.applyLocalHistoryFilters();
+    this.sortSignalHistory();
+    this.renderSignalHistory();
   },
 
   sortSignalHistory() {

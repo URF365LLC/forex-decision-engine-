@@ -303,6 +303,7 @@ body {
 
 .screen {
   height: 100%;
+  overflow: auto;
   animation: fadeIn 0.15s ease;
 }
 
@@ -3595,7 +3596,8 @@ textarea:focus {
   display: flex;
   flex-direction: column;
   background: var(--bg-secondary);
-  overflow: auto;
+  padding: var(--spacing-lg);
+  gap: var(--spacing-md);
 }
 
 .journal-header {
