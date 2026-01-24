@@ -154,3 +154,30 @@ Strategy reviewed by GPT-4, Claude, Replit Agent, and Human Operator with 95% co
 - Session scoring
 - Regime detection
 - Strong trend counter block (line 94)
+
+### January 2026 - Spec Alignment & RsiBounce Deprecation
+
+#### Confidence Scoring Correction
+1. **Touch + Rejection = 40pts** - Adjusted from 45 (25+20) to 40 (20+20) per spec
+2. **Two-Tier RSI Scoring** - Implemented mutually exclusive scoring:
+   - Extreme (<20/>80): +20 pts with RSI_EXTREME_LOW/RSI_EXTREME_HIGH codes
+   - Standard (<30/>70): +15 pts with RSI_OVERSOLD/RSI_OVERBOUGHT codes
+   - Neutral: +0 pts (no bonus)
+
+#### Max Confidence Math (Updated)
+| Component | Points | Notes |
+|-----------|--------|-------|
+| BB touch + rejection bundle | +40 | Hard gate - must pass |
+| RSI extreme (<20/>80) | +20 | Mutually exclusive with standard |
+| RSI standard (<30/>70) | +15 | Mutually exclusive with extreme |
+| H4 trend aligned | +10 | From preflight adjustments |
+| RR favorable | +10 | Existing logic |
+
+Max theoretical: 40 + 20 + 10 + 10 = **80 pts**
+Min passing: 40 + 10 = **50 pts** (touch + rejection + RR, no RSI bonus)
+
+#### RsiBounce Strategy Deprecated
+- Removed from `registry.ts` (import, STRATEGIES map, INTRADAY_STRATEGIES array)
+- Removed from `index.ts` export
+- Strategy count: 11 → 10 active intraday strategies
+- File `RsiBounce.ts` retained for history, but not loaded
