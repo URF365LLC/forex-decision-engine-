@@ -1,7 +1,7 @@
 # Forex Decision Engine
 
 ## Overview
-The Forex Decision Engine is a trading signal generator for Forex, Metals, and Cryptocurrency markets. It provides actionable trade signals, including entry zones, stop losses, and take profit targets, using a deterministic strategy that combines trend analysis with entry triggers. The system produces graded trade recommendations (A+/B grades) and is designed for prop firm trading, incorporating E8 Markets risk management, position sizing, and drawdown safeguards. Its key capabilities include multi-strategy scanning, real-time signal freshness tracking, and market sentiment analysis. The project's ambition is to deliver a robust, enterprise-grade trading assistant.
+The Forex Decision Engine is a trading signal generator for Forex, Metals, and Cryptocurrency markets, providing actionable trade signals including entry zones, stop losses, and take profit targets. It uses a deterministic strategy combining trend analysis with entry triggers to produce graded trade recommendations (A+/B grades). Designed for prop firm trading, it integrates E8 Markets risk management, position sizing, and drawdown safeguards. Key capabilities include multi-strategy scanning, real-time signal freshness tracking, and market sentiment analysis. The project aims to be a robust, enterprise-grade trading assistant.
 
 ## User Preferences
 Preferred communication style: Simple, everyday language.
@@ -9,7 +9,7 @@ Preferred communication style: Simple, everyday language.
 ## System Architecture
 
 ### UI/UX Decisions
-The frontend is built with Vanilla JavaScript, features a mobile-first dark theme, and provides real-time notifications via Server-Sent Events (SSE). It includes `isScanning` guards, API error displays, and accessible touch targets. The navigation comprises four tabs: Scan, Auto, Journal, and Settings. Detection cards display lot sizes, tiered exit targets (TP1/TP2), and bar expiration countdowns. The dashboard features a Bloomberg Terminal-inspired aesthetic with a status ticker bar and table-based rendering for signals, journal, running trades, and watchlist.
+The frontend, built with Vanilla JavaScript, features a mobile-first dark theme and real-time notifications via Server-Sent Events (SSE). It includes `isScanning` guards, API error displays, and accessible touch targets. Navigation consists of Scan, Auto, Journal, and Settings tabs. Detection cards show lot sizes, tiered exit targets (TP1/TP2), and bar expiration countdowns. The dashboard has a Bloomberg Terminal-inspired aesthetic with a status ticker bar and table-based rendering for signals, journal, running trades, and watchlist.
 
 ### Technical Implementations
 
@@ -17,167 +17,43 @@ The frontend is built with Vanilla JavaScript, features a mobile-first dark them
 The backend is an Express.js application written in TypeScript using ES modules.
 
 #### Decision Engine
-This module orchestrates trade signal generation, including an Indicator Factory, Trend Filter (EMA 200, ADX), Entry Trigger (RSI confirmation), Position Sizer, and Grader for confidence scoring. It routes to 11 distinct intraday strategies, incorporates Safety Gates (volatility, signal cooldowns), and performs startup validation and signal quality checks (including ICT Killzone session bonuses).
+Orchestrates trade signal generation, including an Indicator Factory, Trend Filter (EMA 200, ADX), Entry Trigger (RSI confirmation), Position Sizer, and Grader for confidence scoring. It routes to 11 distinct intraday strategies, incorporates Safety Gates (volatility, signal cooldowns), and performs startup validation and signal quality checks (including ICT Killzone session bonuses).
 
 #### Smart Money Concepts
-This module detects ICT-based institutional trading patterns such as Order Blocks, Fair Value Gaps, Liquidity Sweeps, and Market Structure (BOS, CHOCH).
+Detects ICT-based institutional trading patterns like Order Blocks, Fair Value Gaps, Liquidity Sweeps, and Market Structure (BOS, CHOCH).
 
 #### Regime Detector
-This module classifies volatility regimes (Compression, Normal, Expansion) using ATR percentiles to adapt strategy parameters and risk-reward multipliers.
+Classifies volatility regimes (Compression, Normal, Expansion) using ATR percentiles to adapt strategy parameters and risk-reward multipliers.
 
 #### Configuration
-`e8InstrumentSpecs.ts` serves as a single source of truth for 46 instruments (40 active, 6 disabled), strategy parameters, and default settings adhering to E8 Markets rules (0.5% risk, 4% daily loss limit, 6% max drawdown). Instruments can be disabled via `disabled: true` flag - disabled instruments are excluded from scanning and API responses.
+`e8InstrumentSpecs.ts` is the single source of truth for 46 instruments (40 active, 6 disabled), strategy parameters, and default settings adhering to E8 Markets rules (0.5% risk, 4% daily loss limit, 6% max drawdown).
 
 #### Services
-Core services include a Twelve Data Client with retry logic and normalization, an in-memory TTL Cache, a Token Bucket Rate Limiter, Signal Cooldown mechanisms, a Volatility Gate, and structured Logging. A Circuit Breaker Service is implemented for Twelve Data, Grok AI, and Database connections. A Portfolio Risk Manager tracks net currency exposure across open positions, enforcing a maximum of 2% per currency.
+Core services include a Twelve Data Client with retry logic, an in-memory TTL Cache, a Token Bucket Rate Limiter, Signal Cooldown mechanisms, a Volatility Gate, structured Logging, and a Circuit Breaker Service for external dependencies. A Portfolio Risk Manager enforces a maximum of 2% net currency exposure per currency.
 
 #### Storage
-A hybrid PostgreSQL and JSON file storage approach is used. PostgreSQL is primary for Signal, Journal, and Detection Stores, with JSON files used for fallback and legacy entries.
+A hybrid PostgreSQL and JSON file storage approach is used, with PostgreSQL for Signal, Journal, and Detection Stores, and JSON for fallback/legacy entries.
 
 #### API Endpoints
-Core API endpoints cover system health, symbol retrieval, signal analysis and scanning, signal history, strategy listings, trade journaling, and statistics. Real-time grade upgrades are streamed via SSE.
+API endpoints cover system health, symbol retrieval, signal analysis and scanning, signal history, strategy listings, trade journaling, and statistics. Real-time grade upgrades are streamed via SSE.
 
 ### Feature Specifications
 -   **Multi-Strategy System**: Implements 11 intraday strategies.
--   **Confidence Scoring**: Trade decisions receive a 0-100 score, mapped to A+/A/B+/B/C grades.
--   **Reason Codes**: Provides machine-readable explanations for trade decisions.
+-   **Confidence Scoring**: Trade decisions receive a 0-100 score, mapped to A+/A/B+/B/C grades, with reason codes.
 -   **Journaling**: Comprehensive trade journaling with P&L and statistics.
--   **Strategy Isolation**: Caches decisions per strategy to prevent data staleness.
--   **Margin-Aware Position Sizing**: Accounts for leverage and margin constraints.
--   **Indicator Alignment**: Uses timestamp-based alignment (`alignIndicatorToBars()`) for indicator data.
 -   **Auto-Scan v2.1**: Background scanning with configurable intervals, watchlist presets, market hours filters, and email alerts for high-grade signals.
 -   **Tiered Exit Management**: Each decision includes tiered exit points (TP1, TP2, trailing runner).
 -   **Grok AI Sentiment Analysis**: On-demand X/Twitter market sentiment integration with caching.
 -   **Multi-Asset Class Support**: Supports Forex, Metals, Indices, Commodities, and Crypto.
--   **H4 Trend Support**: Utilizes Twelve Data's 4h interval for trend analysis with D1 fallback.
+-   **H4 Trend Support**: Uses Twelve Data's 4h interval for trend analysis with D1 fallback.
 -   **Detection System**: Manages detection lifecycle with statuses like `cooling_down`, `eligible`, `taken`, `dismissed`, `expired`, `invalidated`.
 -   **Regime Detector Integration**: Adjusts confidence and risk-reward based on volatility regimes.
 -   **Bar Freshness Validation**: Rejects signals if bar data is stale.
--   **Mean-Reversion in Strong Trends**: Applies a -15pt confidence penalty instead of blocking mean-reversion setups in strong trends.
 
 ## External Dependencies
 
-### Twelve Data API
--   **Purpose**: Provides unified market data and technical indicators.
--   **Configuration**: Requires `TWELVE_DATA_API_KEY` and optionally `TWELVE_DATA_CRYPTO_EXCHANGE`.
--   **Rate Limit**: 610 calls/min.
-
-### Environment Variables
--   `TWELVE_DATA_API_KEY`: API key for Twelve Data.
--   `TWELVE_DATA_CRYPTO_EXCHANGE`: Specifies crypto exchange.
--   `PORT`: Server port.
--   `LOG_LEVEL`: Logging verbosity.
--   `RESEND_API_KEY`: (Optional) Enables email alerts via Resend.
--   `XAI_API_KEY`: (Optional) Enables xAI Grok sentiment analysis.
-
-### NPM Dependencies
--   **Runtime**: `express`, `cors`, `dotenv`, `zod`, `openai`, `kysely`, `pg`.
--   **Development**: `typescript`, `tsx`, `@types/pg`, and other `@types/*` packages.
-
-## Recent Changes
-
-### January 2026 - Rate Limit Pause/Resume System
-
-#### New Features
-1. **Shared Rate Limit Pause** - When Twelve Data circuit breaker opens (rate limit hit), ALL concurrent workers pause together
-2. **Auto-Resume After Reset** - Workers wait for circuit reset (60s) then re-check state before resuming
-3. **Re-Check Logic** - After wait completes, workers verify circuit is CLOSED/HALF_OPEN; if still OPEN, automatically re-waits
-
-#### Key Architecture
-- **rateLimitPausePromise** - Shared promise that all workers await (no duplicate waits)
-- **waitForRateLimitReset()** - Global handler with recursive re-check pattern
-- **CircuitOpenError catch** - Handler retries once after waiting for reset
-- **Logging** - Clear messages: "ALL workers pausing for Xs" / "circuit CLOSED, resuming scan"
-
-### January 2026 - E8 Account Presets Implementation
-
-#### New Features
-1. **E8 Account Presets** - Added dropdown to Settings tab with 4 E8 Markets account presets:
-   - $10k Challenge (Daily: $400, Max DD: $600)
-   - $25k Challenge (Daily: $1,000, Max DD: $1,500)
-   - $50k Challenge (Daily: $2,000, Max DD: $3,000)
-   - $100k Challenge (Daily: $4,000, Max DD: $6,000)
-
-2. **Dynamic Account Settings API** - GET/PUT `/api/settings/account` endpoints for retrieving and persisting account configuration. Settings sync to autoScanService for position sizing.
-
-3. **Position Sizing Integration** - AutoScan and strategy analysis now use dynamic account settings instead of hardcoded $100k. Lot sizes scale appropriately per account tier.
-
-#### Key Architecture
-- **E8_ACCOUNT_PRESETS** array in `defaults.ts` defines all preset configurations
-- **account_settings** PostgreSQL table persists settings across restarts
-- **Server-side validation** enforces preset ID against known presets, derives accountSize from preset (not trusted from client)
-- **autoScanService.updateAccountSettings()** propagates changes to scanning engine
-- **Startup loading** retrieves saved settings from database, falls back to $10k default if none exists
-
-### January 2026 - UI/Backend Data Integrity Audit
-
-#### Fixed Bugs
-1. **CRITICAL: TieredExits Data Transformation** - `formatTieredExits()` in `detectionStore.ts` now correctly handles both array format (`TieredExitInfo[]`) and legacy object format (`{tp1, tp2}`). Backend stores tieredExits as array with `level` property; frontend expects object with `tp1`/`tp2` keys. The function now converts array format to object format for UI consumption.
-
-2. **Journal Table Field Mismatch** - Fixed `e.lotSize` to `e.lots` in `ui.js` `renderJournalTable()` and `renderRunningTrades()` functions. Backend `journalStore.ts` uses field name `lots`.
-
-#### New UI Features
-1. **Risk Amount Display** - Detection cards now show dollar risk amount alongside lot size when available (e.g., "0.5 lots ($125.00 risk)").
-
-2. **Status Reason Display** - Detection cards now display `statusReason` for terminal statuses (dismissed, invalidated, expired) with tooltip for full text.
-
-#### Key Data Contracts
-- **DetectedTrade.tieredExits**: Stored as `TieredExitInfo[]` (array with `level`, `price`, `pips`, `rr` properties)
-- **API Response tieredExits**: Transformed to `{tp1: {price, formatted, pips, rr}, tp2: {...}}` object format
-- **Journal Entry lots field**: Backend uses `lots`, not `lotSize`
-- **Detection statuses**: 'taken' is canonical; 'executed' deprecated but supported for backwards compatibility
-
-### January 2026 - BollingerMR V3 Strategy Optimization (4-Way AI Validation)
-
-#### Validation Process
-Strategy reviewed by GPT-4, Claude, Replit Agent, and Human Operator with 95% confidence consensus.
-
-#### Changes Implemented
-1. **Rejection Candle HARD GATE** - Now required, not optional bonus. Eliminates "blind fade" failure mode.
-2. **BB Width Expansion Filter** - Blocks trades when band width percentile > 80 (expansion regime).
-3. **RSI Thresholds Tightened** - Changed from 35/65 to 30/70 (industry standard).
-4. **Swing-Based Stops** - Replaced pure ATR×1.5 with swing structure (recentLow/High - ATR×0.3).
-5. **RR Target Increased** - Set rrTarget=2.0, kept atrMultiplier=1.5.
-
-#### New Helper Function
-- **calcBBWidthPercentile()** in `utils.ts` - Calculates BB width percentile with Number.isFinite() validation.
-- **BBandInput** type defined locally to avoid circular imports from SignalQualityGate.
-
-#### Expected Impact
-- Signal count: 15-20/week → 8-12/week
-- Win rate: 65% → 72-75% (projected)
-- Risk:Reward: 1.5 → 2.0
-- Grade: C+ → B+
-
-#### What Was NOT Changed (Consensus: Working Well)
-- H4 trend framework
-- Session scoring
-- Regime detection
-- Strong trend counter block (line 94)
-
-### January 2026 - Spec Alignment & RsiBounce Deprecation
-
-#### Confidence Scoring Correction
-1. **Touch + Rejection = 40pts** - Adjusted from 45 (25+20) to 40 (20+20) per spec
-2. **Two-Tier RSI Scoring** - Implemented mutually exclusive scoring:
-   - Extreme (<20/>80): +20 pts with RSI_EXTREME_LOW/RSI_EXTREME_HIGH codes
-   - Standard (<30/>70): +15 pts with RSI_OVERSOLD/RSI_OVERBOUGHT codes
-   - Neutral: +0 pts (no bonus)
-
-#### Max Confidence Math (Updated)
-| Component | Points | Notes |
-|-----------|--------|-------|
-| BB touch + rejection bundle | +40 | Hard gate - must pass |
-| RSI extreme (<20/>80) | +20 | Mutually exclusive with standard |
-| RSI standard (<30/>70) | +15 | Mutually exclusive with extreme |
-| H4 trend aligned | +10 | From preflight adjustments |
-| RR favorable | +10 | Existing logic |
-
-Max theoretical: 40 + 20 + 10 + 10 = **80 pts**
-Min passing: 40 + 10 = **50 pts** (touch + rejection + RR, no RSI bonus)
-
-#### RsiBounce Strategy Deprecated
-- Removed from `registry.ts` (import, STRATEGIES map, INTRADAY_STRATEGIES array)
-- Removed from `index.ts` export
-- Strategy count: 11 → 10 active intraday strategies
-- File `RsiBounce.ts` retained for history, but not loaded
+-   **Twelve Data API**: Provides unified market data and technical indicators. Requires `TWELVE_DATA_API_KEY` and optionally `TWELVE_DATA_CRYPTO_EXCHANGE`.
+-   **Resend (Optional)**: For email alerts. Requires `RESEND_API_KEY`.
+-   **xAI Grok (Optional)**: For market sentiment analysis. Requires `XAI_API_KEY`.
+-   **PostgreSQL**: Database for persistent storage.
+-   **NPM Dependencies**: `express`, `cors`, `dotenv`, `zod`, `openai`, `kysely`, `pg` for runtime.
