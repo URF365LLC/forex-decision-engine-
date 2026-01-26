@@ -364,9 +364,28 @@ class SignalStore {
   }
 
   /**
-   * Get recent signals
+   * Get total signal count
    */
-  async getRecent(limit: number = 50): Promise<StoredSignal[]> {
+  async getTotal(): Promise<number> {
+    if (isDbAvailable()) {
+      try {
+        const db = getDb();
+        const result = await db
+          .selectFrom('signals')
+          .select(db.fn.countAll().as('count'))
+          .executeTakeFirst();
+        return Number(result?.count ?? 0);
+      } catch (error) {
+        logger.error('Failed to get signal count from database', { error });
+      }
+    }
+    return this.signals.length;
+  }
+
+  /**
+   * Get recent signals with pagination support
+   */
+  async getRecent(limit: number = 50, offset: number = 0): Promise<StoredSignal[]> {
     if (isDbAvailable()) {
       try {
         const db = getDb();
@@ -375,6 +394,7 @@ class SignalStore {
           .selectAll()
           .orderBy('created_at', 'desc')
           .limit(limit)
+          .offset(offset)
           .execute();
 
         return rows.map(row => this.rowToStoredSignal(row as Record<string, unknown>));
@@ -386,7 +406,7 @@ class SignalStore {
     return this.signals
       .slice()
       .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-      .slice(0, limit);
+      .slice(offset, offset + limit);
   }
 
   /**

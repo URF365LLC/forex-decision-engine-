@@ -473,22 +473,40 @@ app.post('/api/scan', validateBody(ScanRequestSchema), async (req, res) => {
 });
 
 /**
- * Get signal history
+ * Get signal history with pagination support
  */
 app.get('/api/signals', validateQuery(SignalsQuerySchema), async (req, res) => {
   try {
-    const { limit, grade, symbol } = req.query as { limit: number; grade?: string; symbol?: string };
+    const { limit, offset, grade, symbol } = req.query as {
+      limit: number;
+      offset?: number;
+      grade?: string;
+      symbol?: string
+    };
+    const pageOffset = offset ?? 0;
 
     let signals;
+    let total;
+
     if (grade) {
       signals = await signalStore.getByGrade(grade, limit);
+      total = signals.length; // For filtered queries, count is the result length
     } else if (symbol) {
       signals = await signalStore.getBySymbol(symbol.toUpperCase(), limit);
+      total = signals.length;
     } else {
-      signals = await signalStore.getRecent(limit);
+      signals = await signalStore.getRecent(limit, pageOffset);
+      total = await signalStore.getTotal();
     }
 
-    res.json({ success: true, count: signals.length, signals });
+    res.json({
+      success: true,
+      count: signals.length,
+      total,
+      offset: pageOffset,
+      limit,
+      signals
+    });
   } catch (error) {
     logger.error('Get signals error', { error });
     res.status(500).json({

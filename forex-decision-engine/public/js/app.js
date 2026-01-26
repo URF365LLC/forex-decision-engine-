@@ -2397,6 +2397,7 @@ const App = {
   // ═══════════════════════════════════════════════════════════════
 
   signalHistory: [],
+  signalHistoryTotal: 0,
   historyPage: 1,
   historyPageSize: 50,
   historySort: { field: 'date', direction: 'desc' },
@@ -2413,6 +2414,7 @@ const App = {
 
       const data = await response.json();
       this.signalHistoryRaw = data.signals || [];
+      this.signalHistoryTotal = data.total || this.signalHistoryRaw.length;
       this.historyPage = 1;
 
       this.applyLocalHistoryFilters();
@@ -2595,23 +2597,23 @@ const App = {
 
   updateHistoryPagination() {
     const total = this.signalHistory.length;
-    const totalPages = Math.ceil(total / this.historyPageSize);
+    const totalPages = Math.ceil(total / this.historyPageSize) || 1;
     const pageInfo = UI.$('history-page-info');
     const prevBtn = UI.$('history-prev');
     const nextBtn = UI.$('history-next');
 
-    const start = (this.historyPage - 1) * this.historyPageSize + 1;
+    const start = total === 0 ? 0 : (this.historyPage - 1) * this.historyPageSize + 1;
     const end = Math.min(this.historyPage * this.historyPageSize, total);
-    
+
     if (pageInfo) {
       if (total === 0) {
-        pageInfo.textContent = 'No signals';
+        pageInfo.textContent = 'No signals matching filters';
       } else {
-        pageInfo.textContent = `Showing ${start}-${end} of ${total} (Page ${this.historyPage}/${totalPages})`;
+        pageInfo.textContent = `Showing ${start}-${end} of ${total} signals (Page ${this.historyPage} of ${totalPages})`;
       }
     }
     if (prevBtn) prevBtn.disabled = this.historyPage <= 1;
-    if (nextBtn) nextBtn.disabled = this.historyPage >= totalPages;
+    if (nextBtn) nextBtn.disabled = this.historyPage >= totalPages || total === 0;
   },
 
   historyPrevPage() {
