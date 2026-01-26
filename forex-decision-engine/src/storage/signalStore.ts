@@ -705,6 +705,85 @@ class SignalStore {
     this.persistSync();
     logger.info('Signal store closed');
   }
+
+  /**
+   * Sync file signals to database (one-time migration)
+   * This imports signals from the JSON file that aren't already in the database
+   */
+  async syncFileToDatabase(): Promise<number> {
+    if (!isDbAvailable()) {
+      logger.debug('Database not available, skipping file sync');
+      return 0;
+    }
+
+    if (this.signals.length === 0) {
+      logger.debug('No file signals to sync');
+      return 0;
+    }
+
+    let imported = 0;
+    const db = getDb();
+
+    // Get existing UUIDs from database to avoid duplicates
+    const existingRows = await db
+      .selectFrom('signals')
+      .select(['id'])
+      .execute();
+    const existingIds = new Set(existingRows.map(r => r.id));
+
+    for (const signal of this.signals) {
+      // Skip signals without UUID
+      if (!signal.uuid) {
+        continue;
+      }
+
+      // Skip if already in database
+      if (existingIds.has(signal.uuid)) {
+        continue;
+      }
+
+      try {
+        const createdAt = signal.created_at 
+          ? new Date(signal.created_at).toISOString() 
+          : new Date().toISOString();
+
+        await db
+          .insertInto('signals')
+          .values({
+            id: signal.uuid,
+            symbol: signal.symbol,
+            strategy_id: 'imported',
+            strategy_name: 'Imported from file',
+            grade: signal.grade,
+            direction: signal.direction,
+            entry_price: signal.entry_low,
+            stop_loss: signal.stop_loss,
+            take_profit: signal.take_profit,
+            confidence: null,
+            reason: signal.reason,
+            decision_data: JSON.stringify({
+              style: signal.style,
+              positionLots: signal.position_lots,
+              riskAmount: signal.risk_amount,
+              validUntil: signal.valid_until,
+            }),
+            source: 'imported',
+            created_at: createdAt,
+          })
+          .execute();
+        imported++;
+      } catch (error) {
+        // Skip duplicates or errors
+        logger.debug(`Failed to import signal ${signal.uuid}: ${error instanceof Error ? error.message : 'Unknown'}`);
+      }
+    }
+
+    if (imported > 0) {
+      logger.info(`Synced ${imported} signals from file to database`);
+    }
+
+    return imported;
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════

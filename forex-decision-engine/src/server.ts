@@ -1338,6 +1338,16 @@ async function startServer() {
       await initDb();
       await runMigrations();
       logger.info('Database connected and migrations completed');
+      
+      // Sync file signals to database (one-time migration for legacy data)
+      try {
+        const synced = await signalStore.syncFileToDatabase();
+        if (synced > 0) {
+          logger.info(`Migrated ${synced} legacy signals from file to database`);
+        }
+      } catch (syncError) {
+        logger.warn(`Signal sync failed (non-critical): ${syncError}`);
+      }
     } else {
       logger.warn('DATABASE_URL not set - using in-memory/file storage');
     }
