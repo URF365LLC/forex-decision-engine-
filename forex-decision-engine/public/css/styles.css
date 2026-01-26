@@ -3583,8 +3583,9 @@ textarea:focus {
 
 @media (max-width: 768px) {
   .main {
-    height: auto;
-    min-height: calc(100vh - 100px);
+    height: calc(100vh - var(--header-height) - var(--ticker-height));
+    min-height: 0;
+    overflow: hidden;
   }
   
   .dashboard-grid {

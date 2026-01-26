@@ -2582,11 +2582,11 @@ const App = {
           <td class="col-numeric">${rr}</td>
           <td class="${resultClass}">${resultText}</td>
           <td class="col-actions">
-            <button class="table-btn" onclick="App.openSignalModal('${signal.id}')" title="Edit signal">✏️</button>
-            <button class="table-btn" onclick="App.copySignalToJournal('${signal.id}')" title="Copy to journal">📋</button>
+            <button class="table-btn" onclick="App.openSignalModal('${signal.uuid}')" title="Edit signal">✏️</button>
+            <button class="table-btn" onclick="App.copySignalToJournal('${signal.uuid}')" title="Copy to journal">📋</button>
             ${!signal.result ? `
-              <button class="table-btn positive" onclick="App.markSignalResult('${signal.id}', 'win')" title="Mark as win">✓</button>
-              <button class="table-btn negative" onclick="App.markSignalResult('${signal.id}', 'loss')" title="Mark as loss">✗</button>
+              <button class="table-btn positive" onclick="App.markSignalResult('${signal.uuid}', 'win')" title="Mark as win">✓</button>
+              <button class="table-btn negative" onclick="App.markSignalResult('${signal.uuid}', 'loss')" title="Mark as loss">✗</button>
             ` : ''}
           </td>
         </tr>

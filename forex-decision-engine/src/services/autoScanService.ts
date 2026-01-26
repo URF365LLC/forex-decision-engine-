@@ -24,6 +24,7 @@ import { createLogger } from './logger.js';
 import { analyzeWithStrategy } from '../engine/strategyAnalyzer.js';
 import { ALL_INSTRUMENTS, FOREX_SPECS, CRYPTO_SPECS, METAL_SPECS, INDEX_SPECS, COMMODITY_SPECS } from '../config/e8InstrumentSpecs.js';
 import { isNewSignal, trackSignal } from '../storage/signalFreshnessTracker.js';
+import { signalStore } from '../storage/signalStore.js';
 import { strategyRegistry } from '../strategies/registry.js';
 import { gradeTracker } from './gradeTracker.js';
 import { processAutoScanDecision, invalidateOnConditionChange } from './detectionService.js';
@@ -778,6 +779,15 @@ class AutoScanService {
             timestamp: decision.timestamp || new Date().toISOString(),
           };
           await processAutoScanDecision(enrichedDecision);
+          
+          // Archive signal to history for future reference
+          try {
+            await signalStore.saveSignal(enrichedDecision);
+            logger.debug(`AUTO_SCAN: Archived signal for ${symbol} ${decision.grade} to signal history`);
+          } catch (saveError) {
+            const saveErrorMsg = saveError instanceof Error ? saveError.message : 'Unknown error';
+            logger.warn(`AUTO_SCAN: Failed to archive signal for ${symbol}: ${saveErrorMsg}`);
+          }
         } catch (detectionError) {
           const errorMsg = detectionError instanceof Error ? detectionError.message : 'Unknown error';
           logger.warn(`AUTO_SCAN: Failed to persist detection for ${symbol}: ${errorMsg}`);

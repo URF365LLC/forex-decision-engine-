@@ -116,6 +116,7 @@ export interface JournalStats {
 class JournalStore {
   private entries: TradeJournalEntry[] = [];
   private filePath: string;
+  private nextId: number = 1;
 
   constructor(filePath?: string) {
     this.filePath = filePath || path.join(__dirname, '../../data/journal.json');
