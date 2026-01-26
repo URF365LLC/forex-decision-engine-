@@ -130,12 +130,19 @@ Backend maintenance functions (`resetDrawdownState`, `archiveOverflow`, etc.) ar
   - Saturday: Market fully closed
   - Sunday: Opens at 22:00 UTC (not midnight)
   - Friday: Closes at 22:00 UTC
+- **Market Day Display**: Added getMarketDayInfo() for day-specific status messages (e.g., "Saturday (UTC) - Market closed")
 - **Symbol Count**: Auto-scan now correctly shows 38 active instruments instead of 46
 - **Disabled Filtering**: All presets (all, commodities, indices) now properly filter out disabled instruments
+- **Validation Schema**: Removed 'indices' and 'commodities' from allowed watchlist presets
 - **CSS Layout v2**: Fixed black space issue on Journal and History tabs with proper flexbox layout:
   - Added `display: flex; flex-direction: column` to screen containers
   - Child layouts use `flex: 1; min-height: 0` for proper expansion
   - Added `background: var(--bg-secondary)` to all screens
+  - Added `overflow: hidden` to prevent double scrollbars
+- **History Pagination**: Improved pagination with server-side total count support:
+  - API now returns total count for accurate page calculations
+  - Fixed edge case when no signals match filters (shows "No signals matching filters")
+  - Better display format: "Showing X-Y of Z signals (Page N of M)"
 
 ### Trade Editing Feature (Existing)
 - **Edit Button**: Available on all journal entries (Edit button in Actions column)
