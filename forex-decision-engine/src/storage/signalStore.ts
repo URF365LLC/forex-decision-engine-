@@ -766,6 +766,8 @@ class SignalStore {
               positionLots: signal.position_lots,
               riskAmount: signal.risk_amount,
               validUntil: signal.valid_until,
+              result: signal.result,
+              resultNotes: signal.result_notes,
             }),
             source: 'imported',
             created_at: createdAt,
@@ -778,9 +780,8 @@ class SignalStore {
       }
     }
 
-    if (imported > 0) {
-      logger.info(`Synced ${imported} signals from file to database`);
-    }
+    const skipped = this.signals.length - imported;
+    logger.info(`[SignalStore] File-to-DB sync complete: ${imported} imported, ${skipped} skipped (already in DB or missing UUID)`);
 
     return imported;
   }
