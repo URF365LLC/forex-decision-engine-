@@ -1,0 +1,203 @@
+Known Issues to Investigate (Must Address All)
+1) Market Time / Day Display Incorrect
+
+The platform shows the wrong market day (e.g., says Saturday when it is actually Sunday).
+
+Investigate:
+
+timezone handling
+
+date/day calculation logic
+
+server vs client time source
+
+locale formatting
+
+caching of time/day values
+
+Identify the exact code responsible and propose the correct fix.
+
+2) Auto Scan Watchlist Dropdown Shows Wrong Instrument Count
+
+Auto Scan dropdown shows 46 instruments under “watchlist” but it should show 38.
+
+Investigate:
+
+instrument list source of truth
+
+filtering logic for enabled/disabled instruments
+
+UI state not refreshing after removals
+
+potential duplicates or legacy instruments still being included
+
+Confirm the count is correct end-to-end (backend + UI).
+
+3) WTI & Brent Still Scanning on Stale Data (Must Stop)
+
+WTI and Brent (oil commodities) are still being scanned even though their data is stale / not real-time.
+
+Requirement:
+
+these must be fully removed or hard-disabled from:
+
+Auto Scan
+
+Manual Scan
+
+strategy evaluation
+
+any instrument selector / dropdown
+
+backend ingestion (if present)
+
+Validate parity with how indices were previously removed.
+
+Ensure no background jobs still process them.
+
+4) Journal + History UI Has a Blank/Black Section
+
+Journal and History pages have a large empty/black section that shows nothing.
+
+Investigate:
+
+layout/container styling
+
+conditional rendering
+
+empty state logic
+
+broken component composition
+
+Remove it or make it a proper empty/loading state.
+
+5) History Pagination is Broken
+
+In History tab:
+
+page navigation button does not work
+
+it shows page 1 of 1 incorrectly
+
+Investigate:
+
+pagination state logic
+
+API pagination params (page, limit, cursor)
+
+total count response
+
+frontend disabling logic
+
+Fix page switching and correct page metadata.
+
+Audit Scope (Do Not Skip)
+
+A) End-to-End Data Flow
+
+Trace each issue from UI → API calls → backend logic → DB/cache → response → UI rendering.
+
+Identify mismatched contracts and stale state.
+
+B) UI State & Frontend Architecture
+
+Look for:
+
+stale state / incorrect memoization
+
+incorrect dependency arrays
+
+improper list keys causing render bugs
+
+duplicated sources of truth
+
+cached dropdown values not updating
+
+C) Backend Logic & Source of Truth
+
+Confirm where instruments are defined and filtered.
+
+Validate disabling/removal logic is enforced server-side (not just hidden in UI).
+
+Confirm DB queries for History and Journal match UI expectations.
+
+D) Regression + Consistency
+
+Identify any recent changes/commits that likely introduced these issues.
+
+Ensure removals (WTI/Brent) are consistent across every layer.
+
+Required Deliverables (Non-Negotiable)
+1) Executive Summary
+
+High-level list of issues found
+
+Severity (P0/P1/P2)
+
+Root cause themes (state drift, timezone handling, stale configs, etc.)
+
+2) File-by-File Findings
+
+For each affected file:
+
+File path
+
+Purpose
+
+Bug(s) found
+
+Root cause
+
+Recommended fix (specific)
+
+Side effects / risk
+
+3) Proof & Evidence
+
+Provide references:
+
+file paths + key functions/components
+
+exact logic paths
+
+any relevant logs or output
+
+If you can run commands/tests, include:
+
+reproduction steps
+
+failing cases
+
+4) Patch Plan (Step-by-Step)
+
+List changes in implementation order:
+
+what to modify
+
+what to delete/disable
+
+how to update UI components
+
+Include pseudo-diffs or code snippets where possible.
+
+5) Validation Plan
+
+For each fix:
+
+How to reproduce the bug before
+
+How to confirm it’s fixed after
+
+Tests to add/update (unit/integration/e2e)
+
+Guardrails to prevent recurrence (type checks, schema validation, snapshots, etc.)
+
+Constraints
+
+Do not guess—validate through the repo and actual logic paths.
+
+Do not propose UI-only hiding for WTI/Brent; enforce removal/disable at the backend level too.
+
+Prefer minimal safe changes, but eliminate fragile/legacy sources of truth.
+
+Now perform the audit and provide the full report with fixes and an execution plan.
