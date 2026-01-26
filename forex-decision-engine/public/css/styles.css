@@ -305,10 +305,24 @@ body {
   height: 100%;
   overflow: auto;
   animation: fadeIn 0.15s ease;
+  background: var(--bg-secondary);
 }
 
 .screen.hidden {
   display: none;
+}
+
+#journal-screen,
+#history-screen {
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-secondary);
+}
+
+#journal-screen > .journal-layout,
+#history-screen > .history-layout {
+  flex: 1;
+  min-height: 0;
 }
 
 /* Dashboard Grid Shell */
@@ -3598,7 +3612,8 @@ textarea:focus {
   background: var(--bg-secondary);
   padding: var(--spacing-lg);
   gap: var(--spacing-md);
-  min-height: 100%;
+  height: 100%;
+  box-sizing: border-box;
 }
 
 .journal-header {
@@ -3737,7 +3752,8 @@ textarea:focus {
   gap: var(--spacing-lg);
   padding: var(--spacing-lg);
   overflow: auto;
-  min-height: 100%;
+  height: 100%;
+  box-sizing: border-box;
   background: var(--bg-secondary);
 }
 
