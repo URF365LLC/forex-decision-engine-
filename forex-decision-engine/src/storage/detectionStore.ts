@@ -249,6 +249,9 @@ export async function updateDetection(
 export async function listDetections(filters: DetectionFilters = {}): Promise<DetectedTrade[]> {
   const { status, strategyId, symbol, grade, limit = 100, offset = 0 } = filters;
 
+  // Auto-expire stale detections before listing
+  await expireStaleDetections();
+
   if (isDbAvailable()) {
     try {
       const db = getDb();
@@ -407,6 +410,61 @@ export async function checkAndUpdateCooldowns(): Promise<number> {
   }
 
   return updated;
+}
+
+/**
+ * Auto-expire detections that have passed their bar expiration time
+ * This runs on every listDetections call to ensure fresh data
+ */
+export async function expireStaleDetections(): Promise<number> {
+  const now = new Date();
+  const nowIso = now.toISOString();
+  let expired = 0;
+
+  if (isDbAvailable()) {
+    try {
+      const db = getDb();
+
+      // Find all active detections where bar has expired
+      const result = await db
+        .updateTable('detections')
+        .set({ status: 'expired', updated_at: nowIso, reason: 'Bar validity expired automatically' })
+        .where('status', 'in', ['cooling_down', 'eligible'])
+        .where('bar_expires_at', '<=', nowIso)
+        .where('bar_expires_at', 'is not', null)
+        .executeTakeFirst();
+
+      expired = Number(result.numUpdatedRows ?? 0);
+
+      if (expired > 0) {
+        logger.info(`Auto-expired ${expired} detections with stale bar data`);
+      }
+
+      return expired;
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logger.error('Failed to auto-expire detections in DB', { error: errorMessage });
+    }
+  }
+
+  // Fallback to in-memory
+  for (const detection of inMemoryStore.values()) {
+    if (
+      (detection.status === 'cooling_down' || detection.status === 'eligible') &&
+      detection.barExpiresAt &&
+      new Date(detection.barExpiresAt) <= now
+    ) {
+      detection.status = 'expired';
+      detection.updatedAt = nowIso;
+      expired++;
+    }
+  }
+
+  if (expired > 0) {
+    logger.info(`Auto-expired ${expired} detections with stale bar data (in-memory)`);
+  }
+
+  return expired;
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -626,7 +684,7 @@ export function startInMemoryCleanup(): void {
     logger.debug('In-memory detection cleanup already running');
     return;
   }
-  inMemoryCleanupIntervalId = setInterval(cleanupInMemoryStore, 60 * 60 * 1000); // Every hour
+  inMemoryCleanupIntervalId = setInterval(cleanupInMemoryStore, 5 * 60 * 1000); // Every 5 minutes for faster cleanup
   logger.debug('In-memory detection cleanup interval started');
 }
 
