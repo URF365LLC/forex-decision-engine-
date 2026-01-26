@@ -125,6 +125,15 @@ Backend maintenance functions (`resetDrawdownState`, `archiveOverflow`, etc.) ar
 - Consistent with prior index removals (SP, NSDQ, DOW, DAX, NIKKEI, ASX)
 - Active instrument count now: 38 (28 forex, 8 crypto, 2 metals)
 
+### Bug Fixes (2026-01-26)
+- **Market Hours Logic**: Fixed SignalQualityGate to correctly handle weekend boundaries:
+  - Saturday: Market fully closed
+  - Sunday: Opens at 22:00 UTC (not midnight)
+  - Friday: Closes at 22:00 UTC
+- **Symbol Count**: Auto-scan now correctly shows 38 active instruments instead of 46
+- **Disabled Filtering**: All presets (all, commodities, indices) now properly filter out disabled instruments
+- **CSS Layout**: Fixed black space issue on Journal and History tabs with min-height styling
+
 ### Responsive Design (2026-01-24)
 - Added tablet breakpoint (768px): horizontal scroll nav, stacked filters, wrapped metrics
 - Added mobile breakpoint (480px): compact typography, hidden less-important columns, full-width buttons
