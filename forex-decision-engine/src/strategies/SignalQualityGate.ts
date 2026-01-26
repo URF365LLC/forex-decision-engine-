@@ -323,8 +323,19 @@ function checkSession(symbol: string): SessionResult {
   const utcDay = now.getUTCDay(); // 0 = Sunday
   
   // Weekend check (FX/Indices closed)
-  if ((instrumentClass === 'fx' || instrumentClass === 'indices') && (utcDay === 0 || utcDay === 6)) {
-    return { allowed: false, adjustment: 0, reason: 'Market closed (weekend)' };
+  // Saturday: Always closed
+  // Sunday: Closed until 22:00 UTC (Sydney open)
+  // Friday: Closed after 22:00 UTC (NY close)
+  if (instrumentClass === 'fx' || instrumentClass === 'indices') {
+    if (utcDay === 6) {
+      return { allowed: false, adjustment: 0, reason: 'Market closed (Saturday)' };
+    }
+    if (utcDay === 0 && utcHour < 22) {
+      return { allowed: false, adjustment: 0, reason: 'Market closed (Sunday - opens 22:00 UTC)' };
+    }
+    if (utcDay === 5 && utcHour >= 22) {
+      return { allowed: false, adjustment: 0, reason: 'Market closed (Friday - closed after 22:00 UTC)' };
+    }
   }
   
   switch (instrumentClass) {

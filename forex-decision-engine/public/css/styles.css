@@ -3598,6 +3598,7 @@ textarea:focus {
   background: var(--bg-secondary);
   padding: var(--spacing-lg);
   gap: var(--spacing-md);
+  min-height: 100%;
 }
 
 .journal-header {
@@ -3736,6 +3737,8 @@ textarea:focus {
   gap: var(--spacing-lg);
   padding: var(--spacing-lg);
   overflow: auto;
+  min-height: 100%;
+  background: var(--bg-secondary);
 }
 
 .history-header {
