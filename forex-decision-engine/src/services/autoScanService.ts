@@ -146,6 +146,28 @@ function isCryptoMarketOpen(): boolean {
   return true;
 }
 
+function getMarketDayInfo(): { dayName: string; isWeekend: boolean; reason: string } {
+  const now = new Date();
+  const day = now.getUTCDay();
+  const hour = now.getUTCHours();
+  const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const dayName = dayNames[day];
+  
+  if (day === 6) {
+    return { dayName, isWeekend: true, reason: `${dayName} (UTC) - Market closed` };
+  }
+  if (day === 0) {
+    if (hour < 22) {
+      return { dayName, isWeekend: true, reason: `${dayName} (UTC) - Opens at 22:00 UTC` };
+    }
+    return { dayName, isWeekend: false, reason: '' };
+  }
+  if (day === 5 && hour >= 22) {
+    return { dayName, isWeekend: false, reason: `${dayName} (UTC) - Market closed` };
+  }
+  return { dayName, isWeekend: false, reason: '' };
+}
+
 function getSymbolMarketStatus(symbol: string): { open: boolean; reason?: string } {
   const isCrypto = CRYPTO_SPECS.some(s => s.symbol === symbol);
   if (isCrypto) {
@@ -231,6 +253,7 @@ export interface AutoScanStatus {
     forex: boolean;
     crypto: boolean;
     forexReason?: string;
+    currentDay?: string;
   };
   currentScan: {
     strategyId: string | null;
@@ -305,7 +328,8 @@ class AutoScanService {
       marketStatus: {
         forex: isForexMarketOpen(),
         crypto: true,
-        forexReason: isForexMarketOpen() ? undefined : 'Weekend',
+        forexReason: isForexMarketOpen() ? undefined : getMarketDayInfo().reason,
+        currentDay: getMarketDayInfo().dayName,
       },
       currentScan: null,
     };
@@ -411,10 +435,12 @@ class AutoScanService {
   
   getStatus(): AutoScanStatus {
     // Update market status on every call
+    const dayInfo = getMarketDayInfo();
     this.status.marketStatus = {
       forex: isForexMarketOpen(),
       crypto: true,
-      forexReason: isForexMarketOpen() ? undefined : 'Weekend',
+      forexReason: isForexMarketOpen() ? undefined : dayInfo.reason,
+      currentDay: dayInfo.dayName,
     };
     return { ...this.status };
   }
@@ -564,10 +590,12 @@ class AutoScanService {
     const startTime = Date.now();
     
     // Update market status
+    const dayInfo = getMarketDayInfo();
     this.status.marketStatus = {
       forex: isForexMarketOpen(),
       crypto: true,
-      forexReason: isForexMarketOpen() ? undefined : 'Weekend',
+      forexReason: isForexMarketOpen() ? undefined : dayInfo.reason,
+      currentDay: dayInfo.dayName,
     };
     
     // Filter symbols by market hours

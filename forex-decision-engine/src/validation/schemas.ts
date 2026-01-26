@@ -28,7 +28,7 @@ export const AutoScanStartSchema = z.object({
   intervalMs: z.number().min(60000).max(3600000).optional(),
   symbols: z.array(z.string()).optional(),
   strategies: z.array(z.string()).optional(),
-  watchlistPreset: z.enum(['majors', 'majors-gold', 'crypto', 'metals', 'indices', 'commodities', 'minors', 'all', 'custom']).optional(),
+  watchlistPreset: z.enum(['majors', 'majors-gold', 'crypto', 'metals', 'minors', 'all', 'custom']).optional(),
   customSymbols: z.array(z.string()).optional(),
   respectMarketHours: z.boolean().optional(),
 });
@@ -39,7 +39,7 @@ export const AutoScanConfigSchema = z.object({
   intervalMs: z.number().min(60000).max(3600000).optional(),
   symbols: z.array(z.string()).optional(),
   strategies: z.array(z.string()).optional(),
-  watchlistPreset: z.enum(['majors', 'majors-gold', 'crypto', 'metals', 'indices', 'commodities', 'minors', 'all', 'custom']).optional(),
+  watchlistPreset: z.enum(['majors', 'majors-gold', 'crypto', 'metals', 'minors', 'all', 'custom']).optional(),
   customSymbols: z.array(z.string()).optional(),
   respectMarketHours: z.boolean().optional(),
 });
@@ -114,6 +114,7 @@ export const StrategiesQuerySchema = z.object({
 
 export const SignalsQuerySchema = z.object({
   limit: z.coerce.number().min(1).max(500).optional().default(100),
+  offset: z.coerce.number().min(0).optional().default(0),
   grade: z.enum(['A+', 'A', 'B+', 'B', 'C', 'no-trade']).optional(),
   symbol: z.string().min(1).max(20).optional(),
 });

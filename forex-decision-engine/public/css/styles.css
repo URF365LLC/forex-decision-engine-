@@ -309,7 +309,7 @@ body {
 }
 
 .screen.hidden {
-  display: none;
+  display: none !important;
 }
 
 #journal-screen,
@@ -317,12 +317,15 @@ body {
   display: flex;
   flex-direction: column;
   background: var(--bg-secondary);
+  overflow: hidden;
 }
 
 #journal-screen > .journal-layout,
 #history-screen > .history-layout {
   flex: 1;
   min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 /* Dashboard Grid Shell */
@@ -3607,13 +3610,15 @@ textarea:focus {
    ═══════════════════════════════════════════════════════════════ */
 
 .journal-layout {
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   background: var(--bg-secondary);
   padding: var(--spacing-lg);
   gap: var(--spacing-md);
-  height: 100%;
   box-sizing: border-box;
+  overflow: hidden;
 }
 
 .journal-header {
@@ -3637,6 +3642,7 @@ textarea:focus {
 
 .journal-table-container {
   flex: 1;
+  min-height: 0;
   overflow: auto;
 }
 
@@ -3747,12 +3753,13 @@ textarea:focus {
    ═══════════════════════════════════════════════════════════════ */
 
 .history-layout {
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   gap: var(--spacing-lg);
   padding: var(--spacing-lg);
-  overflow: auto;
-  height: 100%;
+  overflow: hidden;
   box-sizing: border-box;
   background: var(--bg-secondary);
 }
@@ -3794,6 +3801,7 @@ textarea:focus {
 
 .history-table-container {
   flex: 1;
+  min-height: 0;
   overflow: auto;
   background: var(--bg-secondary);
   border-radius: var(--border-radius-lg);
