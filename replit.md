@@ -149,6 +149,17 @@ Backend maintenance functions (`resetDrawdownState`, `archiveOverflow`, etc.) ar
 - **Edit Modal**: Pre-populates symbol, direction, entry price, stop loss, take profit, lots, notes
 - **Backend API**: PUT /api/journal/:id supports all trade field updates with P&L auto-calculation
 
+### Signal History CRUD (2026-01-26)
+- **Full Signal Management**: Edit, delete, and copy any archived signal from the History tab
+- **Edit Signal Modal**: Modify symbol, direction, entry/exit prices, stop loss, take profit, position size, grade, result
+- **Delete Signal**: Remove signals from history with confirmation dialog
+- **Copy to Journal**: Convert any signal into a journal entry with one click
+- **Backend API Endpoints**:
+  - GET /api/signals/:id - Get single signal
+  - PATCH /api/signals/:id - Full signal update
+  - DELETE /api/signals/:id - Remove signal
+- **Action Buttons**: Each history row has Edit (pencil), Copy (clipboard), and Win/Loss markers
+
 ### Responsive Design (2026-01-24)
 - Added tablet breakpoint (768px): horizontal scroll nav, stacked filters, wrapped metrics
 - Added mobile breakpoint (480px): compact typography, hidden less-important columns, full-width buttons

@@ -520,6 +520,149 @@ class SignalStore {
   }
 
   /**
+   * Update a signal with new data
+   */
+  async update(id: number | string, updates: Partial<StoredSignal>): Promise<StoredSignal | null> {
+    const idStr = String(id);
+    const isUuid = idStr.includes('-');
+
+    if (isDbAvailable()) {
+      try {
+        const db = getDb();
+        const existingRow = await db
+          .selectFrom('signals')
+          .selectAll()
+          .where('id', '=', idStr)
+          .executeTakeFirst();
+
+        if (existingRow) {
+          const updateData: Record<string, unknown> = {};
+          
+          if (updates.symbol !== undefined) updateData.symbol = updates.symbol;
+          if (updates.direction !== undefined) updateData.direction = updates.direction;
+          if (updates.grade !== undefined) updateData.grade = updates.grade;
+          if (updates.entry_low !== undefined) updateData.entry_low = updates.entry_low;
+          if (updates.entry_high !== undefined) updateData.entry_high = updates.entry_high;
+          if (updates.stop_loss !== undefined) updateData.stop_loss = updates.stop_loss;
+          if (updates.take_profit !== undefined) updateData.take_profit = updates.take_profit;
+          if (updates.position_lots !== undefined) updateData.position_lots = updates.position_lots;
+          if (updates.result !== undefined) updateData.decision_data = JSON.stringify({ 
+            ...(existingRow.decision_data ? (typeof existingRow.decision_data === 'string' ? JSON.parse(existingRow.decision_data) : existingRow.decision_data) : {}),
+            result: updates.result,
+            resultNotes: updates.result_notes
+          });
+          if (updates.result_notes !== undefined && updates.result === undefined) {
+            const existingData = existingRow.decision_data ? (typeof existingRow.decision_data === 'string' ? JSON.parse(existingRow.decision_data) : existingRow.decision_data) : {};
+            updateData.decision_data = JSON.stringify({ ...existingData, resultNotes: updates.result_notes });
+          }
+
+          await db
+            .updateTable('signals')
+            .set(updateData)
+            .where('id', '=', idStr)
+            .execute();
+
+          const updatedRow = await db
+            .selectFrom('signals')
+            .selectAll()
+            .where('id', '=', idStr)
+            .executeTakeFirst();
+
+          if (updatedRow) {
+            return this.rowToStoredSignal(updatedRow as Record<string, unknown>);
+          }
+        }
+      } catch (error) {
+        logger.error('Failed to update signal in database', { error });
+      }
+    }
+
+    const signal = this.signals.find(s => {
+      if (isUuid) return s.uuid === idStr;
+      const numericId = typeof id === 'number' ? id : parseInt(id, 10);
+      return !isNaN(numericId) && s.id === numericId;
+    });
+
+    if (!signal) return null;
+
+    Object.assign(signal, updates);
+    this.schedulePersist();
+    return signal;
+  }
+
+  /**
+   * Delete a signal by ID
+   */
+  async delete(id: number | string): Promise<boolean> {
+    const idStr = String(id);
+    const isUuid = idStr.includes('-');
+
+    if (isDbAvailable()) {
+      try {
+        const db = getDb();
+        const result = await db
+          .deleteFrom('signals')
+          .where('id', '=', idStr)
+          .executeTakeFirst();
+
+        const deleted = Number(result.numDeletedRows ?? 0) > 0;
+        if (deleted) {
+          logger.info(`Deleted signal ${idStr} from database`);
+        }
+        return deleted;
+      } catch (error) {
+        logger.error('Failed to delete signal from database', { error });
+      }
+    }
+
+    const index = this.signals.findIndex(s => {
+      if (isUuid) return s.uuid === idStr;
+      const numericId = typeof id === 'number' ? id : parseInt(id, 10);
+      return !isNaN(numericId) && s.id === numericId;
+    });
+
+    if (index === -1) return false;
+
+    this.signals.splice(index, 1);
+    this.schedulePersist();
+    logger.info(`Deleted signal ${idStr} from file store`);
+    return true;
+  }
+
+  /**
+   * Get a single signal by ID
+   */
+  async getById(id: number | string): Promise<StoredSignal | null> {
+    const idStr = String(id);
+    const isUuid = idStr.includes('-');
+
+    if (isDbAvailable()) {
+      try {
+        const db = getDb();
+        const row = await db
+          .selectFrom('signals')
+          .selectAll()
+          .where('id', '=', idStr)
+          .executeTakeFirst();
+
+        if (row) {
+          return this.rowToStoredSignal(row as Record<string, unknown>);
+        }
+      } catch (error) {
+        logger.error('Failed to get signal by id from database', { error });
+      }
+    }
+
+    const signal = this.signals.find(s => {
+      if (isUuid) return s.uuid === idStr;
+      const numericId = typeof id === 'number' ? id : parseInt(id, 10);
+      return !isNaN(numericId) && s.id === numericId;
+    });
+
+    return signal || null;
+  }
+
+  /**
    * Delete old signals
    */
   async cleanup(daysOld: number = 30): Promise<number> {

@@ -2582,8 +2582,9 @@ const App = {
           <td class="col-numeric">${rr}</td>
           <td class="${resultClass}">${resultText}</td>
           <td class="col-actions">
-            <button class="table-btn" onclick="App.viewSignalDetails('${signal.id}')" title="View details">👁</button>
-            ${signal.result === 'pending' ? `
+            <button class="table-btn" onclick="App.openSignalModal('${signal.id}')" title="Edit signal">✏️</button>
+            <button class="table-btn" onclick="App.copySignalToJournal('${signal.id}')" title="Copy to journal">📋</button>
+            ${!signal.result ? `
               <button class="table-btn positive" onclick="App.markSignalResult('${signal.id}', 'win')" title="Mark as win">✓</button>
               <button class="table-btn negative" onclick="App.markSignalResult('${signal.id}', 'loss')" title="Mark as loss">✗</button>
             ` : ''}
@@ -2733,6 +2734,129 @@ ${signal.result_notes ? `Notes: ${signal.result_notes}` : ''}
     } catch (error) {
       console.error('Failed to mark signal result:', error);
       UI.toast('Failed to update signal', 'error');
+    }
+  },
+
+  // ═══════════════════════════════════════════════════════════════
+  // SIGNAL CRUD (Edit, Delete, Copy)
+  // ═══════════════════════════════════════════════════════════════
+
+  currentSignalEditId: null,
+
+  openSignalModal(signalId) {
+    const signal = this.signalHistory.find(s => s.id == signalId);
+    if (!signal) {
+      UI.toast('Signal not found', 'error');
+      return;
+    }
+
+    this.currentSignalEditId = signalId;
+    
+    UI.$('signal-modal-title').textContent = `Edit Signal - ${signal.symbol}`;
+    UI.$('signal-edit-id').value = signalId;
+    UI.$('signal-symbol').value = signal.symbol || '';
+    UI.$('signal-direction').value = signal.direction || 'long';
+    UI.$('signal-entry-low').value = signal.entry_low || '';
+    UI.$('signal-entry-high').value = signal.entry_high || '';
+    UI.$('signal-stop-loss').value = signal.stop_loss || '';
+    UI.$('signal-take-profit').value = signal.take_profit || '';
+    UI.$('signal-lots').value = signal.position_lots || '';
+    UI.$('signal-grade').value = signal.grade || 'B';
+    UI.$('signal-notes').value = signal.result_notes || '';
+
+    const resultValue = signal.result || '';
+    document.querySelectorAll('input[name="signal-result"]').forEach(radio => {
+      radio.checked = radio.value === resultValue;
+    });
+
+    UI.$('signal-modal').classList.remove('hidden');
+  },
+
+  closeSignalModal() {
+    UI.$('signal-modal').classList.add('hidden');
+    this.currentSignalEditId = null;
+  },
+
+  async saveSignal() {
+    const signalId = this.currentSignalEditId;
+    if (!signalId) return;
+
+    const resultRadio = document.querySelector('input[name="signal-result"]:checked');
+    const result = resultRadio?.value || null;
+
+    const updates = {
+      symbol: UI.$('signal-symbol').value.toUpperCase(),
+      direction: UI.$('signal-direction').value,
+      entry_low: parseFloat(UI.$('signal-entry-low').value) || null,
+      entry_high: parseFloat(UI.$('signal-entry-high').value) || null,
+      stop_loss: parseFloat(UI.$('signal-stop-loss').value) || null,
+      take_profit: parseFloat(UI.$('signal-take-profit').value) || null,
+      position_lots: parseFloat(UI.$('signal-lots').value) || null,
+      grade: UI.$('signal-grade').value,
+      result: result || null,
+      result_notes: UI.$('signal-notes').value || null,
+    };
+
+    try {
+      await API.updateSignal(signalId, updates);
+      UI.toast('Signal updated successfully', 'success');
+      this.closeSignalModal();
+      await this.loadSignalHistory();
+    } catch (error) {
+      console.error('Failed to update signal:', error);
+      UI.toast('Failed to update signal: ' + error.message, 'error');
+    }
+  },
+
+  async deleteSignal() {
+    const signalId = this.currentSignalEditId;
+    if (!signalId) return;
+
+    if (!confirm('Are you sure you want to delete this signal? This cannot be undone.')) {
+      return;
+    }
+
+    try {
+      await API.deleteSignal(signalId);
+      UI.toast('Signal deleted', 'success');
+      this.closeSignalModal();
+      await this.loadSignalHistory();
+    } catch (error) {
+      console.error('Failed to delete signal:', error);
+      UI.toast('Failed to delete signal: ' + error.message, 'error');
+    }
+  },
+
+  async copySignalToJournal(signalId) {
+    const signal = this.signalHistory.find(s => s.id == signalId);
+    if (!signal) {
+      UI.toast('Signal not found', 'error');
+      return;
+    }
+
+    try {
+      const journalEntry = {
+        symbol: signal.symbol,
+        direction: signal.direction,
+        action: 'taken',
+        source: 'signal',
+        style: signal.style || 'intraday',
+        grade: signal.grade,
+        strategyId: signal.strategy_id,
+        strategyName: signal.strategy_name,
+        confidence: signal.confidence,
+        entry: signal.entry_low || signal.entry_high,
+        stopLoss: signal.stop_loss,
+        takeProfit1: signal.take_profit,
+        lotSize: signal.position_lots,
+        notes: `Copied from signal ID ${signalId}`,
+      };
+
+      await API.addJournalEntry(journalEntry);
+      UI.toast('Signal copied to journal', 'success');
+    } catch (error) {
+      console.error('Failed to copy signal to journal:', error);
+      UI.toast('Failed to copy to journal: ' + error.message, 'error');
     }
   },
 };

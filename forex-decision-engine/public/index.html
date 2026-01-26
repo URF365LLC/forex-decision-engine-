@@ -7,7 +7,7 @@
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
   <title>Forex Decision Engine</title>
-  <link rel="stylesheet" href="/css/styles.css?v=20260126e">
+  <link rel="stylesheet" href="/css/styles.css?v=20260126f">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎯</text></svg>">
 </head>
 <body>
@@ -612,6 +612,106 @@
       </div>
     </div>
 
+    <!-- Edit Signal Modal -->
+    <div id="signal-modal" class="modal hidden">
+      <div class="modal-backdrop" onclick="App.closeSignalModal()"></div>
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3 id="signal-modal-title">Edit Signal</h3>
+          <button class="modal-close" onclick="App.closeSignalModal()">&times;</button>
+        </div>
+        <div class="modal-body">
+          <form id="signal-form">
+            <input type="hidden" id="signal-edit-id">
+            
+            <div class="form-row">
+              <div class="form-group">
+                <label for="signal-symbol">Symbol</label>
+                <input type="text" id="signal-symbol" placeholder="e.g. EURUSD" style="text-transform: uppercase;">
+              </div>
+              <div class="form-group">
+                <label for="signal-direction">Direction</label>
+                <select id="signal-direction">
+                  <option value="long">LONG</option>
+                  <option value="short">SHORT</option>
+                </select>
+              </div>
+            </div>
+            
+            <div class="form-row">
+              <div class="form-group">
+                <label for="signal-entry-low">Entry Low</label>
+                <input type="number" id="signal-entry-low" step="any">
+              </div>
+              <div class="form-group">
+                <label for="signal-entry-high">Entry High</label>
+                <input type="number" id="signal-entry-high" step="any">
+              </div>
+            </div>
+            
+            <div class="form-row">
+              <div class="form-group">
+                <label for="signal-stop-loss">Stop Loss</label>
+                <input type="number" id="signal-stop-loss" step="any">
+              </div>
+              <div class="form-group">
+                <label for="signal-take-profit">Take Profit</label>
+                <input type="number" id="signal-take-profit" step="any">
+              </div>
+            </div>
+            
+            <div class="form-row">
+              <div class="form-group">
+                <label for="signal-lots">Position Size (Lots)</label>
+                <input type="number" id="signal-lots" step="0.01">
+              </div>
+              <div class="form-group">
+                <label for="signal-grade">Grade</label>
+                <select id="signal-grade">
+                  <option value="A+">A+</option>
+                  <option value="A">A</option>
+                  <option value="B+">B+</option>
+                  <option value="B">B</option>
+                  <option value="C">C</option>
+                </select>
+              </div>
+            </div>
+            
+            <div class="form-group">
+              <label>Result</label>
+              <div class="radio-group-inline">
+                <label class="radio-inline">
+                  <input type="radio" name="signal-result" value=""> Pending
+                </label>
+                <label class="radio-inline">
+                  <input type="radio" name="signal-result" value="win"> Win
+                </label>
+                <label class="radio-inline">
+                  <input type="radio" name="signal-result" value="loss"> Loss
+                </label>
+                <label class="radio-inline">
+                  <input type="radio" name="signal-result" value="breakeven"> BE
+                </label>
+                <label class="radio-inline">
+                  <input type="radio" name="signal-result" value="skipped"> Skipped
+                </label>
+              </div>
+            </div>
+            
+            <div class="form-group">
+              <label for="signal-notes">Notes (optional)</label>
+              <textarea id="signal-notes" rows="2" placeholder="Any observations..."></textarea>
+            </div>
+          </form>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-danger" onclick="App.deleteSignal()" style="margin-right: auto;">Delete</button>
+          <button class="btn btn-secondary" onclick="App.closeSignalModal()">Cancel</button>
+          <button class="btn btn-primary" onclick="App.saveSignal()">Save Signal</button>
+        </div>
+      </div>
+    </div>
+
     <!-- Journal Screen (add to nav later) -->
     <section id="journal-screen" class="screen hidden">
       <div class="journal-layout">
@@ -764,9 +864,9 @@
     </section>
   </div>
 
-  <script src="/js/api.js?v=20260126b"></script>
-  <script src="/js/storage.js?v=20260126b"></script>
-  <script src="/js/ui.js?v=20260126b"></script>
-  <script src="/js/app.js?v=20260126b"></script>
+  <script src="/js/api.js?v=20260126f"></script>
+  <script src="/js/storage.js?v=20260126f"></script>
+  <script src="/js/ui.js?v=20260126f"></script>
+  <script src="/js/app.js?v=20260126f"></script>
 </body>
 </html>

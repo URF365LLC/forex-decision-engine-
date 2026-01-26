@@ -87,6 +87,19 @@ export const SignalUpdateSchema = z.object({
   notes: z.string().max(500).optional(),
 });
 
+export const SignalFullUpdateSchema = z.object({
+  symbol: z.string().min(1).max(20).optional(),
+  direction: z.enum(['long', 'short']).optional(),
+  grade: z.string().optional(),
+  entry_low: z.number().optional().nullable(),
+  entry_high: z.number().optional().nullable(),
+  stop_loss: z.number().optional().nullable(),
+  take_profit: z.number().optional().nullable(),
+  position_lots: z.number().optional().nullable(),
+  result: z.enum(['win', 'loss', 'breakeven', 'skipped']).optional().nullable(),
+  result_notes: z.string().max(500).optional().nullable(),
+}).passthrough();
+
 
 export const SentimentRequestSchema = z.object({
   symbol: z.string().min(1).max(20),

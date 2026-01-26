@@ -58,6 +58,7 @@ import {
   DetectionDismissSchema,
   SymbolParamSchema,
   IdParamSchema,
+  SignalFullUpdateSchema,
 } from './validation/schemas.js';
 import { z } from 'zod';
 import * as detectionService from './services/detectionService.js';
@@ -539,7 +540,52 @@ app.put('/api/signals/:id', validateBody(SignalResultSchema), async (req, res) =
 });
 
 /**
- * Get signal statistics
+ * Full update signal (edit all fields)
+ */
+app.patch('/api/signals/:id', validateBody(SignalFullUpdateSchema), async (req, res) => {
+  try {
+    const id = req.params.id;
+    const updates = req.body;
+
+    const updated = await signalStore.update(id, updates);
+
+    if (!updated) {
+      return res.status(404).json({ error: 'Signal not found' });
+    }
+
+    res.json({ success: true, signal: updated });
+  } catch (error) {
+    logger.error('Full update signal error', { error });
+    res.status(500).json({
+      error: error instanceof Error ? error.message : 'Failed to update signal'
+    });
+  }
+});
+
+/**
+ * Delete a signal
+ */
+app.delete('/api/signals/:id', async (req, res) => {
+  try {
+    const id = req.params.id;
+
+    const deleted = await signalStore.delete(id);
+
+    if (!deleted) {
+      return res.status(404).json({ error: 'Signal not found' });
+    }
+
+    res.json({ success: true });
+  } catch (error) {
+    logger.error('Delete signal error', { error });
+    res.status(500).json({
+      error: error instanceof Error ? error.message : 'Failed to delete signal'
+    });
+  }
+});
+
+/**
+ * Get signal statistics (must be before :id route)
  */
 app.get('/api/signals/stats', async (req, res) => {
   try {
@@ -549,6 +595,28 @@ app.get('/api/signals/stats', async (req, res) => {
     logger.error('Get stats error', { error });
     res.status(500).json({
       error: error instanceof Error ? error.message : 'Failed to get stats'
+    });
+  }
+});
+
+/**
+ * Get a single signal by ID
+ */
+app.get('/api/signals/:id', async (req, res) => {
+  try {
+    const id = req.params.id;
+
+    const signal = await signalStore.getById(id);
+
+    if (!signal) {
+      return res.status(404).json({ error: 'Signal not found' });
+    }
+
+    res.json({ success: true, signal });
+  } catch (error) {
+    logger.error('Get signal by id error', { error });
+    res.status(500).json({
+      error: error instanceof Error ? error.message : 'Failed to get signal'
     });
   }
 });
