@@ -249,8 +249,8 @@ export async function updateDetection(
 export async function listDetections(filters: DetectionFilters = {}): Promise<DetectedTrade[]> {
   const { status, strategyId, symbol, grade, limit = 100, offset = 0 } = filters;
 
-  // Auto-expire stale detections before listing
-  await expireStaleDetections();
+  // NOTE: Removed auto-expire on every list call - now runs on interval only
+  // This prevents signals from disappearing immediately after detection
 
   if (isDbAvailable()) {
     try {
@@ -684,7 +684,11 @@ export function startInMemoryCleanup(): void {
     logger.debug('In-memory detection cleanup already running');
     return;
   }
-  inMemoryCleanupIntervalId = setInterval(cleanupInMemoryStore, 5 * 60 * 1000); // Every 5 minutes for faster cleanup
+  // Run cleanup every 5 minutes, which also calls expireStaleDetections
+  inMemoryCleanupIntervalId = setInterval(async () => {
+    cleanupInMemoryStore();
+    await expireStaleDetections();
+  }, 5 * 60 * 1000);
   logger.debug('In-memory detection cleanup interval started');
 }
 
