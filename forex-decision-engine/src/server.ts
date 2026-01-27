@@ -36,6 +36,7 @@ import { gradeTracker } from './services/gradeTracker.js';
 import { autoScanService } from './services/autoScanService.js';
 import { alertService } from './services/alertService.js';
 import { grokSentimentService } from './services/grokSentimentService.js';
+import { runBacktest } from './services/backtestService.js';
 import { validateBody, validateQuery, validateParams } from './middleware/validate.js';
 import { requestIdMiddleware } from './middleware/requestId.js';
 import {
@@ -595,6 +596,31 @@ app.get('/api/signals/stats', async (req, res) => {
     logger.error('Get stats error', { error });
     res.status(500).json({
       error: error instanceof Error ? error.message : 'Failed to get stats'
+    });
+  }
+});
+
+/**
+ * Backtest archived signals against historical data
+ */
+app.post('/api/signals/backtest', async (req, res) => {
+  try {
+    const { grade, symbol, limit = 20, updateResults = false } = req.body;
+    
+    logger.info('Starting backtest', { grade, symbol, limit, updateResults });
+    
+    const summary = await runBacktest({
+      grade,
+      symbol,
+      limit: Math.min(limit, 100),
+      updateResults,
+    });
+    
+    res.json({ success: true, ...summary });
+  } catch (error) {
+    logger.error('Backtest error', { error });
+    res.status(500).json({
+      error: error instanceof Error ? error.message : 'Failed to run backtest'
     });
   }
 });

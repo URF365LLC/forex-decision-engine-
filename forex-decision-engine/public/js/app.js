@@ -2859,6 +2859,116 @@ ${signal.result_notes ? `Notes: ${signal.result_notes}` : ''}
       UI.toast('Failed to copy to journal: ' + error.message, 'error');
     }
   },
+
+  // ═══════════════════════════════════════════════════════════════
+  // BACKTEST
+  // ═══════════════════════════════════════════════════════════════
+
+  openBacktestModal() {
+    UI.$('backtest-modal').classList.remove('hidden');
+    UI.$('backtest-config').classList.remove('hidden');
+    UI.$('backtest-progress').classList.add('hidden');
+    UI.$('backtest-results').classList.add('hidden');
+  },
+
+  closeBacktestModal() {
+    UI.$('backtest-modal').classList.add('hidden');
+  },
+
+  resetBacktest() {
+    UI.$('backtest-config').classList.remove('hidden');
+    UI.$('backtest-progress').classList.add('hidden');
+    UI.$('backtest-results').classList.add('hidden');
+  },
+
+  async runBacktest() {
+    const grade = UI.$('backtest-grade').value || undefined;
+    const limit = parseInt(UI.$('backtest-limit').value) || 20;
+    const updateResults = UI.$('backtest-update-results').checked;
+
+    UI.$('backtest-config').classList.add('hidden');
+    UI.$('backtest-progress').classList.remove('hidden');
+
+    try {
+      const response = await fetch('/api/signals/backtest', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ grade, limit, updateResults })
+      });
+
+      if (!response.ok) throw new Error('Backtest failed');
+
+      const data = await response.json();
+      this.displayBacktestResults(data);
+    } catch (error) {
+      console.error('Backtest failed:', error);
+      UI.toast('Backtest failed: ' + error.message, 'error');
+      this.resetBacktest();
+    }
+  },
+
+  displayBacktestResults(data) {
+    UI.$('backtest-progress').classList.add('hidden');
+    UI.$('backtest-results').classList.remove('hidden');
+
+    UI.$('bt-total').textContent = data.total || 0;
+    UI.$('bt-wins').textContent = data.wins || 0;
+    UI.$('bt-losses').textContent = data.losses || 0;
+    UI.$('bt-winrate').textContent = (data.winRate || 0) + '%';
+    UI.$('bt-avgrr').textContent = data.avgRMultiple?.toFixed(2) || '0';
+
+    const byGradeEl = UI.$('bt-by-grade');
+    if (data.byGrade && Object.keys(data.byGrade).length > 0) {
+      byGradeEl.innerHTML = Object.entries(data.byGrade)
+        .sort((a, b) => {
+          const order = { 'A+': 5, 'A': 4, 'B+': 3, 'B': 2, 'C': 1 };
+          return (order[b[0]] || 0) - (order[a[0]] || 0);
+        })
+        .map(([grade, stats]) => `
+          <div class="grade-stat">
+            <span class="grade-badge grade-${grade.replace('+', '-plus').toLowerCase()}">${grade}</span>
+            <span class="positive">${stats.wins}W</span> / 
+            <span class="negative">${stats.losses}L</span>
+            <span class="muted">(${stats.winRate}%)</span>
+          </div>
+        `).join('');
+    } else {
+      byGradeEl.innerHTML = '<p class="muted">No grade breakdown available</p>';
+    }
+
+    const tbody = UI.$('bt-results-tbody');
+    if (data.results && data.results.length > 0) {
+      tbody.innerHTML = data.results.map(r => {
+        const dirClass = r.direction === 'long' ? 'positive' : 'negative';
+        const dirIcon = r.direction === 'long' ? '↑' : '↓';
+        const resultClass = r.result === 'win' ? 'positive' : r.result === 'loss' ? 'negative' : 'muted';
+        const gradeClass = `grade-${(r.grade || 'c').replace('+', '-plus').toLowerCase()}`;
+        
+        return `
+          <tr>
+            <td>${r.symbol}</td>
+            <td class="${dirClass}">${dirIcon}</td>
+            <td><span class="grade-badge ${gradeClass}">${r.grade}</span></td>
+            <td>${r.entry?.toFixed(5) || '--'}</td>
+            <td>${r.stopLoss?.toFixed(5) || '--'}</td>
+            <td>${r.takeProfit?.toFixed(5) || '--'}</td>
+            <td class="${resultClass}">${r.result?.toUpperCase() || 'PENDING'}</td>
+            <td>${r.exitPrice?.toFixed(5) || '--'}</td>
+            <td>${r.rMultiple?.toFixed(2) || '--'}</td>
+            <td class="reason-cell">${r.reason || '--'}</td>
+          </tr>
+        `;
+      }).join('');
+    } else {
+      tbody.innerHTML = '<tr><td colspan="10" class="empty-cell">No results</td></tr>';
+    }
+
+    if (data.updateResults) {
+      this.loadSignalHistory();
+    }
+
+    UI.toast(`Backtest complete: ${data.winRate}% win rate`, 'success');
+  },
 };
 
 // Initialize on DOM ready

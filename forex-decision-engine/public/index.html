@@ -7,7 +7,7 @@
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
   <title>Forex Decision Engine</title>
-  <link rel="stylesheet" href="/css/styles.css?v=20260126h">
+  <link rel="stylesheet" href="/css/styles.css?v=20260127">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎯</text></svg>">
 </head>
 <body>
@@ -795,6 +795,9 @@
               <div class="metric-label">Avg Confidence</div>
               <div class="metric-value" id="history-stat-avgconf">--</div>
             </div>
+            <div class="metric-card backtest-card">
+              <button class="btn btn-primary" id="backtest-btn" onclick="App.openBacktestModal()">Run Backtest</button>
+            </div>
           </div>
           <div class="history-filters">
             <select id="history-filter-group" class="filter-select">
@@ -864,9 +867,101 @@
     </section>
   </div>
 
-  <script src="/js/api.js?v=20260126h"></script>
-  <script src="/js/storage.js?v=20260126h"></script>
-  <script src="/js/ui.js?v=20260126h"></script>
-  <script src="/js/app.js?v=20260126h"></script>
+  <!-- Backtest Modal -->
+  <div id="backtest-modal" class="modal hidden">
+    <div class="modal-overlay" onclick="App.closeBacktestModal()"></div>
+    <div class="modal-content modal-large">
+      <div class="modal-header">
+        <h3>Backtest Historical Signals</h3>
+        <button class="modal-close" onclick="App.closeBacktestModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div id="backtest-config" class="backtest-config">
+          <p>This will check your archived signals against real price data to see which ones would have hit their take profit or stop loss.</p>
+          <div class="form-row">
+            <label for="backtest-grade">Filter by Grade:</label>
+            <select id="backtest-grade">
+              <option value="">All Grades</option>
+              <option value="A+">A+ Only</option>
+              <option value="A">A Only</option>
+              <option value="B+">B+ Only</option>
+            </select>
+          </div>
+          <div class="form-row">
+            <label for="backtest-limit">Number of Signals:</label>
+            <select id="backtest-limit">
+              <option value="10">10 signals</option>
+              <option value="20" selected>20 signals</option>
+              <option value="50">50 signals</option>
+              <option value="100">100 signals (slow)</option>
+            </select>
+          </div>
+          <div class="form-row">
+            <label>
+              <input type="checkbox" id="backtest-update-results">
+              Save results to signal history
+            </label>
+          </div>
+          <button class="btn btn-primary" id="run-backtest-btn" onclick="App.runBacktest()">Run Backtest</button>
+        </div>
+        <div id="backtest-progress" class="backtest-progress hidden">
+          <div class="loading-spinner"></div>
+          <p>Running backtest... This may take a few minutes.</p>
+        </div>
+        <div id="backtest-results" class="backtest-results hidden">
+          <div class="backtest-summary">
+            <div class="metric-card">
+              <div class="metric-label">Total Tested</div>
+              <div class="metric-value" id="bt-total">0</div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-label">Wins</div>
+              <div class="metric-value positive" id="bt-wins">0</div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-label">Losses</div>
+              <div class="metric-value negative" id="bt-losses">0</div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-label">Win Rate</div>
+              <div class="metric-value" id="bt-winrate">0%</div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-label">Avg R:R</div>
+              <div class="metric-value" id="bt-avgrr">0</div>
+            </div>
+          </div>
+          <h4>Results by Grade</h4>
+          <div id="bt-by-grade" class="backtest-by-grade"></div>
+          <h4>Individual Results</h4>
+          <div class="backtest-table-container table-scroll-container">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Symbol</th>
+                  <th>Dir</th>
+                  <th>Grade</th>
+                  <th>Entry</th>
+                  <th>SL</th>
+                  <th>TP</th>
+                  <th>Result</th>
+                  <th>Exit Price</th>
+                  <th>R Multiple</th>
+                  <th>Reason</th>
+                </tr>
+              </thead>
+              <tbody id="bt-results-tbody"></tbody>
+            </table>
+          </div>
+          <button class="btn btn-secondary" onclick="App.resetBacktest()">Run Another Backtest</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/js/api.js?v=20260127"></script>
+  <script src="/js/storage.js?v=20260127"></script>
+  <script src="/js/ui.js?v=20260127"></script>
+  <script src="/js/app.js?v=20260127"></script>
 </body>
 </html>

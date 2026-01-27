@@ -4081,3 +4081,93 @@ th.sortable.sort-desc .sort-icon::after {
     flex-direction: column;
   }
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   BACKTEST MODAL
+   ═══════════════════════════════════════════════════════════════ */
+
+.modal-large {
+  max-width: 900px;
+}
+
+.backtest-card {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.backtest-config p {
+  color: var(--text-secondary);
+  margin-bottom: var(--spacing-md);
+}
+
+.backtest-progress {
+  text-align: center;
+  padding: var(--spacing-xl);
+}
+
+.backtest-progress p {
+  color: var(--text-secondary);
+  margin-top: var(--spacing-md);
+}
+
+.loading-spinner {
+  width: 48px;
+  height: 48px;
+  border: 4px solid var(--border-color);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  margin: 0 auto;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.backtest-summary {
+  display: flex;
+  gap: var(--spacing-md);
+  flex-wrap: wrap;
+  margin-bottom: var(--spacing-lg);
+}
+
+.backtest-summary .metric-card {
+  flex: 1;
+  min-width: 100px;
+}
+
+.backtest-results h4 {
+  font-size: 1rem;
+  margin: var(--spacing-lg) 0 var(--spacing-sm);
+  color: var(--text-primary);
+}
+
+.backtest-by-grade {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-md);
+  margin-bottom: var(--spacing-md);
+}
+
+.grade-stat {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  background: var(--bg-tertiary);
+  padding: var(--spacing-sm) var(--spacing-md);
+  border-radius: var(--border-radius);
+}
+
+.backtest-table-container {
+  max-height: 300px;
+  overflow-y: auto;
+  margin-bottom: var(--spacing-md);
+}
+
+.reason-cell {
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
