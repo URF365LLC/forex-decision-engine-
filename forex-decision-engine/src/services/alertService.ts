@@ -41,31 +41,46 @@ class AlertService {
       const subject = `🎯 ${decision.grade} Signal: ${decision.symbol} ${decision.direction.toUpperCase()}`;
       const html = this.buildEmailHtml(decision, isNew);
       
+      const requestBody = {
+        from: this.fromEmail,
+        to: toEmail,
+        subject,
+        html,
+      };
+      
+      logger.debug(`EMAIL_SENDING: ${decision.symbol} ${decision.grade} - Request to ${toEmail}`);
+      
       const response = await fetch('https://api.resend.com/emails', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${this.resendApiKey}`,
         },
-        body: JSON.stringify({
-          from: this.fromEmail,
-          to: toEmail,
-          subject,
-          html,
-        }),
+        body: JSON.stringify(requestBody),
       });
       
+      const responseText = await response.text();
+      
       if (!response.ok) {
-        const error = await response.text();
-        logger.error(`Email send failed: ${response.status} - ${error}`);
+        logger.error(`EMAIL_FAILED: ${response.status} - ${responseText}`);
+        logger.error(`EMAIL_DEBUG: From=${this.fromEmail}, To=${toEmail}, Subject=${subject}`);
         return false;
+      }
+      
+      // Parse response to get email ID
+      let emailId = 'unknown';
+      try {
+        const responseData = JSON.parse(responseText);
+        emailId = responseData.id || 'unknown';
+      } catch (e) {
+        // Ignore parse errors
       }
 
       if (sendCheck.expiresAt) {
         this.sentAlerts.set(key, { grade: decision.grade, expiresAt: sendCheck.expiresAt, lastSent: new Date().toISOString() });
       }
       
-      logger.info(`ALERT_SENT: ${decision.symbol} ${decision.grade} to ${toEmail}`);
+      logger.info(`ALERT_SENT: ${decision.symbol} ${decision.grade} to ${toEmail} (emailId: ${emailId})`);
       return true;
     } catch (error) {
       logger.error(`Email alert error: ${error}`);

@@ -121,6 +121,18 @@ const App = {
         } else if (data.type === 'heartbeat') {
           // Heartbeat received, connection is healthy
           this.resetSseHeartbeatTimer();
+        } else if (data.type === 'detection:new') {
+          // New detection received - refresh detections if on Auto tab
+          if (this.currentScreen === 'detections') {
+            this.loadDetections();
+          }
+          // Update badge count regardless of current screen (fetch fresh data)
+          this.updateDetectionBadge(true);
+        } else if (data.type === 'scan:complete') {
+          // Scan cycle complete - refresh detections if on Auto tab
+          if (this.currentScreen === 'detections') {
+            this.loadDetections();
+          }
         }
       } catch (e) {
         // Silently ignore parse errors for non-JSON messages (like heartbeats)
@@ -2284,14 +2296,36 @@ const App = {
 
   /**
    * Update detection badge in navigation and ticker
+   * @param {boolean} fetchFresh - If true, fetch fresh detection count from API
    */
-  updateDetectionBadge() {
+  async updateDetectionBadge(fetchFresh = false) {
+    let activeCount;
+    
+    if (fetchFresh) {
+      // Fetch just the summary to get accurate count
+      try {
+        const response = await fetch('/api/detections/summary');
+        if (response.ok) {
+          const data = await response.json();
+          activeCount = (data.summary?.coolingDown || 0) + (data.summary?.eligible || 0);
+        } else {
+          activeCount = this.detections.filter(d =>
+            d.status === 'cooling_down' || d.status === 'eligible'
+          ).length;
+        }
+      } catch {
+        activeCount = this.detections.filter(d =>
+          d.status === 'cooling_down' || d.status === 'eligible'
+        ).length;
+      }
+    } else {
+      activeCount = this.detections.filter(d =>
+        d.status === 'cooling_down' || d.status === 'eligible'
+      ).length;
+    }
+
     const badge = UI.$('detections-badge');
     const tickerSignals = UI.$('ticker-signals');
-
-    const activeCount = this.detections.filter(d =>
-      d.status === 'cooling_down' || d.status === 'eligible'
-    ).length;
 
     if (badge) {
       if (activeCount > 0) {

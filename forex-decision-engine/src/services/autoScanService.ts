@@ -28,7 +28,7 @@ import { signalStore } from '../storage/signalStore.js';
 import { strategyRegistry } from '../strategies/registry.js';
 import { gradeTracker } from './gradeTracker.js';
 import { processAutoScanDecision, invalidateOnConditionChange } from './detectionService.js';
-import { broadcastDetectionError, broadcastScanProgress, broadcastScanComplete } from './sseBroadcaster.js';
+import { broadcastDetectionError, broadcastScanProgress, broadcastScanComplete, broadcastNewDetection } from './sseBroadcaster.js';
 import { promisePool } from '../utils/promisePool.js';
 import { UserSettings, Decision, SignalGrade } from '../strategies/types.js';
 import { twelveDataCircuit, CircuitOpenError } from './circuitBreaker.js';
@@ -778,7 +778,20 @@ class AutoScanService {
             strategyName: decision.strategyName || schedule.strategyId,
             timestamp: decision.timestamp || new Date().toISOString(),
           };
-          await processAutoScanDecision(enrichedDecision);
+          const savedDetection = await processAutoScanDecision(enrichedDecision);
+          
+          // Broadcast new detection to connected clients for real-time UI updates
+          if (savedDetection) {
+            broadcastNewDetection({
+              id: savedDetection.id,
+              symbol: savedDetection.symbol,
+              strategyId: savedDetection.strategyId,
+              strategyName: savedDetection.strategyName,
+              grade: savedDetection.grade,
+              direction: savedDetection.direction,
+              isNew,
+            });
+          }
           
           // Archive signal to history for future reference
           try {
