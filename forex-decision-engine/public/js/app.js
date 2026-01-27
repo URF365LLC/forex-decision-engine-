@@ -820,6 +820,8 @@ const App = {
       this.startDetectionRefresh();
     } else if (screen === 'history') {
       this.loadSignalHistory();
+    } else if (screen === 'backtest') {
+      this.initBacktestScreen();
     } else {
       // Stop detection refresh when leaving detections screen
       this.stopDetectionRefresh();
@@ -2861,113 +2863,264 @@ ${signal.result_notes ? `Notes: ${signal.result_notes}` : ''}
   },
 
   // ═══════════════════════════════════════════════════════════════
-  // BACKTEST
+  // BACKTEST TAB
   // ═══════════════════════════════════════════════════════════════
 
-  openBacktestModal() {
-    UI.$('backtest-modal').classList.remove('hidden');
-    UI.$('backtest-config').classList.remove('hidden');
-    UI.$('backtest-progress').classList.add('hidden');
-    UI.$('backtest-results').classList.add('hidden');
+  backtestResults: null,
+
+  async initBacktestScreen() {
+    await this.populateBacktestFilters();
   },
 
-  closeBacktestModal() {
-    UI.$('backtest-modal').classList.add('hidden');
+  async populateBacktestFilters() {
+    try {
+      const [strategiesRes, symbolsRes] = await Promise.all([
+        fetch('/api/strategies'),
+        fetch('/api/symbols')
+      ]);
+      
+      if (strategiesRes.ok) {
+        const data = await strategiesRes.json();
+        const select = UI.$('bt-filter-strategy');
+        if (select && data.strategies) {
+          select.innerHTML = '<option value="">All Strategies</option>' +
+            data.strategies.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
+        }
+      }
+      
+      if (symbolsRes.ok) {
+        const data = await symbolsRes.json();
+        const select = UI.$('bt-filter-symbol');
+        if (select && data.symbols) {
+          select.innerHTML = '<option value="">All Symbols</option>' +
+            data.symbols.map(s => `<option value="${s}">${s}</option>`).join('');
+        }
+      }
+    } catch (error) {
+      console.error('Failed to load backtest filters:', error);
+    }
   },
 
-  resetBacktest() {
-    UI.$('backtest-config').classList.remove('hidden');
-    UI.$('backtest-progress').classList.add('hidden');
-    UI.$('backtest-results').classList.add('hidden');
+  resetBacktestFilters() {
+    UI.$('bt-filter-strategy').value = '';
+    UI.$('bt-filter-grade').value = 'A+';
+    UI.$('bt-filter-symbol').value = '';
+    UI.$('bt-filter-group').value = '';
+    UI.$('bt-filter-session').value = '';
+    UI.$('bt-filter-direction').value = '';
+    UI.$('bt-filter-from').value = '';
+    UI.$('bt-filter-to').value = '';
+    UI.$('bt-filter-limit').value = '50';
+    UI.$('bt-filter-persist').checked = false;
+    
+    UI.$('bt-results')?.classList.add('hidden');
   },
 
   async runBacktest() {
-    const grade = UI.$('backtest-grade').value || undefined;
-    const limit = parseInt(UI.$('backtest-limit').value) || 20;
-    const updateResults = UI.$('backtest-update-results').checked;
+    const filters = {
+      strategy: UI.$('bt-filter-strategy').value || undefined,
+      grade: UI.$('bt-filter-grade').value || undefined,
+      symbol: UI.$('bt-filter-symbol').value || undefined,
+      group: UI.$('bt-filter-group').value || undefined,
+      session: UI.$('bt-filter-session').value || undefined,
+      direction: UI.$('bt-filter-direction').value || undefined,
+      fromDate: UI.$('bt-filter-from').value || undefined,
+      toDate: UI.$('bt-filter-to').value || undefined,
+      limit: parseInt(UI.$('bt-filter-limit').value) || 0,
+      persist: UI.$('bt-filter-persist').checked
+    };
 
-    UI.$('backtest-config').classList.add('hidden');
-    UI.$('backtest-progress').classList.remove('hidden');
+    const runBtn = UI.$('bt-run-btn');
+    const loadingEl = UI.$('bt-loading');
+    const resultsEl = UI.$('bt-results');
+
+    runBtn.disabled = true;
+    runBtn.textContent = 'Running...';
+    loadingEl.classList.remove('hidden');
+    resultsEl.classList.add('hidden');
 
     try {
       const response = await fetch('/api/signals/backtest', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ grade, limit, updateResults })
+        body: JSON.stringify(filters)
       });
 
-      if (!response.ok) throw new Error('Backtest failed');
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || 'Backtest failed');
+      }
 
       const data = await response.json();
+      this.backtestResults = data;
       this.displayBacktestResults(data);
+      UI.toast(`Backtest complete: ${data.total} signals tested`, 'success');
     } catch (error) {
       console.error('Backtest failed:', error);
       UI.toast('Backtest failed: ' + error.message, 'error');
-      this.resetBacktest();
+      loadingEl.classList.add('hidden');
+    } finally {
+      runBtn.disabled = false;
+      runBtn.textContent = 'Run Backtest';
     }
   },
 
   displayBacktestResults(data) {
-    UI.$('backtest-progress').classList.add('hidden');
-    UI.$('backtest-results').classList.remove('hidden');
+    UI.$('bt-loading').classList.add('hidden');
+    UI.$('bt-results').classList.remove('hidden');
 
-    UI.$('bt-total').textContent = data.total || 0;
-    UI.$('bt-wins').textContent = data.wins || 0;
-    UI.$('bt-losses').textContent = data.losses || 0;
-    UI.$('bt-winrate').textContent = (data.winRate || 0) + '%';
-    UI.$('bt-avgrr').textContent = data.avgRMultiple?.toFixed(2) || '0';
+    // Summary stats
+    UI.$('bt-stat-total').textContent = data.total || 0;
+    UI.$('bt-stat-wins').textContent = data.wins || 0;
+    UI.$('bt-stat-losses').textContent = data.losses || 0;
+    UI.$('bt-stat-winrate').textContent = (data.winRate || 0) + '%';
+    UI.$('bt-stat-rmultiple').textContent = data.avgRMultiple?.toFixed(2) || '0.00';
+    
+    // Calculate expectancy: (Win% × Avg Win) - (Loss% × Avg Loss)
+    const winRate = (data.winRate || 0) / 100;
+    const expectancy = winRate > 0 ? (winRate * 1 - (1 - winRate) * 1).toFixed(2) : '0.00';
+    UI.$('bt-stat-expectancy').textContent = expectancy + 'R';
 
-    const byGradeEl = UI.$('bt-by-grade');
-    if (data.byGrade && Object.keys(data.byGrade).length > 0) {
-      byGradeEl.innerHTML = Object.entries(data.byGrade)
-        .sort((a, b) => {
-          const order = { 'A+': 5, 'A': 4, 'B+': 3, 'B': 2, 'C': 1 };
-          return (order[b[0]] || 0) - (order[a[0]] || 0);
-        })
-        .map(([grade, stats]) => `
-          <div class="grade-stat">
-            <span class="grade-badge grade-${grade.replace('+', '-plus').toLowerCase()}">${grade}</span>
-            <span class="positive">${stats.wins}W</span> / 
-            <span class="negative">${stats.losses}L</span>
-            <span class="muted">(${stats.winRate}%)</span>
-          </div>
-        `).join('');
-    } else {
-      byGradeEl.innerHTML = '<p class="muted">No grade breakdown available</p>';
+    // By Strategy breakdown
+    this.renderBreakdown('bt-breakdown-strategy', data.byStrategy);
+    
+    // By Grade breakdown
+    this.renderBreakdown('bt-breakdown-grade', data.byGrade);
+    
+    // By Session breakdown
+    this.renderBreakdown('bt-breakdown-session', data.bySession);
+
+    // Individual trades table
+    this.renderBacktestTrades(data.results);
+  },
+
+  renderBreakdown(elementId, breakdown) {
+    const el = UI.$(elementId);
+    if (!el) return;
+
+    if (!breakdown || Object.keys(breakdown).length === 0) {
+      el.innerHTML = '<p class="muted">No data</p>';
+      return;
     }
 
-    const tbody = UI.$('bt-results-tbody');
-    if (data.results && data.results.length > 0) {
-      tbody.innerHTML = data.results.map(r => {
-        const dirClass = r.direction === 'long' ? 'positive' : 'negative';
-        const dirIcon = r.direction === 'long' ? '↑' : '↓';
-        const resultClass = r.result === 'win' ? 'positive' : r.result === 'loss' ? 'negative' : 'muted';
-        const gradeClass = `grade-${(r.grade || 'c').replace('+', '-plus').toLowerCase()}`;
-        
+    const sortOrder = { 'A+': 5, 'A': 4, 'B+': 3, 'B': 2, 'C': 1 };
+    
+    el.innerHTML = Object.entries(breakdown)
+      .sort((a, b) => {
+        if (sortOrder[a[0]] && sortOrder[b[0]]) {
+          return sortOrder[b[0]] - sortOrder[a[0]];
+        }
+        return a[0].localeCompare(b[0]);
+      })
+      .map(([name, stats]) => {
+        const winrateClass = stats.winRate >= 50 ? 'positive' : stats.winRate > 0 ? 'negative' : '';
         return `
-          <tr>
-            <td>${r.symbol}</td>
-            <td class="${dirClass}">${dirIcon}</td>
-            <td><span class="grade-badge ${gradeClass}">${r.grade}</span></td>
-            <td>${r.entry?.toFixed(5) || '--'}</td>
-            <td>${r.stopLoss?.toFixed(5) || '--'}</td>
-            <td>${r.takeProfit?.toFixed(5) || '--'}</td>
-            <td class="${resultClass}">${r.result?.toUpperCase() || 'PENDING'}</td>
-            <td>${r.exitPrice?.toFixed(5) || '--'}</td>
-            <td>${r.rMultiple?.toFixed(2) || '--'}</td>
-            <td class="reason-cell">${r.reason || '--'}</td>
-          </tr>
+          <div class="breakdown-item">
+            <span class="name">${this.formatBreakdownName(name)}</span>
+            <span class="stats">
+              <span class="wins">${stats.wins}W</span>
+              <span class="losses">${stats.losses}L</span>
+              <span class="winrate ${winrateClass}">${stats.winRate}%</span>
+            </span>
+          </div>
         `;
       }).join('');
-    } else {
-      tbody.innerHTML = '<tr><td colspan="10" class="empty-cell">No results</td></tr>';
+  },
+
+  formatBreakdownName(name) {
+    // Format strategy IDs nicely
+    if (name.includes('-')) {
+      return name.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+    }
+    return name;
+  },
+
+  renderBacktestTrades(results) {
+    const tbody = UI.$('bt-trades-tbody');
+    if (!tbody) return;
+
+    if (!results || results.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="11" class="empty-cell">No trades to display</td></tr>';
+      return;
     }
 
-    if (data.updateResults) {
-      this.loadSignalHistory();
+    tbody.innerHTML = results.map(r => {
+      const dirClass = r.direction === 'long' ? 'positive' : 'negative';
+      const dirIcon = r.direction === 'long' ? '↑' : '↓';
+      const resultClass = r.result === 'win' ? 'positive' : r.result === 'loss' ? 'negative' : 'muted';
+      const gradeClass = `grade-${(r.grade || 'c').replace('+', '-plus').toLowerCase()}`;
+      const dateStr = r.signalTime ? new Date(r.signalTime).toLocaleDateString() : '--';
+      
+      return `
+        <tr>
+          <td>${dateStr}</td>
+          <td>${r.symbol}</td>
+          <td class="${dirClass}">${dirIcon}</td>
+          <td>${r.strategy || '--'}</td>
+          <td><span class="grade-badge ${gradeClass}">${r.grade}</span></td>
+          <td>${this.formatPrice(r.entry, r.symbol)}</td>
+          <td>${this.formatPrice(r.exitPrice, r.symbol)}</td>
+          <td class="${resultClass}">${r.result ? r.result.toUpperCase() : 'PENDING'}</td>
+          <td>${r.rMultiple != null ? r.rMultiple.toFixed(2) : '--'}</td>
+          <td>${r.barsToExit || '--'}</td>
+          <td class="reason-cell" title="${r.reason || ''}">${r.reason || '--'}</td>
+        </tr>
+      `;
+    }).join('');
+  },
+
+  formatPrice(price, symbol) {
+    if (price == null) return '--';
+    const isCrypto = symbol && (symbol.includes('BTC') || symbol.includes('ETH') || 
+                     symbol.includes('SOL') || symbol.includes('BNB'));
+    return isCrypto ? price.toFixed(2) : price.toFixed(5);
+  },
+
+  exportBacktestCSV() {
+    if (!this.backtestResults || !this.backtestResults.results) {
+      UI.toast('No backtest results to export', 'error');
+      return;
     }
 
-    UI.toast(`Backtest complete: ${data.winRate}% win rate`, 'success');
+    const headers = ['Date', 'Symbol', 'Direction', 'Strategy', 'Grade', 'Entry', 'Stop Loss', 
+                     'Take Profit', 'Exit', 'Result', 'R-Multiple', 'Bars', 'Reason'];
+    
+    const rows = this.backtestResults.results.map(r => [
+      r.signalTime ? new Date(r.signalTime).toISOString() : '',
+      r.symbol,
+      r.direction,
+      r.strategy || '',
+      r.grade,
+      r.entry,
+      r.stopLoss,
+      r.takeProfit,
+      r.exitPrice || '',
+      r.result || 'pending',
+      r.rMultiple || '',
+      r.barsToExit || '',
+      r.reason || ''
+    ]);
+
+    const csv = [headers.join(','), ...rows.map(row => row.join(','))].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `backtest_results_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    
+    UI.toast('CSV exported successfully', 'success');
+  },
+
+  // Legacy modal functions (kept for compatibility)
+  openBacktestModal() {
+    this.switchScreen('backtest');
+  },
+
+  closeBacktestModal() {
+    // No longer needed with tab approach
   },
 };
 

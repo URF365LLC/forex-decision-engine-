@@ -40,7 +40,44 @@ interface BacktestSummary {
   winRate: number;
   avgRMultiple: number;
   byGrade: Record<string, { wins: number; losses: number; winRate: number }>;
+  byStrategy: Record<string, { wins: number; losses: number; winRate: number }>;
+  bySession: Record<string, { wins: number; losses: number; winRate: number }>;
   results: BacktestResult[];
+}
+
+interface BacktestFilters {
+  grade?: string;
+  symbol?: string;
+  strategy?: string;
+  group?: string;
+  session?: string;
+  direction?: string;
+  fromDate?: string;
+  toDate?: string;
+  limit?: number;
+  persist?: boolean;
+}
+
+function getSessionFromTime(dateStr: string): string {
+  const date = new Date(dateStr);
+  const hour = date.getUTCHours();
+  
+  if (hour >= 12 && hour < 16) return 'overlap';
+  if (hour >= 7 && hour < 16) return 'london';
+  if (hour >= 12 && hour < 21) return 'newyork';
+  if (hour >= 0 && hour < 8) return 'asian';
+  return 'other';
+}
+
+function getSessionLabel(session: string): string {
+  const labels: Record<string, string> = {
+    'asian': 'Asian',
+    'london': 'London',
+    'newyork': 'New York',
+    'overlap': 'London/NY Overlap',
+    'other': 'Off-Hours'
+  };
+  return labels[session] || session;
 }
 
 interface OHLCBar {
@@ -244,53 +281,91 @@ export async function backtestSignal(signal: StoredSignal): Promise<BacktestResu
   }
 }
 
-export async function runBacktest(options: {
-  grade?: string;
-  symbol?: string;
-  limit?: number;
-  updateResults?: boolean;
-}): Promise<BacktestSummary> {
-  const { grade, symbol, limit = 50, updateResults = false } = options;
+export async function runBacktest(filters: BacktestFilters): Promise<BacktestSummary> {
+  const { grade, symbol, strategy, group, session, direction, fromDate, toDate, limit = 50, persist = false } = filters;
   
-  logger.info(`Starting backtest`, { grade, symbol, limit, updateResults });
+  logger.info(`Starting backtest`, filters);
   
-  let signals: StoredSignal[];
+  let signals = await signalStore.getRecent(limit > 0 ? limit * 3 : 1000);
   
-  if (grade) {
-    signals = await signalStore.getByGrade(grade, limit);
-  } else if (symbol) {
-    signals = await signalStore.getBySymbol(symbol, limit);
-  } else {
-    signals = await signalStore.getRecent(limit);
+  signals = signals.filter(s => {
+    if (!s.entry_low || !s.stop_loss || !s.take_profit) return false;
+    if (new Date(s.created_at) > new Date(Date.now() - 4 * 60 * 60 * 1000)) return false;
+    
+    if (grade && !matchesGradeFilter(s.grade, grade)) return false;
+    if (symbol && s.symbol !== symbol) return false;
+    if (strategy && s.style !== strategy) return false;
+    if (direction && s.direction !== direction) return false;
+    
+    if (group) {
+      const spec = getInstrumentSpec(s.symbol);
+      if (spec?.type !== group) return false;
+    }
+    
+    if (session) {
+      const signalSession = getSessionFromTime(s.created_at);
+      if (session === 'overlap') {
+        if (signalSession !== 'overlap') return false;
+      } else if (signalSession !== session && signalSession !== 'overlap') {
+        return false;
+      }
+    }
+    
+    if (fromDate && new Date(s.created_at) < new Date(fromDate)) return false;
+    if (toDate && new Date(s.created_at) > new Date(toDate + 'T23:59:59Z')) return false;
+    
+    return true;
+  });
+  
+  if (limit > 0 && signals.length > limit) {
+    signals = signals.slice(0, limit);
   }
   
-  signals = signals.filter(s => 
-    s.entry_low && s.stop_loss && s.take_profit && 
-    new Date(s.created_at) < new Date(Date.now() - 4 * 60 * 60 * 1000)
-  );
+  logger.info(`Backtesting ${signals.length} signals after filtering`);
   
-  logger.info(`Backtesting ${signals.length} signals`);
-  
-  const results: BacktestResult[] = [];
+  const results: (BacktestResult & { strategy?: string; signalTime?: string })[] = [];
   const byGrade: Record<string, { wins: number; losses: number; total: number }> = {};
+  const byStrategy: Record<string, { wins: number; losses: number; total: number }> = {};
+  const bySession: Record<string, { wins: number; losses: number; total: number }> = {};
   
   for (const signal of signals) {
     const result = await backtestSignal(signal);
     if (result) {
-      results.push(result);
+      const signalSession = getSessionLabel(getSessionFromTime(signal.created_at));
+      const extendedResult = {
+        ...result,
+        strategy: signal.style || 'unknown',
+        signalTime: signal.created_at,
+      };
+      results.push(extendedResult);
       
       if (!byGrade[result.grade]) {
         byGrade[result.grade] = { wins: 0, losses: 0, total: 0 };
       }
       byGrade[result.grade].total++;
       
+      const strat = signal.style || 'unknown';
+      if (!byStrategy[strat]) {
+        byStrategy[strat] = { wins: 0, losses: 0, total: 0 };
+      }
+      byStrategy[strat].total++;
+      
+      if (!bySession[signalSession]) {
+        bySession[signalSession] = { wins: 0, losses: 0, total: 0 };
+      }
+      bySession[signalSession].total++;
+      
       if (result.result === 'win') {
         byGrade[result.grade].wins++;
+        byStrategy[strat].wins++;
+        bySession[signalSession].wins++;
       } else if (result.result === 'loss') {
         byGrade[result.grade].losses++;
+        byStrategy[strat].losses++;
+        bySession[signalSession].losses++;
       }
       
-      if (updateResults && result.result && signal.uuid) {
+      if (persist && result.result && signal.uuid) {
         await signalStore.updateResult(signal.uuid, result.result, result.reason);
       }
       
@@ -308,15 +383,18 @@ export async function runBacktest(options: {
     ? Math.round((rMultiples.reduce((a, b) => a + b, 0) / rMultiples.length) * 100) / 100
     : 0;
   
-  const gradeStats: Record<string, { wins: number; losses: number; winRate: number }> = {};
-  for (const [g, stats] of Object.entries(byGrade)) {
-    const total = stats.wins + stats.losses;
-    gradeStats[g] = {
-      wins: stats.wins,
-      losses: stats.losses,
-      winRate: total > 0 ? Math.round((stats.wins / total) * 100) : 0,
-    };
-  }
+  const formatStats = (stats: Record<string, { wins: number; losses: number; total: number }>) => {
+    const result: Record<string, { wins: number; losses: number; winRate: number }> = {};
+    for (const [key, s] of Object.entries(stats)) {
+      const total = s.wins + s.losses;
+      result[key] = {
+        wins: s.wins,
+        losses: s.losses,
+        winRate: total > 0 ? Math.round((s.wins / total) * 100) : 0,
+      };
+    }
+    return result;
+  };
   
   const summary: BacktestSummary = {
     total: results.length,
@@ -326,7 +404,9 @@ export async function runBacktest(options: {
     pending,
     winRate: (wins + losses) > 0 ? Math.round((wins / (wins + losses)) * 100) : 0,
     avgRMultiple,
-    byGrade: gradeStats,
+    byGrade: formatStats(byGrade),
+    byStrategy: formatStats(byStrategy),
+    bySession: formatStats(bySession),
     results,
   };
   
@@ -338,6 +418,13 @@ export async function runBacktest(options: {
   });
   
   return summary;
+}
+
+function matchesGradeFilter(signalGrade: string, filterGrade: string): boolean {
+  const gradeOrder = ['C', 'B', 'B+', 'A', 'A+'];
+  const signalIndex = gradeOrder.indexOf(signalGrade);
+  const filterIndex = gradeOrder.indexOf(filterGrade);
+  return signalIndex >= filterIndex;
 }
 
 export default { runBacktest, backtestSignal };

@@ -605,15 +605,21 @@ app.get('/api/signals/stats', async (req, res) => {
  */
 app.post('/api/signals/backtest', async (req, res) => {
   try {
-    const { grade, symbol, limit = 20, updateResults = false } = req.body;
+    const { grade, symbol, strategy, group, session, direction, fromDate, toDate, limit = 50, persist = false } = req.body;
     
-    logger.info('Starting backtest', { grade, symbol, limit, updateResults });
+    logger.info('Starting backtest', { grade, symbol, strategy, group, session, direction, fromDate, toDate, limit, persist });
     
     const summary = await runBacktest({
       grade,
       symbol,
-      limit: Math.min(limit, 100),
-      updateResults,
+      strategy,
+      group,
+      session,
+      direction,
+      fromDate,
+      toDate,
+      limit: limit === 0 ? 0 : Math.min(limit, 200),
+      persist,
     });
     
     res.json({ success: true, ...summary });
