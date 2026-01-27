@@ -9,7 +9,7 @@ Preferred communication style: Simple, everyday language.
 ## System Architecture
 
 ### UI/UX Decisions
-The frontend, built with Vanilla JavaScript, features a mobile-first dark theme and real-time notifications via Server-Sent Events (SSE). It includes `isScanning` guards, API error displays, and accessible touch targets. Navigation consists of Dashboard, Auto, Journal, History, and Settings tabs. Detection cards show lot sizes, tiered exit targets (TP1/TP2), and bar expiration countdowns. The dashboard has a Bloomberg Terminal-inspired aesthetic with a status ticker bar and table-based rendering for signals, journal, running trades, and watchlist.
+The frontend, built with Vanilla JavaScript, features a mobile-first dark theme and real-time notifications via Server-Sent Events (SSE). It includes `isScanning` guards, API error displays, and accessible touch targets. Navigation consists of Dashboard, Auto, Journal, History, Backtest, and Settings tabs. Detection cards show lot sizes, tiered exit targets (TP1/TP2), and bar expiration countdowns. The dashboard has a Bloomberg Terminal-inspired aesthetic with a status ticker bar and table-based rendering for signals, journal, running trades, and watchlist.
 
 ### Technical Implementations
 
@@ -48,6 +48,7 @@ API endpoints cover system health, symbol retrieval, signal analysis and scannin
 -   **H4 Trend Support**: Uses Twelve Data's 4h interval for trend analysis with D1 fallback.
 -   **Detection System**: Manages detection lifecycle with statuses like `cooling_down`, `eligible`, `taken`, `dismissed`, `expired`, `invalidated`.
 -   **Regime Detector Integration**: Adjusts confidence and risk-reward based on volatility regimes.
+-   **Backtest Dashboard**: Dedicated tab for historical signal validation against real price data with comprehensive filtering by strategy, grade, date range, session (ICT Killzones), symbol, direction, and asset class. Shows breakdowns by strategy, grade, and session with CSV export.
 -   **Bar Freshness Validation**: Rejects signals if bar data is stale.
 
 ## External Dependencies

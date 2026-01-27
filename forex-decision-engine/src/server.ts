@@ -311,6 +311,14 @@ app.get('/api/strategies', validateQuery(StrategiesQuerySchema), (req, res) => {
 });
 
 /**
+ * Get list of tradeable symbols
+ */
+app.get('/api/symbols', (req, res) => {
+  const symbols = ACTIVE_INSTRUMENTS.map(s => s.symbol);
+  res.json({ success: true, symbols });
+});
+
+/**
  * Scan multiple symbols
  * V1.1: strategyId is REQUIRED, drawdown check is MANDATORY (unless paperTrading)
  */
