@@ -63,10 +63,18 @@ function getSessionFromTime(dateStr: string): string {
   const hour = date.getUTCHours();
   
   if (hour >= 12 && hour < 16) return 'overlap';
-  if (hour >= 7 && hour < 16) return 'london';
-  if (hour >= 12 && hour < 21) return 'newyork';
+  if (hour >= 7 && hour < 12) return 'london';
+  if (hour >= 16 && hour < 21) return 'newyork';
   if (hour >= 0 && hour < 8) return 'asian';
   return 'other';
+}
+
+function matchesSessionFilter(signalSession: string, filterSession: string): boolean {
+  if (filterSession === 'overlap') return signalSession === 'overlap';
+  if (filterSession === 'london') return signalSession === 'london' || signalSession === 'overlap';
+  if (filterSession === 'newyork') return signalSession === 'newyork' || signalSession === 'overlap';
+  if (filterSession === 'asian') return signalSession === 'asian';
+  return signalSession === filterSession;
 }
 
 function getSessionLabel(session: string): string {
@@ -74,7 +82,7 @@ function getSessionLabel(session: string): string {
     'asian': 'Asian',
     'london': 'London',
     'newyork': 'New York',
-    'overlap': 'London/NY Overlap',
+    'overlap': 'Overlap',
     'other': 'Off-Hours'
   };
   return labels[session] || session;
@@ -304,15 +312,17 @@ export async function runBacktest(filters: BacktestFilters): Promise<BacktestSum
     
     if (session) {
       const signalSession = getSessionFromTime(s.created_at);
-      if (session === 'overlap') {
-        if (signalSession !== 'overlap') return false;
-      } else if (signalSession !== session && signalSession !== 'overlap') {
-        return false;
-      }
+      if (!matchesSessionFilter(signalSession, session)) return false;
     }
     
-    if (fromDate && new Date(s.created_at) < new Date(fromDate)) return false;
-    if (toDate && new Date(s.created_at) > new Date(toDate + 'T23:59:59Z')) return false;
+    if (fromDate) {
+      const filterFrom = new Date(fromDate + 'T00:00:00Z');
+      if (new Date(s.created_at) < filterFrom) return false;
+    }
+    if (toDate) {
+      const filterTo = new Date(toDate + 'T23:59:59Z');
+      if (new Date(s.created_at) > filterTo) return false;
+    }
     
     return true;
   });
