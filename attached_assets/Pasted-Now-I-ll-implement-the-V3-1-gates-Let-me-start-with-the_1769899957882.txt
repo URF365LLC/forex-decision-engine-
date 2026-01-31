@@ -1,0 +1,69 @@
+Now I'll implement the V3.1 gates. Let me start with the header and GATE_CONFIG.
+
+Edit
+/home/user/forex-decision-engine-/forex-decision-engine/src/strategies/intraday/EmaPullback.ts
+/**
+ * EMA Pullback Strategy - PROP-GRADE V3
+ * Historical Win Rate: 50% | Historical Avg RR: 2.0
+ *
+ * V3 ENHANCEMENTS (4-Way AI Validation Consensus - Jan 2026):
+ * 🔴 CRITICAL: ADX unconditional +15 replaced with tiered scoring
+ * 🟡 Replaced candle color with close-in-range momentum confirmation (0.7/0.3)
+ * 🟡 Added EMA50 reclaim bonus (conditional on touch)
+ * 🟡 Added RSI extension CONDITIONAL handling (penalty in strong trends, block in weak)
+ * 🟡 TP authority aligned (preferStructure: false)
+ * 🟡 atrMultiplier reduced to 1.5 for consistency
+ *
+ * V2 FIXES (Retained):
+ * - Added H4 trend framework
+ * - Fixed falsy checks
+ * EMA Pullback Strategy - PROP-GRADE V3.1
+ * Historical Win Rate: 50% | Historical Avg RR: 2.0
+ *
+ * V3.1 HARDENING (3-Way AI Forensic Audit Consensus - Jan 31, 2026):
+ * 🔴 GATE 1: H4 Trend Must Exist - hard require (was optional)
+ * 🔴 GATE 2: H4 ADX >= 20 - hard floor (was never read)
+ * 🔴 GATE 3: H1 ADX >= 18 - hard floor (was tiered scoring only)
+ * 🟡 GATE 4: EMA Zone Width <= 3 ATR - prevent wide-zone false pullbacks
+ * 🟡 GATE 5: Close-in-Range Floor - 0.6 long / 0.4 short minimum
+ * 🟡 GATE 6: EMA200 Slope Enforcement - directional gate, not just bonus
+ * 🟡 GATE 7: Entry Bar EMA200 Check - prevent counter-trend entry drift
+ * 🟢 GATE_CONFIG: Centralized thresholds for runtime tuning
+ *
+ * V3 ENHANCEMENTS (Retained):
+ * - ADX tiered scoring (after floor gate)
+ * - Close-in-range momentum confirmation
+ * - EMA50 reclaim bonus
+ * - RSI extension conditional handling
+ *
+ * V2 FIXES (Retained):
+ * - H4 trend framework
+ * - Counter-trend rejection
+ * - minBars: 250
+ */
+Edit
+/home/user/forex-decision-engine-/forex-decision-engine/src/strategies/intraday/EmaPullback.ts
+const logger = createLogger('EmaPullback');
+ 
+// V3.1: Centralized gate configuration for runtime tuning
+const GATE_CONFIG = {
+  // Gate 2: H4 ADX minimum
+  h4AdxMin: 20,
+  // Gate 3: H1 ADX minimum
+  h1AdxMin: 18,
+  // Gate 4: EMA zone max width (ATR multiplier)
+  emaZoneMaxAtr: 3,
+  // Gate 5: Close-in-range floors
+  closeRatioMinLong: 0.6,
+  closeRatioMaxShort: 0.4,
+  // Gate 6: EMA200 slope minimums
+  ema200SlopeMinLong: 0.00002,
+  ema200SlopeMaxShort: -0.00002,
+  // Gate 6: EMA200 slope bonus thresholds (existing)
+  ema200SlopeBonusLong: 0.00005,
+  ema200SlopeBonusShort: -0.00005,
+};
+ 
+export class EmaPullback implements IStrategy {
+Update Todos
+ Add GATE_CONFIG centralized configuration object

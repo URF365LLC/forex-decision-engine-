@@ -1,0 +1,98 @@
+What else do I need to confirm the strategy is actually receiving data?
+
+You don’t “feel” data flow. You prove it. Here’s what I’d require—no fluff—so we can say, with a straight face, “EmaPullback is fed correctly.”
+
+1) A single “input snapshot” log at the TOP of analyze()
+
+Add a log before preflight:
+
+symbol
+
+bars.length
+
+bars[entryIdx].timestamp, bars[signalIdx].timestamp
+
+last values of ema20/50/200, adx, rsi, atr
+
+H4 arrays lengths + last timestamp
+
+If that log is missing or timestamps aren’t moving → your pipeline is stale.
+
+Minimum evidence needed:
+
+signal bar timestamp changes each hour
+
+H4 timestamp changes each 4 hours
+
+indicator arrays are same length / aligned with bars
+
+2) Freshness rules (hard)
+
+You need a freshness check somewhere (preflight is the right place):
+
+H1 last bar must be within, say, ≤ 2 hours
+
+H4 last bar must be within ≤ 8 hours
+
+If not → strategy should refuse with a clear block reason like STALE_DATA_BLOCKED
+
+3) Alignment checks (most “false signals” are actually misalignment)
+
+I want proof that:
+
+bars[i] corresponds to ema20[i], ema50[i], ema200[i], rsi[i], adx[i], atr[i]
+
+No off-by-one shift (classic bug: indicators computed on close but indexed against open)
+
+Easy validation:
+Log the last 3 timestamps for bars and last 3 computed values index positions. If bars are [t-2,t-1,t] but indicators “look like” they match [t-3,t-2,t-1], you’re indexing wrong.
+
+4) A “gate histogram” for one trading day
+
+You need counts like:
+
+GATE1_BLOCKED: 41
+
+GATE3_BLOCKED: 28
+
+GATE5_BLOCKED: 12
+
+PHASE1_SIGNAL: 3
+
+If you don’t have this distribution, you’re blind—again.
+
+5) One forced offline replay test
+
+Give the strategy a frozen dataset (same bars + indicators) and run:
+
+expected: deterministic output
+
+if output changes between runs: you’re using unstable “current bar” values incorrectly or mixing incomplete candle data
+
+6) A “Data Contract” for IndicatorData
+
+To fully confirm, I’d want the exact object shape being passed into analyze() at runtime:
+
+Is trendBarsH4 always present?
+
+Is adxH4 computed or missing sometimes?
+
+Are arrays number[] or (number|null)[]?
+
+Are bars sorted ascending?
+
+If you paste one real payload sample (sanitized), I can validate it like a systems auditor.
+
+If you want the fastest path:
+
+Send me ONE real PHASE1_SIGNAL log line plus the new top-of-analyze “input snapshot” log line for the same symbol/time.
+
+With that, I can tell you immediately whether:
+
+you’re actually receiving fresh data,
+
+your H4 is stale/missing,
+
+or your arrays are shifted (the silent killer).
+
+And yeah—two blown accounts from a permissive signal engine is brutal. But V3.1 gate-first is exactly how you stop paying tuition to the market.
