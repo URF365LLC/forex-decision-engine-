@@ -50,6 +50,19 @@ const GATE_CONFIG = {
   // Gate 6: EMA200 slope bonus thresholds (existing)
   ema200SlopeBonusLong: 0.00005,
   ema200SlopeBonusShort: -0.00005,
+  // V3.1: RSI reset bonus thresholds (stricter than V3)
+  rsiResetLookbackBars: 2,
+  rsiWasOversold: 35,
+  rsiWasOverbought: 65,
+  rsiNeutralLow: 45,
+  rsiNeutralHigh: 55,
+  // Risk/structure
+  stopAtrBuffer: 0.5,
+  rrTarget: 2,
+  tpAtrMultiplier: 1.5,
+  // Freshness thresholds (milliseconds)
+  h1MaxAgeMs: 2 * 60 * 60 * 1000,  // 2 hours
+  h4MaxAgeMs: 8 * 60 * 60 * 1000,  // 8 hours
 };
 
 export class EmaPullback implements IStrategy {
@@ -68,6 +81,72 @@ export class EmaPullback implements IStrategy {
 
   async analyze(data: IndicatorData, settings: UserSettings): Promise<Decision | null> {
     const { symbol, bars, ema20, ema50, ema200, rsi, adx, atr, trendBarsH4, ema200H4, adxH4 } = data;
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // V3.1 DATA VALIDATION - Input Snapshot (proves data flow)
+    // ═══════════════════════════════════════════════════════════════════════════
+    const now = Date.now();
+    const logEntryIdx = bars && bars.length > 0 ? bars.length - 1 : -1;
+    const logSignalIdx = bars && bars.length > 1 ? bars.length - 2 : -1;
+
+    // Log input snapshot for data flow verification
+    logger.debug('INPUT_SNAPSHOT', {
+      symbol,
+      barsLength: bars?.length ?? 0,
+      entryBarTimestamp: logEntryIdx >= 0 ? bars![logEntryIdx].timestamp : null,
+      signalBarTimestamp: logSignalIdx >= 0 ? bars![logSignalIdx].timestamp : null,
+      h1LastBarAgeMs: logEntryIdx >= 0 && bars![logEntryIdx].timestamp ? now - new Date(bars![logEntryIdx].timestamp).getTime() : null,
+      ema20Last: ema20 && ema20.length > 0 ? atIndex(ema20, ema20.length - 1) : null,
+      ema50Last: ema50 && ema50.length > 0 ? atIndex(ema50, ema50.length - 1) : null,
+      ema200Last: ema200 && ema200.length > 0 ? atIndex(ema200, ema200.length - 1) : null,
+      adxLast: adx && adx.length > 0 ? atIndex(adx, adx.length - 1) : null,
+      rsiLast: rsi && rsi.length > 0 ? atIndex(rsi, rsi.length - 1) : null,
+      atrLast: atr && atr.length > 0 ? atIndex(atr, atr.length - 1) : null,
+      h4BarsLength: trendBarsH4?.length ?? 0,
+      h4LastTimestamp: trendBarsH4 && trendBarsH4.length > 0 ? trendBarsH4[trendBarsH4.length - 1].timestamp : null,
+      h4LastBarAgeMs: trendBarsH4 && trendBarsH4.length > 0 && trendBarsH4[trendBarsH4.length - 1].timestamp
+        ? now - new Date(trendBarsH4[trendBarsH4.length - 1].timestamp).getTime()
+        : null,
+      adxH4Length: adxH4?.length ?? 0,
+      ema200H4Length: ema200H4?.length ?? 0,
+      indicatorAlignment: {
+        barsVsEma20: bars?.length === ema20?.length,
+        barsVsEma50: bars?.length === ema50?.length,
+        barsVsEma200: bars?.length === ema200?.length,
+        barsVsAdx: bars?.length === adx?.length,
+        barsVsRsi: bars?.length === rsi?.length,
+        barsVsAtr: bars?.length === atr?.length,
+      },
+    });
+
+    // V3.1: Freshness check - reject stale data
+    if (logEntryIdx >= 0 && bars![logEntryIdx].timestamp) {
+      const h1AgeMs = now - new Date(bars![logEntryIdx].timestamp).getTime();
+      if (h1AgeMs > GATE_CONFIG.h1MaxAgeMs) {
+        logger.warn('STALE_DATA_BLOCKED', {
+          symbol,
+          reason: 'H1 data too old',
+          h1AgeMs,
+          maxAgeMs: GATE_CONFIG.h1MaxAgeMs,
+          lastTimestamp: bars![logEntryIdx].timestamp,
+        });
+        return null;
+      }
+    }
+
+    if (trendBarsH4 && trendBarsH4.length > 0 && trendBarsH4[trendBarsH4.length - 1].timestamp) {
+      const h4AgeMs = now - new Date(trendBarsH4[trendBarsH4.length - 1].timestamp).getTime();
+      if (h4AgeMs > GATE_CONFIG.h4MaxAgeMs) {
+        logger.warn('STALE_DATA_BLOCKED', {
+          symbol,
+          reason: 'H4 data too old',
+          h4AgeMs,
+          maxAgeMs: GATE_CONFIG.h4MaxAgeMs,
+          lastTimestamp: trendBarsH4[trendBarsH4.length - 1].timestamp,
+        });
+        return null;
+      }
+    }
 
     // V2: PRE-FLIGHT
     const atrVal = bars && bars.length > 2 ? atIndex(atr, bars.length - 2) : null;
@@ -205,10 +284,18 @@ export class EmaPullback implements IStrategy {
         triggers.push(`Moderate trend (ADX: ${adxSignal!.toFixed(1)})`);
       }
 
-      // RSI neutral reset bonus (existing)
-      if (rsiSignal! >= 40 && rsiSignal! <= 60) {
-        confidence += 10;
-        triggers.push(`RSI reset to neutral (${rsiSignal!.toFixed(1)})`);
+      // V3.1: RSI "actual reset" bonus (stricter than V3)
+      // Only award if RSI was extreme in recent bars AND has returned to neutral zone
+      const rsiPrev1Long = atIndex(rsi, signalIdx - 1);
+      const rsiPrev2Long = atIndex(rsi, signalIdx - 2);
+      const recentRsiLong = [rsiPrev1Long, rsiPrev2Long].filter((x) => typeof x === 'number') as number[];
+      if (recentRsiLong.length > 0) {
+        const nowNeutralLong = rsiSignal! >= GATE_CONFIG.rsiNeutralLow && rsiSignal! <= GATE_CONFIG.rsiNeutralHigh;
+        const wasOversold = recentRsiLong.some((v) => v < GATE_CONFIG.rsiWasOversold);
+        if (wasOversold && nowNeutralLong) {
+          confidence += 10;
+          triggers.push(`RSI reset from oversold → neutral (${rsiSignal!.toFixed(1)})`);
+        }
       }
 
       // EMA200 slope bonus (after Gate 6 ensures minimum slope)
@@ -276,10 +363,18 @@ export class EmaPullback implements IStrategy {
         triggers.push(`Moderate trend (ADX: ${adxSignal!.toFixed(1)})`);
       }
 
-      // RSI neutral reset bonus (existing)
-      if (rsiSignal! >= 40 && rsiSignal! <= 60) {
-        confidence += 10;
-        triggers.push(`RSI reset to neutral (${rsiSignal!.toFixed(1)})`);
+      // V3.1: RSI "actual reset" bonus (stricter than V3)
+      // Only award if RSI was extreme in recent bars AND has returned to neutral zone
+      const rsiPrev1Short = atIndex(rsi, signalIdx - 1);
+      const rsiPrev2Short = atIndex(rsi, signalIdx - 2);
+      const recentRsiShort = [rsiPrev1Short, rsiPrev2Short].filter((x) => typeof x === 'number') as number[];
+      if (recentRsiShort.length > 0) {
+        const nowNeutralShort = rsiSignal! >= GATE_CONFIG.rsiNeutralLow && rsiSignal! <= GATE_CONFIG.rsiNeutralHigh;
+        const wasOverbought = recentRsiShort.some((v) => v > GATE_CONFIG.rsiWasOverbought);
+        if (wasOverbought && nowNeutralShort) {
+          confidence += 10;
+          triggers.push(`RSI reset from overbought → neutral (${rsiSignal!.toFixed(1)})`);
+        }
       }
 
       // EMA200 slope bonus (after Gate 6 ensures minimum slope)
@@ -304,30 +399,25 @@ export class EmaPullback implements IStrategy {
 
     if (!direction) return null;
 
-    // V3: CONDITIONAL RSI extension handling (NOT hard block)
-    // Strong trends can sustain extended RSI - only penalize, don't kill
-    // Weak/moderate trends with extended RSI = exhaustion risk = block
-    // Unknown/missing trend = allow with bigger penalty
+    // V3.1: RSI extension handling (stricter - only strong trends allow)
+    // Strong trends can sustain extended RSI - allow with penalty
+    // All other trends with extended RSI = exhaustion risk = block
     if (direction === 'long' && rsiSignal! > 70) {
-      if (preflight.h4Trend?.strength === 'weak' || preflight.h4Trend?.strength === 'moderate') {
-        return null; // Block only in EXPLICITLY weak/moderate trends
-      } else if (preflight.h4Trend?.strength === 'strong') {
+      if (preflight.h4Trend.strength === 'strong') {
         confidence -= 10;
         triggers.push(`RSI extended but strong trend allows (${rsiSignal!.toFixed(1)})`);
       } else {
-        confidence -= 15; // Unknown/missing H4 trend = bigger penalty
-        triggers.push(`RSI extended, H4 trend unknown (${rsiSignal!.toFixed(1)})`);
+        logger.warn('RSI_EXT_BLOCKED', { symbol, direction, rsi: rsiSignal!, h4Strength: preflight.h4Trend.strength });
+        return null;
       }
     }
     if (direction === 'short' && rsiSignal! < 30) {
-      if (preflight.h4Trend?.strength === 'weak' || preflight.h4Trend?.strength === 'moderate') {
-        return null; // Block only in EXPLICITLY weak/moderate trends
-      } else if (preflight.h4Trend?.strength === 'strong') {
+      if (preflight.h4Trend.strength === 'strong') {
         confidence -= 10;
         triggers.push(`RSI extended but strong trend allows (${rsiSignal!.toFixed(1)})`);
       } else {
-        confidence -= 15; // Unknown/missing H4 trend = bigger penalty
-        triggers.push(`RSI extended, H4 trend unknown (${rsiSignal!.toFixed(1)})`);
+        logger.warn('RSI_EXT_BLOCKED', { symbol, direction, rsi: rsiSignal!, h4Strength: preflight.h4Trend.strength });
+        return null;
       }
     }
 
@@ -375,9 +465,13 @@ export class EmaPullback implements IStrategy {
       return null;
     }
 
-    const stopLossPrice = direction === 'long' ? emaZoneLow - (atrSignal! * 0.5) : emaZoneHigh + (atrSignal! * 0.5);
+    const stopLossPrice = direction === 'long'
+      ? emaZoneLow - atrSignal! * GATE_CONFIG.stopAtrBuffer
+      : emaZoneHigh + atrSignal! * GATE_CONFIG.stopAtrBuffer;
     const riskAmount = Math.abs(entryPrice - stopLossPrice);
-    const takeProfitPrice = direction === 'long' ? entryPrice + (riskAmount * 2) : entryPrice - (riskAmount * 2);
+    const takeProfitPrice = direction === 'long'
+      ? entryPrice + riskAmount * GATE_CONFIG.rrTarget
+      : entryPrice - riskAmount * GATE_CONFIG.rrTarget;
 
     if (!validateOrder(direction, entryPrice, stopLossPrice, takeProfitPrice)) return null;
 
@@ -386,40 +480,62 @@ export class EmaPullback implements IStrategy {
     confidence = clamp(confidence, 0, 100);
     if (confidence < 50) return null;
 
-    // V3: PHASE1_SIGNAL logging for validation tracking (raw numbers for analysis)
-    const adxTier = adxSignal! >= 35 ? 'very-strong' : adxSignal! >= 25 ? 'strong' : adxSignal! >= 18 ? 'moderate' : 'weak';
+    // V3.1: Enhanced PHASE1_SIGNAL logging for data flow verification
+    const adxTier = adxSignal! >= 35 ? 'very-strong' : adxSignal! >= 25 ? 'strong' : 'moderate';
     const ema50Touched = direction === 'long' ? signalBar.low <= ema50Signal! : signalBar.high >= ema50Signal!;
     const ema50Reclaim = direction === 'long' ? signalBar.close > ema50Signal! : signalBar.close < ema50Signal!;
+    const slope = normalizedSlope(ema200!, 10);
     logger.info('PHASE1_SIGNAL', {
       symbol,
       timestamp: signalBar.timestamp,
       direction,
+      // Entry/Order
+      entryIdx,
+      signalIdx,
       entryPrice,
       stopLossPrice,
       takeProfitPrice,
-      targetRR: 2.0,
-      adxSignal: adxSignal!,       // Raw number
+      targetRR: GATE_CONFIG.rrTarget,
+      // H1 Indicators (raw numbers)
+      adxSignal: adxSignal!,
       adxTier,
-      closeRatio,                   // Raw number
-      rsiSignal: rsiSignal!,        // Raw number
+      closeRatio,
+      rsiSignal: rsiSignal!,
+      atrSignal: atrSignal!,
+      emaZoneWidth,
+      widthAtr: (emaZoneWidth / atrSignal!).toFixed(2),
+      ema200Slope: slope,
+      // EMA50 reclaim
       ema50Touched,
-      ema50Reclaim,                 // Corrected field name (was ema50Reclaimed)
-      h4TrendDirection: preflight.h4Trend?.direction ?? 'unknown',
-      h4TrendStrength: preflight.h4Trend?.strength ?? 'unknown',
+      ema50Reclaim,
+      // H4 Trend
+      h4TrendDirection: preflight.h4Trend.direction,
+      h4TrendStrength: preflight.h4Trend.strength,
+      h4Adx: preflight.h4Trend.adxValue,
+      // Final
       confidence,
     });
 
     return buildDecision({
-      symbol, strategyId: this.meta.id, strategyName: this.meta.name,
-      direction, confidence, entryPrice, stopLoss: stopLossPrice, takeProfit: takeProfitPrice,
-      triggers, reasonCodes, settings, timeframes: this.meta.timeframes,
+      symbol,
+      strategyId: this.meta.id,
+      strategyName: this.meta.name,
+      direction,
+      confidence,
+      entryPrice,
+      stopLoss: stopLossPrice,
+      takeProfit: takeProfitPrice,
+      triggers,
+      reasonCodes,
+      settings,
+      timeframes: this.meta.timeframes,
       bars,
       atr: atrSignal ?? null,
       takeProfitConfig: {
-        preferStructure: false,  // V3: Deterministic RR
+        preferStructure: false,
         structureLookback: 60,
-        rrTarget: 2,
-        atrMultiplier: 1.5,  // V3: Reduced from 2.0 for consistency
+        rrTarget: GATE_CONFIG.rrTarget,
+        atrMultiplier: GATE_CONFIG.tpAtrMultiplier,
         sessionProfile: DEFAULT_SESSION_TP_PROFILE,
       },
     });
