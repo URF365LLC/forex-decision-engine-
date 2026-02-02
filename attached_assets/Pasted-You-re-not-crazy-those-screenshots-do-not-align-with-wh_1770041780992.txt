@@ -1,0 +1,633 @@
+You’re not crazy — those screenshots **do not align** with what an EMA Pullback *should* be approving under V3.1.
+
+Two separate problems are showing up:
+
+1. **Your engine’s indicator math/data feed is not matching your MT5 chart feed** (ADX is the smoking gun).
+
+   * Your NZDCAD chart shows **ADX ~15.50** (chop). That should be **blocked** by Gate 3 (ADX >= 18).
+   * Yet your email/engine says **ADX 30.1** and “no gating blocks.”
+     That means **one (or more)** of these is true:
+   * You’re still running **old strategy code** (not V3.1) in production.
+   * You *are* running V3.1, but you’re pulling **different candles** than MT5 (Twelve Data vs broker feed), so ADX differs massively.
+   * Your bars/indicators are **mis-indexed / reversed order**, so the strategy is using the wrong candle as “current.”
+   * Your UI is showing “gating clear” from a **different gating layer** (not the strategy hard-gates), i.e., you’re not surfacing the internal gate rejections.
+
+2. **Execution/entry pricing is broken** (ADA short from 0.29 while price is ~0.33 is classic “wrong bar / stale bar / reversed bars”).
+   That’s an “execution fix” issue: your entry reference (bar open/close) is not tied correctly to the most recent closed candle and/or current quote.
+
+Below is a **clean V3.1 file** that includes **all 7 gates + an Execution Fix + Data Integrity checks** to prevent exactly the “entry way out of range” problem.
+
+---
+
+## V3.1 EmaPullback.ts (gates + execution fix + data integrity)
+
+> Drop-in replacement style. You may need to adjust a couple import paths depending on your repo.
+
+```ts
+/**
+ * EMA Pullback Strategy - PROP-GRADE V3.1
+ *
+ * Root fix: moved from "score-first" to "gate-first" architecture.
+ * Outcome: weak/invalid setups MUST veto before confidence scoring.
+ *
+ * V3.1 HARD GATES:
+ *  G1: H4 trend must exist
+ *  G2: H4 ADX >= 20
+ *  G3: H1 ADX >= 18
+ *  G4: EMA zone width <= 3 * ATR
+ *  G5: Close-in-range floor (>=0.60 long, <=0.40 short)
+ *  G6: EMA200 slope enforcement (directional)
+ *  G7: Entry bar must still respect EMA200
+ *
+ * EXECUTION FIXES:
+ *  E1: Bar order / time sanity (prevents stale or reversed series)
+ *  E2: Entry drift gate (prevents entry far away from signal close)
+ */
+
+import type { Decision, IndicatorData, ReasonCode, StrategyMeta, UserSettings } from '../types.js';
+import type { IStrategy } from '../IStrategy.js';
+import { createLogger } from '../../services/logger.js';
+import {
+  allValidNumbers,
+  atIndex,
+  normalizedSlope,
+  validateIndicators,
+  validateOrder,
+} from '../utils.js';
+import { runPreFlight, logPreFlight } from '../preflight.js';
+
+const logger = createLogger('EmaPullback');
+
+// Centralized thresholds for runtime tuning
+const GATE_CONFIG = {
+  // Gate 2 / 3
+  h4AdxMin: 20,
+  h1AdxMin: 18,
+
+  // Gate 4
+  emaZoneMaxAtr: 3,
+
+  // Gate 5
+  closeRatioMinLong: 0.60,
+  closeRatioMaxShort: 0.40,
+
+  // Gate 6 (minimum slope required)
+  ema200SlopeMinLong: 0.00002,
+  ema200SlopeMaxShort: -0.00002,
+
+  // Optional slope bonus thresholds (strong slope)
+  ema200SlopeBonusLong: 0.00005,
+  ema200SlopeBonusShort: -0.00005,
+
+  // Close bonus thresholds (exceptional momentum)
+  closeRatioBonusLong: 0.70,
+  closeRatioBonusShort: 0.30,
+};
+
+const EXEC_CONFIG = {
+  // E1: expected H1 candle spacing ~3600s. Allow some tolerance for feeds.
+  expectedDeltaSec: 3600,
+  deltaToleranceSec: 900, // +/- 15 min
+
+  // E2: If entry is too far from the signal close, reject as “execution invalid”
+  // This catches ADA “short from .29 while price is .33” style failures.
+  maxEntryDriftAtr: 0.25,
+
+  // E3: bar freshness (avoid weekend/stale)
+  maxLastBarAgeSec: 3 * 3600, // 3 hours
+};
+
+function isTrendAligned(
+  h4Trend: { direction?: 'bullish' | 'bearish' | string },
+  dir: 'long' | 'short'
+): boolean {
+  if (!h4Trend?.direction) return false;
+  if (dir === 'long') return h4Trend.direction === 'bullish';
+  return h4Trend.direction === 'bearish';
+}
+
+function toEpochSec(ts: any): number | null {
+  if (ts == null) return null;
+  if (typeof ts === 'number') {
+    // already seconds or ms? heuristic:
+    return ts > 2_000_000_000 ? Math.floor(ts / 1000) : ts;
+  }
+  const d = new Date(ts);
+  const ms = d.getTime();
+  if (!Number.isFinite(ms)) return null;
+  return Math.floor(ms / 1000);
+}
+
+export class EmaPullback implements IStrategy {
+  meta: StrategyMeta = {
+    id: 'ema-pullback-intra',
+    name: 'EMA Pullback',
+    description:
+      'Trend continuation on EMA 20/50 pullback with 7-gate quality filter + execution integrity checks',
+    style: 'intraday',
+    timeframes: { trend: 'H4', entry: 'H1' },
+    winRate: 50,
+    avgRR: 2.0,
+    signalsPerWeek: '2-4',
+    requiredIndicators: [
+      'bars',
+      'ema20',
+      'ema50',
+      'ema200',
+      'rsi',
+      'adx',
+      'atr',
+      'trendBarsH4',
+      'ema200H4',
+      'adxH4',
+    ],
+    version: '2026-01-31',
+  };
+
+  async analyze(data: IndicatorData, settings: UserSettings): Promise<Decision | null> {
+    const {
+      symbol,
+      bars,
+      ema20,
+      ema50,
+      ema200,
+      rsi,
+      adx,
+      atr,
+      trendBarsH4,
+      ema200H4,
+      adxH4,
+    } = data;
+
+    // ---- DATA PRESENCE ----
+    if (!bars || bars.length < 250) return null;
+
+    // ---- EXECUTION FIX E1: bar freshness + order sanity ----
+    // We don’t mutate bars here (could desync indicators), we just reject if “time is broken.”
+    const entryIdx = bars.length - 1;
+    const signalIdx = bars.length - 2;
+    const entryBar = bars[entryIdx];
+    const signalBar = bars[signalIdx];
+
+    const entryTs = toEpochSec((entryBar as any).time ?? (entryBar as any).timestamp ?? (entryBar as any).t);
+    const signalTs = toEpochSec((signalBar as any).time ?? (signalBar as any).timestamp ?? (signalBar as any).t);
+
+    if (!entryTs || !signalTs) {
+      logger.warn('EXEC_E1_BLOCKED', { symbol, reason: 'Missing timestamps on bars' });
+      return null;
+    }
+
+    // If bars are reversed or there are gaps, this catches it.
+    const delta = entryTs - signalTs;
+    const minOk = EXEC_CONFIG.expectedDeltaSec - EXEC_CONFIG.deltaToleranceSec;
+    const maxOk = EXEC_CONFIG.expectedDeltaSec + EXEC_CONFIG.deltaToleranceSec;
+
+    if (delta < minOk || delta > maxOk) {
+      logger.warn('EXEC_E1_BLOCKED', {
+        symbol,
+        reason: 'Bar spacing/order invalid (likely reversed or missing candles)',
+        signalTs,
+        entryTs,
+        deltaSec: delta,
+        expected: EXEC_CONFIG.expectedDeltaSec,
+      });
+      return null;
+    }
+
+    // Freshness check (prevents weekend “stale last bar”)
+    const nowSec = Math.floor(Date.now() / 1000);
+    const lastBarAge = nowSec - entryTs;
+    if (lastBarAge > EXEC_CONFIG.maxLastBarAgeSec) {
+      logger.warn('EXEC_E1_BLOCKED', {
+        symbol,
+        reason: 'Last bar too old (stale feed / weekend / halted symbol)',
+        lastBarAgeSec: lastBarAge,
+      });
+      return null;
+    }
+
+    // ---- PREFLIGHT (H4 context) ----
+    const atrVal = bars.length > 2 ? atIndex(atr, bars.length - 2) : null;
+
+    const preflight = runPreFlight({
+      symbol,
+      bars,
+      interval: 'H1',
+      atr: atrVal,
+      strategyType: 'trend-continuation',
+      minBars: 250,
+      trendBarsH4,
+      ema200H4,
+      adxH4,
+    });
+
+    if (!preflight.passed) {
+      logPreFlight(symbol, this.meta.id, preflight);
+      return null;
+    }
+
+    // Validate indicator availability & min length
+    if (
+      !validateIndicators(data as unknown as Record<string, unknown>, ['bars', 'ema20', 'ema50', 'ema200', 'rsi', 'adx', 'atr'], 250)
+    ) {
+      return null;
+    }
+
+    const ema20Signal = atIndex(ema20, signalIdx);
+    const ema50Signal = atIndex(ema50, signalIdx);
+    const ema200Signal = atIndex(ema200, signalIdx);
+    const rsiSignal = atIndex(rsi, signalIdx);
+    const adxSignal = atIndex(adx, signalIdx);
+    const atrSignal = atIndex(atr, signalIdx);
+
+    if (!allValidNumbers(ema20Signal, ema50Signal, ema200Signal, rsiSignal, adxSignal, atrSignal)) return null;
+
+    // ---- V3.1 GATE-FIRST ARCHITECTURE ----
+
+    // GATE 1: H4 trend must exist
+    if (!preflight.h4Trend) {
+      logger.warn('GATE1_BLOCKED', { symbol, reason: 'No H4 trend data (null/undefined)' });
+      return null;
+    }
+
+    // GATE 2: H4 ADX >= 20
+    if (preflight.h4Trend.adxValue < GATE_CONFIG.h4AdxMin) {
+      logger.warn('GATE2_BLOCKED', {
+        symbol,
+        h4Adx: preflight.h4Trend.adxValue,
+        threshold: GATE_CONFIG.h4AdxMin,
+      });
+      return null;
+    }
+
+    // GATE 3: H1 ADX >= 18
+    if (adxSignal < GATE_CONFIG.h1AdxMin) {
+      logger.warn('GATE3_BLOCKED', {
+        symbol,
+        h1Adx: adxSignal,
+        threshold: GATE_CONFIG.h1AdxMin,
+      });
+      return null;
+    }
+
+    // Basic structure
+    const triggers: string[] = [];
+    const reasonCodes: ReasonCode[] = [];
+    let confidence = 0;
+    let direction: 'long' | 'short' | null = null;
+
+    const bullishTrend = signalBar.close > ema200Signal && ema20Signal > ema50Signal;
+    const bearishTrend = signalBar.close < ema200Signal && ema20Signal < ema50Signal;
+
+    const emaZoneHigh = Math.max(ema20Signal, ema50Signal);
+    const emaZoneLow = Math.min(ema20Signal, ema50Signal);
+    const emaZoneWidth = Math.abs(ema20Signal - ema50Signal);
+
+    // GATE 4: EMA zone width <= 3 ATR
+    if (emaZoneWidth > atrSignal * GATE_CONFIG.emaZoneMaxAtr) {
+      logger.warn('GATE4_BLOCKED', {
+        symbol,
+        emaZoneWidth,
+        atr: atrSignal,
+        widthAtr: emaZoneWidth / atrSignal,
+        thresholdAtr: GATE_CONFIG.emaZoneMaxAtr,
+      });
+      return null;
+    }
+
+    const inPullbackZone = signalBar.low <= emaZoneHigh && signalBar.high >= emaZoneLow;
+
+    const range = signalBar.high - signalBar.low;
+    const closeRatio = range > 0 ? (signalBar.close - signalBar.low) / range : 0.5;
+
+    // Slope (used in Gate 6 + bonus)
+    const slope = normalizedSlope(ema200!, 10);
+
+    // ---- LONG ----
+    if (bullishTrend && inPullbackZone && signalBar.close > ema20Signal) {
+      direction = 'long';
+
+      // H4 alignment check (must happen after direction is known)
+      if (!isTrendAligned(preflight.h4Trend, direction)) {
+        logger.warn('H4_ALIGN_BLOCKED', { symbol, direction, h4Dir: preflight.h4Trend.direction });
+        return null;
+      }
+
+      // GATE 5: close-in-range floor
+      if (closeRatio < GATE_CONFIG.closeRatioMinLong) {
+        logger.warn('GATE5_BLOCKED', {
+          symbol,
+          direction,
+          closeRatio,
+          threshold: GATE_CONFIG.closeRatioMinLong,
+        });
+        return null;
+      }
+
+      // GATE 6: EMA200 slope enforcement
+      if (slope < GATE_CONFIG.ema200SlopeMinLong) {
+        logger.warn('GATE6_BLOCKED', {
+          symbol,
+          direction,
+          slope,
+          threshold: GATE_CONFIG.ema200SlopeMinLong,
+        });
+        return null;
+      }
+
+      // Scoring starts only AFTER gates pass
+      confidence += 25;
+      triggers.push('Price above EMA200 (uptrend)');
+      triggers.push('EMA20 > EMA50 (bullish structure)');
+      triggers.push('Pullback into EMA20/50 zone');
+      reasonCodes.push('EMA_PULLBACK');
+
+      // ADX tiered scoring (ADX already >= 18)
+      if (adxSignal >= 35) {
+        confidence += 15;
+        triggers.push(`Very strong trend (ADX: ${adxSignal.toFixed(1)})`);
+      } else if (adxSignal >= 25) {
+        confidence += 10;
+        triggers.push(`Strong trend (ADX: ${adxSignal.toFixed(1)})`);
+      } else {
+        confidence += 5;
+        triggers.push(`Moderate trend (ADX: ${adxSignal.toFixed(1)})`);
+      }
+
+      // RSI neutral bonus (optional; you can upgrade later to “true reset”)
+      if (rsiSignal >= 40 && rsiSignal <= 60) {
+        confidence += 10;
+        triggers.push(`RSI neutral (${rsiSignal.toFixed(1)})`);
+      }
+
+      // Slope bonus
+      if (slope > GATE_CONFIG.ema200SlopeBonusLong) {
+        confidence += 10;
+        triggers.push('EMA200 strongly sloping upward');
+      }
+
+      // Close bonus
+      if (closeRatio > GATE_CONFIG.closeRatioBonusLong) {
+        confidence += 15;
+        triggers.push('Strong close (top 30% of range)');
+      }
+
+      // Optional: EMA50 reclaim
+      if (signalBar.low <= ema50Signal && signalBar.close > ema50Signal) {
+        confidence += 10;
+        triggers.push('Deep pullback with EMA50 reclaim');
+      }
+    }
+
+    // ---- SHORT ----
+    if (!direction && bearishTrend && inPullbackZone && signalBar.close < ema20Signal) {
+      direction = 'short';
+
+      // H4 alignment check
+      if (!isTrendAligned(preflight.h4Trend, direction)) {
+        logger.warn('H4_ALIGN_BLOCKED', { symbol, direction, h4Dir: preflight.h4Trend.direction });
+        return null;
+      }
+
+      // GATE 5: close-in-range floor (for shorts, close should be low in range => closeRatio small)
+      if (closeRatio > GATE_CONFIG.closeRatioMaxShort) {
+        logger.warn('GATE5_BLOCKED', {
+          symbol,
+          direction,
+          closeRatio,
+          threshold: GATE_CONFIG.closeRatioMaxShort,
+        });
+        return null;
+      }
+
+      // GATE 6: slope enforcement (must be down or at least not up)
+      if (slope > GATE_CONFIG.ema200SlopeMaxShort) {
+        logger.warn('GATE6_BLOCKED', {
+          symbol,
+          direction,
+          slope,
+          threshold: GATE_CONFIG.ema200SlopeMaxShort,
+        });
+        return null;
+      }
+
+      confidence += 25;
+      triggers.push('Price below EMA200 (downtrend)');
+      triggers.push('EMA20 < EMA50 (bearish structure)');
+      triggers.push('Pullback into EMA20/50 zone');
+      reasonCodes.push('EMA_PULLBACK');
+
+      if (adxSignal >= 35) {
+        confidence += 15;
+        triggers.push(`Very strong trend (ADX: ${adxSignal.toFixed(1)})`);
+      } else if (adxSignal >= 25) {
+        confidence += 10;
+        triggers.push(`Strong trend (ADX: ${adxSignal.toFixed(1)})`);
+      } else {
+        confidence += 5;
+        triggers.push(`Moderate trend (ADX: ${adxSignal.toFixed(1)})`);
+      }
+
+      if (rsiSignal >= 40 && rsiSignal <= 60) {
+        confidence += 10;
+        triggers.push(`RSI neutral (${rsiSignal.toFixed(1)})`);
+      }
+
+      if (slope < GATE_CONFIG.ema200SlopeBonusShort) {
+        confidence += 10;
+        triggers.push('EMA200 strongly sloping downward');
+      }
+
+      if (closeRatio < GATE_CONFIG.closeRatioBonusShort) {
+        confidence += 15;
+        triggers.push('Strong close (bottom 30% of range)');
+      }
+
+      if (signalBar.high >= ema50Signal && signalBar.close < ema50Signal) {
+        confidence += 10;
+        triggers.push('Deep pullback with EMA50 reject');
+      }
+    }
+
+    if (!direction) return null;
+
+    // ---- EXECUTION FIX E2: entry reference + drift gate ----
+    // “Signal” is known only after the signal bar CLOSES. The safest entry reference is:
+    //   entryCandidate = next bar OPEN (classic)
+    // BUT: if feeds are misordered/stale, open can be wildly off. So we drift-check.
+    const entryCandidate = entryBar.open;
+    const signalClose = signalBar.close;
+    const drift = Math.abs(entryCandidate - signalClose);
+
+    if (drift > atrSignal * EXEC_CONFIG.maxEntryDriftAtr) {
+      logger.warn('EXEC_E2_BLOCKED', {
+        symbol,
+        direction,
+        reason: 'Entry drift too large vs signal close (stale/wrong bar/spread explosion)',
+        entryCandidate,
+        signalClose,
+        atr: atrSignal,
+        drift,
+        driftAtr: drift / atrSignal,
+        thresholdAtr: EXEC_CONFIG.maxEntryDriftAtr,
+      });
+      return null;
+    }
+
+    const entryPrice = entryCandidate;
+
+    // ---- GATE 7: entry bar must respect EMA200 ----
+    const ema200Entry = atIndex(ema200, entryIdx);
+    if (!ema200Entry) {
+      logger.warn('GATE7_BLOCKED', { symbol, reason: 'No EMA200 value at entry index' });
+      return null;
+    }
+
+    if (direction === 'long' && entryPrice < ema200Entry) {
+      logger.warn('GATE7_BLOCKED', { symbol, direction, entryPrice, ema200Entry, reason: 'Entry below EMA200' });
+      return null;
+    }
+    if (direction === 'short' && entryPrice > ema200Entry) {
+      logger.warn('GATE7_BLOCKED', { symbol, direction, entryPrice, ema200Entry, reason: 'Entry above EMA200' });
+      return null;
+    }
+
+    // ---- Risk/Order construction ----
+    // You likely have existing logic; keep yours, but here’s a stable baseline:
+    const atrStop = atrSignal * 1.5;
+    const stopLossPrice = direction === 'long' ? entryPrice - atrStop : entryPrice + atrStop;
+    const riskAmount = Math.abs(entryPrice - stopLossPrice);
+    const takeProfitPrice = direction === 'long' ? entryPrice + riskAmount * 2 : entryPrice - riskAmount * 2;
+
+    if (!validateOrder(direction, entryPrice, stopLossPrice, takeProfitPrice)) return null;
+
+    // Confidence clamp
+    if (confidence > 100) confidence = 100;
+
+    // Require minimum score (keep your threshold if different)
+    if (confidence < 50) return null;
+
+    return {
+      symbol,
+      strategyId: this.meta.id,
+      direction,
+      confidence,
+      triggers,
+      reasonCodes,
+      entry: entryPrice,
+      stopLoss: stopLossPrice,
+      takeProfit: takeProfitPrice,
+      timeframes: this.meta.timeframes,
+      expiresIn: 2 * 3600, // 2 hours
+    };
+  }
+}
+```
+
+---
+
+## Did I include the “Execution fix”?
+
+**Yes — and it’s the part you’re currently missing.**
+
+The real-world symptom you showed (ADA short from **0.29** when price is **0.33**) usually comes from **one of these execution/data failures**:
+
+* **Bars are reversed** (oldest/newest flipped).
+* **Indicators are computed on one ordering**, but your strategy indexes assuming another ordering.
+* **Entry is using the wrong candle** (not the most recent closed candle).
+* **Stale series** (last bar timestamp is hours/days old; common on weekends/crypto provider quirks).
+
+That’s why the code above adds:
+
+* **EXEC_E1_BLOCKED** = bar spacing/order sanity
+* **EXEC_E2_BLOCKED** = entry drift vs signal close must be small (ATR-based)
+
+Those two will stop “entry from another universe” instantly.
+
+---
+
+## Why would H4 fail or return null if you pay Twelve Data?
+
+Payment doesn’t eliminate *integration failure modes*. H4 can be null when:
+
+1. **Symbol mapping mismatch**
+
+   * MT5 uses suffixes like `ADAUSDm`, `NZDCAD.pro`
+   * Twelve Data expects `ADA/USD` or `NZDCAD` (provider-specific)
+   * Your H1 fetch might “work” via a mapping, while H4 fetch uses a different mapping path and returns nothing.
+
+2. **Interval mapping bug**
+
+   * Your adapter might request `H4` as `"4h"` in one place and `"4H"` or `"240min"` elsewhere (provider dependent).
+   * Result: H1 returns bars, H4 returns empty.
+
+3. **Not enough bars returned for H4**
+
+   * If you request too small a `outputsize`, resampling/H4 trend logic might fail.
+   * H1 looks fine, H4 trend computation fails → null.
+
+4. **Transient API failures / rate limits / timeouts**
+
+   * Even paid plans get occasional empties/timeouts.
+   * If your code caches “empty” incorrectly, H4 stays null until cache expires.
+
+5. **Weekend / session gaps**
+
+   * FX H4 can appear stale/empty over weekend depending on provider.
+   * Your preflight may drop it as “stale” even if it exists.
+
+Bottom line: **H4 null is almost always a plumbing issue, not a “Twelve Data is bad” issue.**
+
+---
+
+## What I need to confirm EmaPullback is actually receiving correct data
+
+Not opinions — **hard evidence in logs**. Add a single structured “data snapshot” log at strategy entry (or in the data adapter):
+
+### Required debug fields (minimum)
+
+* `symbol`
+* `bars.length`
+* `bars[0].time`, `bars[last].time`
+* `bars[last].open/high/low/close`
+* `signalBar.time`, `entryBar.time`
+* `ema20.length/ema50.length/ema200.length/adx.length/atr.length`
+* `adxSignal`, `atrSignal`, `ema200Signal`
+* `trendBarsH4.length`
+* `preflight.h4Trend` existence + `preflight.h4Trend.adxValue` + `preflight.h4Trend.direction`
+
+If those don’t line up, the strategy can be perfect and you’ll still get garbage trades.
+
+---
+
+## Your screenshots: do they align?
+
+### NZDCAD example:
+
+* Chart shows **ADX ~15.50** (range).
+* Engine email says **ADX 30.1** (trend).
+  That is **not the same data**. Period.
+
+### ADA example:
+
+Entry is far from current price → that’s almost always:
+
+* **wrong candle index** or
+* **stale feed** or
+* **bars reversed**.
+
+The execution drift gate I gave you is designed to catch that immediately.
+
+---
+
+## The one Replit prompt that will actually fix this fast
+
+Tell Replit to implement **two diagnostics + one hard block** in the data layer:
+
+1. Ensure bars are **sorted ascending by timestamp** *before* indicator calculation.
+2. Log the **last bar timestamp + last close** per symbol per timeframe.
+3. Add a **freshness hard block**: reject if last bar age > 3 hours (H1) / > 12 hours (H4) unless it’s weekend FX handling.
+
+---
+
+If you want, paste (or upload) your current **data fetcher / adapter** that pulls `trendBarsH4` + `bars` (H1). The strategy can’t out-trade broken candles — and your screenshots are screaming “data alignment bug,” not “strategy logic bug.”

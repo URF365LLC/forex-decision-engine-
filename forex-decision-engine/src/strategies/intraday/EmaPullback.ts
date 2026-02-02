@@ -23,7 +23,7 @@
  * - minBars: 250
  */
 
-import { IStrategy, StrategyMeta, Decision, IndicatorData, UserSettings, ReasonCode } from '../types.js';
+import { IStrategy, StrategyMeta, Decision, IndicatorData, UserSettings, ReasonCode, getPipInfo, formatPrice } from '../types.js';
 import {
   atIndex,
   validateOrder,
@@ -41,6 +41,12 @@ import {
   getTrendConfidenceAdjustment,
 } from '../SignalQualityGate.js';
 import { createLogger } from '../../services/logger.js';
+
+// Execution integrity configuration
+const EXEC_CONFIG = {
+  maxDriftAtrMultiple: 0.25,  // Max 25% of ATR drift allowed between signal close and entry open
+  barSpacingToleranceSec: 900, // 15 minutes tolerance for H1 bar spacing (~3600s expected)
+};
 
 const logger = createLogger('EmaPullback');
 
@@ -96,7 +102,7 @@ export class EmaPullback implements IStrategy {
   };
 
   async analyze(data: IndicatorData, settings: UserSettings): Promise<Decision | null> {
-    const { symbol, bars, ema20, ema50, ema200, rsi, adx, atr, trendBarsH4, ema200H4, adxH4 } = data;
+    const { symbol, bars, ema20, ema50, ema200, rsi, adx, atr, adxH1, trendBarsH4, ema200H4, adxH4, trendTimeframeUsed } = data;
 
     // ─────────────────────────────────────────────────────────────
     // INPUT_SNAPSHOT: Data flow verification (proves pipeline is fresh)
@@ -162,12 +168,57 @@ export class EmaPullback implements IStrategy {
     const rsiSignal = atIndex(rsi, signalIdx);
     const adxSignal = atIndex(adx, signalIdx);
     const atrSignal = atIndex(atr, signalIdx);
+    const adxH1SignalVal = adxH1 && Array.isArray(adxH1) ? atIndex(adxH1 as { timestamp: string; value: number }[], signalIdx)?.value ?? null : null;
 
-    if (!allValidNumbers(ema20Signal, ema50Signal, ema200Signal, rsiSignal, adxSignal, atrSignal)) return null;
+    // Entry bar indicators for comprehensive NaN check
+    const ema20Entry = atIndex(ema20, entryIdx);
+    const ema50Entry = atIndex(ema50, entryIdx);
+    const atrEntry = atIndex(atr, entryIdx);
+    const adxH1EntryVal = adxH1 && Array.isArray(adxH1) ? atIndex(adxH1 as { timestamp: string; value: number }[], entryIdx)?.value ?? null : null;
+    const rsiEntry = atIndex(rsi, entryIdx);
+
+    // Comprehensive NaN check at BOTH signal and entry bars
+    const indicatorChecks = [
+      { name: 'ema20Signal', value: ema20Signal },
+      { name: 'ema50Signal', value: ema50Signal },
+      { name: 'ema200Signal', value: ema200Signal },
+      { name: 'atrSignal', value: atrSignal },
+      { name: 'adxH1Signal', value: adxH1SignalVal },
+      { name: 'rsiSignal', value: rsiSignal },
+      { name: 'ema20Entry', value: ema20Entry },
+      { name: 'ema50Entry', value: ema50Entry },
+      { name: 'atrEntry', value: atrEntry },
+    ];
+
+    for (const check of indicatorChecks) {
+      if (!Number.isFinite(check.value)) {
+        logger.warn('INDICATOR_NAN_BLOCKED', {
+          symbol,
+          indicator: check.name,
+          value: check.value,
+          reason: 'NaN or invalid indicator value',
+        });
+        return null;
+      }
+    }
+
+    if (!allValidNumbers(ema20Signal, ema50Signal, ema200Signal, rsiSignal, adxSignal, atrSignal, adxH1SignalVal)) return null;
 
     // ─────────────────────────────────────────────────────────────
     // V3.1 GATE-FIRST ARCHITECTURE (Gates must pass before scoring)
     // ─────────────────────────────────────────────────────────────
+
+    // GATE 0: H4 timeframe required (HARD BLOCK D1 fallback or missing H4)
+    if (trendTimeframeUsed !== 'H4') {
+      logger.warn('GATE0_H4_REQUIRED_BLOCKED', {
+        symbol,
+        reason: trendTimeframeUsed === 'D1' 
+          ? 'D1 fallback not allowed for intraday strategy - H4 data required'
+          : 'H4 trend data unavailable - intraday strategy requires H4 timeframe',
+        trendTimeframeUsed: trendTimeframeUsed ?? 'undefined',
+      });
+      return null;
+    }
 
     // GATE 1: H4 Trend must exist
     if (!preflight.h4Trend) {
@@ -185,12 +236,34 @@ export class EmaPullback implements IStrategy {
       return null;
     }
 
-    // GATE 3: H1 ADX must be >= threshold
-    if (adxSignal! < GATE_CONFIG.h1AdxMin) {
+    // GATE 3: H1 ADX must be >= threshold (using ACTUAL H1 ADX from API)
+    if (!adxH1SignalVal || adxH1SignalVal < GATE_CONFIG.h1AdxMin) {
       logger.warn('GATE3_BLOCKED', {
         symbol,
-        h1Adx: adxSignal!,
+        h1Adx: adxH1SignalVal,
         threshold: GATE_CONFIG.h1AdxMin,
+        source: 'H1',
+      });
+      return null;
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // E2: EXECUTION DRIFT GATE
+    // Reject if entry price gaps too far from signal bar close
+    // ═══════════════════════════════════════════════════════════════
+    const { pipSize } = getPipInfo(symbol);
+    const driftDistance = Math.abs(entryBar.open - signalBar.close);
+    const maxDrift = atrSignal! * EXEC_CONFIG.maxDriftAtrMultiple;
+
+    if (driftDistance > maxDrift) {
+      logger.warn('EXEC_E2_BLOCKED', {
+        symbol,
+        reason: 'Entry price drifted too far from signal close',
+        driftPips: (driftDistance / pipSize).toFixed(1),
+        maxDriftPips: (maxDrift / pipSize).toFixed(1),
+        entryOpen: formatPrice(entryBar.open, symbol),
+        signalClose: formatPrice(signalBar.close, symbol),
+        atr: atrSignal!.toFixed(5),
       });
       return null;
     }
@@ -279,16 +352,16 @@ export class EmaPullback implements IStrategy {
     // Include any preflight adjustments (freshness/quality/etc.)
     confidence += preflight.confidenceAdjustments;
 
-    // ADX tiered scoring (GATE 3 already enforced ADX >= 18)
-    if (adxSignal! >= 35) {
+    // ADX tiered scoring using ACTUAL H1 ADX (GATE 3 already enforced ADX >= 18)
+    if (adxH1SignalVal! >= 35) {
       confidence += 15;
-      triggers.push(`Very strong trend (ADX: ${adxSignal!.toFixed(1)})`);
-    } else if (adxSignal! >= 25) {
+      triggers.push(`Very strong H1 trend (ADX: ${adxH1SignalVal!.toFixed(1)})`);
+    } else if (adxH1SignalVal! >= 25) {
       confidence += 10;
-      triggers.push(`Strong trend (ADX: ${adxSignal!.toFixed(1)})`);
+      triggers.push(`Strong H1 trend (ADX: ${adxH1SignalVal!.toFixed(1)})`);
     } else {
       confidence += 5;
-      triggers.push(`Moderate trend (ADX: ${adxSignal!.toFixed(1)})`);
+      triggers.push(`Moderate H1 trend (ADX: ${adxH1SignalVal!.toFixed(1)})`);
     }
 
     // EMA200 slope bonus (not gate)

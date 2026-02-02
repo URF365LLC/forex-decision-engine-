@@ -94,6 +94,8 @@ export interface IndicatorData {
   bbands?: { upper: number; middle: number; lower: number }[];
   atr?: number[];
   adx?: number[];
+  // H1 ADX - ACTUAL H1 timeframe ADX (not D1 mislabeled as H1)
+  adxH1?: { timestamp: string; value: number }[];
   ema8?: number[];
   ema21?: number[];
   ema55?: number[];

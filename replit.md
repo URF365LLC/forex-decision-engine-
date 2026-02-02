@@ -87,6 +87,26 @@ All strategies undergo 4-Way AI Validation (GPT-4, Claude, Replit Agent, Human) 
 ### Deprecated Strategies
 - **RsiBounce** (deprecated 2026-01-22): Removed from registry due to poor automation performance
 
+### EmaPullback V3.1 Execution Integrity (2026-02-02)
+Major data integrity fixes to eliminate false signals:
+
+**P0 Fixes:**
+1. **Bar-Close Cache Fingerprinting** - Cache keys now include `lastClosedBarTs` to prevent stale indicator values
+2. **H1 ADX from API** - Gate 3 now uses actual H1 ADX (`adxH1`) instead of D1 ADX mislabeled as H1
+3. **HARD BLOCK D1 Fallback** - Intraday strategies reject when H4 data unavailable (no D1 substitution)
+4. **Timestamp-Based Indicator Alignment** - H1 indicators aligned by timestamp matching, not array padding
+5. **UTC Timestamp Normalization** - Appends 'Z' suffix to enforce UTC parsing of API timestamps
+6. **NaN Handling** - Replaces `|| '0'` pattern with explicit NaN for missing/invalid data
+7. **Execution Drift Gate (E2)** - Rejects signals if |entryBar.open - signalBar.close| > 0.25*ATR
+8. **Comprehensive NaN Checks** - Validates all indicators at BOTH signal and entry bar indices
+
+**Architecture Changes:**
+- New `EXEC_CONFIG` with `maxDriftAtrMultiple: 0.25` and `barSpacingToleranceSec: 900`
+- New `normalizeToUTC()` and `parseNumeric()` utilities in twelveDataClient.ts
+- Gate 0 (D1 fallback block) added before existing Gate 1
+- `adxH1` field added to IndicatorData interface
+- `alignIndicatorToBars()` function aligns H1 indicators by timestamp
+
 ## Integration Audit Summary (Jan 2026)
 
 ### Audit Date: 2026-01-24
