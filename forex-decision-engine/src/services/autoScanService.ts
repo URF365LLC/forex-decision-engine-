@@ -24,7 +24,6 @@ import { createLogger } from './logger.js';
 import { analyzeWithStrategy } from '../engine/strategyAnalyzer.js';
 import { ALL_INSTRUMENTS, FOREX_SPECS, CRYPTO_SPECS, METAL_SPECS, INDEX_SPECS, COMMODITY_SPECS } from '../config/e8InstrumentSpecs.js';
 import { isNewSignal, trackSignal } from '../storage/signalFreshnessTracker.js';
-import { signalStore } from '../storage/signalStore.js';
 import { strategyRegistry } from '../strategies/registry.js';
 import { gradeTracker } from './gradeTracker.js';
 import { processAutoScanDecision, invalidateOnConditionChange } from './detectionService.js';
@@ -103,10 +102,8 @@ export type WatchlistPreset = 'majors' | 'majors-gold' | 'minors' | 'crypto' | '
 const MAJOR_PAIRS = ['EURUSD', 'GBPUSD', 'USDJPY', 'USDCHF', 'AUDUSD', 'NZDUSD', 'USDCAD'];
 const MINOR_PAIRS = FOREX_SPECS.map(s => s.symbol).filter(s => !MAJOR_PAIRS.includes(s));
 
-// Exclude indices AND disabled instruments from 'all' preset
-// - Indices require higher Twelve Data plan for real-time data
-// - Disabled instruments (WTI, BRENT) have stale/unreliable data
-const ALL_ACTIVE_TRADABLE = ALL_INSTRUMENTS.filter(s => s.type !== 'index' && !s.disabled).map(s => s.symbol);
+// Exclude indices from 'all' preset - requires higher Twelve Data plan for real-time data
+const ALL_EXCEPT_INDICES = ALL_INSTRUMENTS.filter(s => s.type !== 'index').map(s => s.symbol);
 
 export const WATCHLIST_PRESETS: Record<WatchlistPreset, { symbols: string[]; description: string }> = {
   'majors': { symbols: MAJOR_PAIRS, description: '7 major forex pairs' },
@@ -114,9 +111,9 @@ export const WATCHLIST_PRESETS: Record<WatchlistPreset, { symbols: string[]; des
   'minors': { symbols: MINOR_PAIRS, description: '21 minor forex pairs' },
   'crypto': { symbols: CRYPTO_SPECS.map(s => s.symbol), description: '8 cryptocurrencies (24/7)' },
   'metals': { symbols: METAL_SPECS.map(s => s.symbol), description: 'Gold & silver' },
-  'indices': { symbols: INDEX_SPECS.filter(s => !s.disabled).map(s => s.symbol), description: 'Major indices (requires upgraded plan)' },
-  'commodities': { symbols: COMMODITY_SPECS.filter(s => !s.disabled).map(s => s.symbol), description: 'Oil & energy (active only)' },
-  'all': { symbols: ALL_ACTIVE_TRADABLE, description: `All ${ALL_ACTIVE_TRADABLE.length} active instruments` },
+  'indices': { symbols: INDEX_SPECS.map(s => s.symbol), description: '6 major indices (requires upgraded plan)' },
+  'commodities': { symbols: COMMODITY_SPECS.map(s => s.symbol), description: 'Oil & energy' },
+  'all': { symbols: ALL_EXCEPT_INDICES, description: `All ${ALL_EXCEPT_INDICES.length} instruments (excl. indices)` },
   'custom': { symbols: [], description: 'Custom selection' },
 };
 
@@ -145,28 +142,6 @@ function isForexMarketOpen(): boolean {
 function isCryptoMarketOpen(): boolean {
   // Crypto trades 24/7
   return true;
-}
-
-function getMarketDayInfo(): { dayName: string; isWeekend: boolean; reason: string } {
-  const now = new Date();
-  const day = now.getUTCDay();
-  const hour = now.getUTCHours();
-  const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-  const dayName = dayNames[day];
-  
-  if (day === 6) {
-    return { dayName, isWeekend: true, reason: `${dayName} (UTC) - Market closed` };
-  }
-  if (day === 0) {
-    if (hour < 22) {
-      return { dayName, isWeekend: true, reason: `${dayName} (UTC) - Opens at 22:00 UTC` };
-    }
-    return { dayName, isWeekend: false, reason: '' };
-  }
-  if (day === 5 && hour >= 22) {
-    return { dayName, isWeekend: false, reason: `${dayName} (UTC) - Market closed` };
-  }
-  return { dayName, isWeekend: false, reason: '' };
 }
 
 function getSymbolMarketStatus(symbol: string): { open: boolean; reason?: string } {
@@ -254,7 +229,6 @@ export interface AutoScanStatus {
     forex: boolean;
     crypto: boolean;
     forexReason?: string;
-    currentDay?: string;
   };
   currentScan: {
     strategyId: string | null;
@@ -331,8 +305,7 @@ class AutoScanService {
       marketStatus: {
         forex: isForexMarketOpen(),
         crypto: true,
-        forexReason: isForexMarketOpen() ? undefined : getMarketDayInfo().reason,
-        currentDay: getMarketDayInfo().dayName,
+        forexReason: isForexMarketOpen() ? undefined : 'Weekend',
       },
       currentScan: null,
     };
@@ -438,12 +411,10 @@ class AutoScanService {
   
   getStatus(): AutoScanStatus {
     // Update market status on every call
-    const dayInfo = getMarketDayInfo();
     this.status.marketStatus = {
       forex: isForexMarketOpen(),
       crypto: true,
-      forexReason: isForexMarketOpen() ? undefined : dayInfo.reason,
-      currentDay: dayInfo.dayName,
+      forexReason: isForexMarketOpen() ? undefined : 'Weekend',
     };
     return { ...this.status };
   }
@@ -600,12 +571,10 @@ class AutoScanService {
     const startTime = Date.now();
 
     // Update market status
-    const dayInfo = getMarketDayInfo();
     this.status.marketStatus = {
       forex: isForexMarketOpen(),
       crypto: true,
-      forexReason: isForexMarketOpen() ? undefined : dayInfo.reason,
-      currentDay: dayInfo.dayName,
+      forexReason: isForexMarketOpen() ? undefined : 'Weekend',
     };
     
     // Filter symbols by market hours
@@ -790,15 +759,6 @@ class AutoScanService {
             timestamp: decision.timestamp || new Date().toISOString(),
           };
           await processAutoScanDecision(enrichedDecision);
-          
-          // Archive signal to history for future reference
-          try {
-            await signalStore.saveSignal(enrichedDecision);
-            logger.debug(`AUTO_SCAN: Archived signal for ${symbol} ${decision.grade} to signal history`);
-          } catch (saveError) {
-            const saveErrorMsg = saveError instanceof Error ? saveError.message : 'Unknown error';
-            logger.warn(`AUTO_SCAN: Failed to archive signal for ${symbol}: ${saveErrorMsg}`);
-          }
         } catch (detectionError) {
           const errorMsg = detectionError instanceof Error ? detectionError.message : 'Unknown error';
           logger.warn(`AUTO_SCAN: Failed to persist detection for ${symbol}: ${errorMsg}`);

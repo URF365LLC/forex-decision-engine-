@@ -207,46 +207,6 @@ const API = {
     const query = params.toString();
     return this.request(`/api/journal/stats${query ? '?' + query : ''}`);
   },
-
-  // ═══════════════════════════════════════════════════════════════
-  // SIGNAL CRUD
-  // ═══════════════════════════════════════════════════════════════
-
-  /**
-   * Get a single signal by ID
-   */
-  async getSignal(id) {
-    return this.request(`/api/signals/${id}`);
-  },
-
-  /**
-   * Update signal (full update)
-   */
-  async updateSignal(id, updates) {
-    return this.request(`/api/signals/${id}`, {
-      method: 'PATCH',
-      body: updates,
-    });
-  },
-
-  /**
-   * Delete signal
-   */
-  async deleteSignal(id) {
-    return this.request(`/api/signals/${id}`, {
-      method: 'DELETE',
-    });
-  },
-
-  /**
-   * Mark signal result
-   */
-  async markSignalResult(id, result, notes) {
-    return this.request(`/api/signals/${id}`, {
-      method: 'PUT',
-      body: { result, notes },
-    });
-  },
 };
 
 // Export for use in other scripts

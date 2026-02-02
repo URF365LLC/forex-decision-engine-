@@ -1,8 +1,8 @@
 {
-  "startOfDayEquity": 100000,
-  "peakEquity": 100000,
-  "lastEquity": 100000,
-  "lastUpdated": 1770071149349,
-  "dayKey": "2026-02-02",
+  "startOfDayEquity": 10000,
+  "peakEquity": 10000,
+  "lastEquity": 10000,
+  "lastUpdated": 1769202762743,
+  "dayKey": "2026-01-23",
   "source": "calculated"
 }

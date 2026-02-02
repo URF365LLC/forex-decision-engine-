@@ -1,6 +1,6 @@
 {
   "enabled": true,
-  "intervalMs": 600000,
+  "intervalMs": 300000,
   "symbols": [
     "EURUSD",
     "GBPUSD",
@@ -30,6 +30,8 @@
     "AUDNZD",
     "EURNZD",
     "GBPNZD",
+    "WTI",
+    "BRENT",
     "XAUUSD",
     "XAGUSD",
     "BTCUSD",
@@ -87,5 +89,5 @@
   "email": "ing.logixtics24@gmail.com",
   "watchlistPreset": "all",
   "customSymbols": [],
-  "respectMarketHours": false
+  "respectMarketHours": true
 }

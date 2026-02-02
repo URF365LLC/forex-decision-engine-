@@ -193,21 +193,27 @@ export function convertDecisionToDetection(
 function calculateBarExpiration(timeframe: string): string {
   const now = new Date();
   
-  // Give signals a minimum 2-hour validity window from detection time
-  // This ensures signals stay visible long enough for traders to act on them
   switch (timeframe) {
     case '1h':
-      // Minimum 2 hours from now
-      const twoHoursLater = new Date(now.getTime() + 2 * 60 * 60 * 1000);
-      return twoHoursLater.toISOString();
+      // Next hour boundary
+      const nextHour = new Date(now);
+      nextHour.setMinutes(0, 0, 0);
+      nextHour.setHours(nextHour.getHours() + 1);
+      return nextHour.toISOString();
     case '4h':
-      // Minimum 4 hours from now for 4h signals
-      const fourHoursLater = new Date(now.getTime() + 4 * 60 * 60 * 1000);
-      return fourHoursLater.toISOString();
+      // Next 4-hour boundary (0, 4, 8, 12, 16, 20)
+      const next4h = new Date(now);
+      next4h.setMinutes(0, 0, 0);
+      const currentHour = next4h.getHours();
+      const next4hHour = Math.ceil((currentHour + 1) / 4) * 4;
+      next4h.setHours(next4hHour);
+      return next4h.toISOString();
     default:
-      // Default to 2 hours from now
-      const defaultExpiry = new Date(now.getTime() + 2 * 60 * 60 * 1000);
-      return defaultExpiry.toISOString();
+      // Default to next hour
+      const defaultNext = new Date(now);
+      defaultNext.setMinutes(0, 0, 0);
+      defaultNext.setHours(defaultNext.getHours() + 1);
+      return defaultNext.toISOString();
   }
 }
 

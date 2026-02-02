@@ -36,7 +36,6 @@ import { gradeTracker } from './services/gradeTracker.js';
 import { autoScanService } from './services/autoScanService.js';
 import { alertService } from './services/alertService.js';
 import { grokSentimentService } from './services/grokSentimentService.js';
-import { runBacktest } from './services/backtestService.js';
 import { validateBody, validateQuery, validateParams } from './middleware/validate.js';
 import { requestIdMiddleware } from './middleware/requestId.js';
 import {
@@ -59,7 +58,6 @@ import {
   DetectionDismissSchema,
   SymbolParamSchema,
   IdParamSchema,
-  SignalFullUpdateSchema,
 } from './validation/schemas.js';
 import { z } from 'zod';
 import * as detectionService from './services/detectionService.js';
@@ -311,14 +309,6 @@ app.get('/api/strategies', validateQuery(StrategiesQuerySchema), (req, res) => {
 });
 
 /**
- * Get list of tradeable symbols
- */
-app.get('/api/symbols', (req, res) => {
-  const symbols = ACTIVE_INSTRUMENTS.map(s => s.symbol);
-  res.json({ success: true, symbols });
-});
-
-/**
  * Scan multiple symbols
  * V1.1: strategyId is REQUIRED, drawdown check is MANDATORY (unless paperTrading)
  */
@@ -487,31 +477,18 @@ app.post('/api/scan', validateBody(ScanRequestSchema), async (req, res) => {
  */
 app.get('/api/signals', validateQuery(SignalsQuerySchema), async (req, res) => {
   try {
-    const { limit, offset, grade, symbol } = req.query as { limit: number; offset: number; grade?: string; symbol?: string };
-    const pageOffset = offset ?? 0;
+    const { limit, grade, symbol } = req.query as { limit: number; grade?: string; symbol?: string };
 
     let signals;
-    let total;
-
     if (grade) {
       signals = await signalStore.getByGrade(grade, limit);
-      total = signals.length;
     } else if (symbol) {
       signals = await signalStore.getBySymbol(symbol.toUpperCase(), limit);
-      total = signals.length;
     } else {
-      signals = await signalStore.getRecent(limit, pageOffset);
-      total = await signalStore.getTotal();
+      signals = await signalStore.getRecent(limit);
     }
 
-    res.json({ 
-      success: true, 
-      count: signals.length, 
-      total,
-      offset: pageOffset,
-      limit,
-      signals 
-    });
+    res.json({ success: true, count: signals.length, signals });
   } catch (error) {
     logger.error('Get signals error', { error });
     res.status(500).json({
@@ -549,52 +526,7 @@ app.put('/api/signals/:id', validateBody(SignalResultSchema), async (req, res) =
 });
 
 /**
- * Full update signal (edit all fields)
- */
-app.patch('/api/signals/:id', validateBody(SignalFullUpdateSchema), async (req, res) => {
-  try {
-    const id = req.params.id;
-    const updates = req.body;
-
-    const updated = await signalStore.update(id, updates);
-
-    if (!updated) {
-      return res.status(404).json({ error: 'Signal not found' });
-    }
-
-    res.json({ success: true, signal: updated });
-  } catch (error) {
-    logger.error('Full update signal error', { error });
-    res.status(500).json({
-      error: error instanceof Error ? error.message : 'Failed to update signal'
-    });
-  }
-});
-
-/**
- * Delete a signal
- */
-app.delete('/api/signals/:id', async (req, res) => {
-  try {
-    const id = req.params.id;
-
-    const deleted = await signalStore.delete(id);
-
-    if (!deleted) {
-      return res.status(404).json({ error: 'Signal not found' });
-    }
-
-    res.json({ success: true });
-  } catch (error) {
-    logger.error('Delete signal error', { error });
-    res.status(500).json({
-      error: error instanceof Error ? error.message : 'Failed to delete signal'
-    });
-  }
-});
-
-/**
- * Get signal statistics (must be before :id route)
+ * Get signal statistics
  */
 app.get('/api/signals/stats', async (req, res) => {
   try {
@@ -604,59 +536,6 @@ app.get('/api/signals/stats', async (req, res) => {
     logger.error('Get stats error', { error });
     res.status(500).json({
       error: error instanceof Error ? error.message : 'Failed to get stats'
-    });
-  }
-});
-
-/**
- * Backtest archived signals against historical data
- */
-app.post('/api/signals/backtest', async (req, res) => {
-  try {
-    const { grade, symbol, strategy, group, session, direction, fromDate, toDate, limit = 50, persist = false } = req.body;
-    
-    logger.info('Starting backtest', { grade, symbol, strategy, group, session, direction, fromDate, toDate, limit, persist });
-    
-    const summary = await runBacktest({
-      grade,
-      symbol,
-      strategy,
-      group,
-      session,
-      direction,
-      fromDate,
-      toDate,
-      limit: limit === 0 ? 0 : Math.min(limit, 200),
-      persist,
-    });
-    
-    res.json({ success: true, ...summary });
-  } catch (error) {
-    logger.error('Backtest error', { error });
-    res.status(500).json({
-      error: error instanceof Error ? error.message : 'Failed to run backtest'
-    });
-  }
-});
-
-/**
- * Get a single signal by ID
- */
-app.get('/api/signals/:id', async (req, res) => {
-  try {
-    const id = req.params.id;
-
-    const signal = await signalStore.getById(id);
-
-    if (!signal) {
-      return res.status(404).json({ error: 'Signal not found' });
-    }
-
-    res.json({ success: true, signal });
-  } catch (error) {
-    logger.error('Get signal by id error', { error });
-    res.status(500).json({
-      error: error instanceof Error ? error.message : 'Failed to get signal'
     });
   }
 });
@@ -1378,16 +1257,6 @@ async function startServer() {
       await initDb();
       await runMigrations();
       logger.info('Database connected and migrations completed');
-      
-      // Sync file signals to database (one-time migration for legacy data)
-      try {
-        const synced = await signalStore.syncFileToDatabase();
-        if (synced > 0) {
-          logger.info(`Migrated ${synced} legacy signals from file to database`);
-        }
-      } catch (syncError) {
-        logger.warn(`Signal sync failed (non-critical): ${syncError}`);
-      }
     } else {
       logger.warn('DATABASE_URL not set - using in-memory/file storage');
     }
