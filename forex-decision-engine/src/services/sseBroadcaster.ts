@@ -72,21 +72,3 @@ export function broadcastScanComplete(strategyId: string, durationMs: number, re
     timestamp: new Date().toISOString()
   });
 }
-
-export interface NewDetectionPayload {
-  id: string;
-  symbol: string;
-  strategyId: string;
-  strategyName: string;
-  grade: string;
-  direction: string;
-  isNew: boolean;
-}
-
-export function broadcastNewDetection(payload: NewDetectionPayload): void {
-  broadcastSSE({
-    type: 'detection:new',
-    ...payload,
-    timestamp: new Date().toISOString()
-  });
-}

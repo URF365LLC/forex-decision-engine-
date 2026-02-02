@@ -28,9 +28,6 @@ export interface IndicatorData {
   rsi: IndicatorValue[];
   atr: IndicatorValue[];
   
-  // H1 ADX - ACTUAL H1 timeframe ADX (not D1)
-  adxH1: IndicatorValue[];
-  
   stoch: { timestamp: string; k: number; d: number }[];
   willr: IndicatorValue[];
   cci: IndicatorValue[];
@@ -60,12 +57,12 @@ interface TrendDataH4 {
   trendBarsH4: OHLCVBar[];
   ema200H4: IndicatorValue[];
   adxH4: IndicatorValue[];
-  trendTimeframeUsed: 'H4';
-  trendFallbackUsed: false;
+  trendTimeframeUsed: 'H4' | 'D1';
+  trendFallbackUsed: boolean;
 }
 
 const indicatorInflight = new Map<string, Promise<unknown>>();
-const BUNDLE_CACHE_VERSION = 'v4'; // Bumped to invalidate cached bundles without adxH1 field
+const BUNDLE_CACHE_VERSION = 'v2';
 
 async function fetchWithCache<T>(
   key: string,
@@ -171,7 +168,7 @@ function alignIndicatorToBars(
   return aligned;
 }
 
-async function fetchTrendDataH4(symbol: string): Promise<TrendDataH4 | null> {
+async function fetchTrendDataH4(symbol: string): Promise<TrendDataH4> {
   try {
     // Try H4 first (Twelve Data supports 4h natively)
     // CRITICAL FIX: Use 'compact' for indicators to match bars (100 data points)
@@ -195,15 +192,29 @@ async function fetchTrendDataH4(symbol: string): Promise<TrendDataH4 | null> {
       trendFallbackUsed: false,
     };
   } catch (error) {
-    // HARD BLOCK: Do NOT fallback to D1 - intraday strategies require H4 data
-    logger.error('H4_TREND_HARD_BLOCKED', {
-      symbol,
+    // Fallback to D1 if Twelve rejects H4 for this symbol
+    logger.warn(`TREND_FALLBACK_D1_USED: ${symbol} - H4 failed, using D1`, {
       error: error instanceof Error ? error.message : 'Unknown error',
-      action: 'NO D1 FALLBACK - Returning null to block intraday signals',
+      symbol,
     });
     
-    // Return null to signal that H4 data is unavailable
-    return null;
+    const [trendBarsD1, ema200D1Raw, adxD1Raw] = await Promise.all([
+      twelveData.getOHLCV(symbol, 'daily', 'compact'),
+      twelveData.getEMA(symbol, 'daily', 200, 'compact'),
+      twelveData.getADX(symbol, 'daily', 14, 'compact'),
+    ]);
+    
+    // Align indicators by timestamp to bars
+    const ema200D1 = alignIndicatorToBars(trendBarsD1, ema200D1Raw, 'D1 EMA200');
+    const adxD1 = alignIndicatorToBars(trendBarsD1, adxD1Raw, 'D1 ADX');
+    
+    return {
+      trendBarsH4: trendBarsD1,
+      ema200H4: ema200D1,
+      adxH4: adxD1,
+      trendTimeframeUsed: 'D1',
+      trendFallbackUsed: true,
+    };
   }
 }
 
@@ -263,7 +274,6 @@ export async function fetchIndicators(
     ema50: [],
     rsi: [],
     atr: [],
-    adxH1: [],
     stoch: [],
     willr: [],
     cci: [],
@@ -312,34 +322,25 @@ export async function fetchIndicators(
         errors,
         []
       ),
-      fetchWithCache<TrendDataH4 | null>(
+      fetchWithCache<TrendDataH4>(
         CacheService.makeKey(symbol, 'H4', 'trend-pack', { style }),
         h4Ttl,
         () => fetchTrendDataH4(symbol),
         'H4 trend pack',
         errors,
-        null
+        { trendBarsH4: [], ema200H4: [], adxH4: [], trendTimeframeUsed: 'H4', trendFallbackUsed: false }
       ),
     ]);
-    
-    // HARD BLOCK: If H4 trend data unavailable, block further processing
-    if (!h4Trend) {
-      logger.error('H4_TREND_UNAVAILABLE', { symbol, action: 'Indicator bundle will have null H4 data - strategies should reject' });
-    }
     
     // Align daily indicators to trendBars by timestamp
     const ema200 = alignIndicatorToBars(trendBars, ema200Raw, 'D1 EMA200');
     const adx = alignIndicatorToBars(trendBars, adxRaw, 'D1 ADX');
 
-    // Get last closed bar timestamp for cache fingerprinting (bar-close aligned caching)
-    const lastClosedBarTs = entryBars.length > 1 ? entryBars[entryBars.length - 2].timestamp : 'unknown';
-    
     const [
-      ema20Raw,
-      ema50Raw,
-      rsiRaw,
-      atrRaw,
-      adxH1Raw,
+      ema20,
+      ema50,
+      rsi,
+      atr,
       stoch,
       willr,
       cci,
@@ -352,7 +353,7 @@ export async function fetchIndicators(
       obv,
     ] = await Promise.all([
       fetchWithCache(
-        CacheService.makeKey(symbol, entryInterval, 'ema20', { style, bar: lastClosedBarTs }),
+        CacheService.makeKey(symbol, entryInterval, 'ema20', { style }),
         bundleTtl,
         () => twelveData.getEMA(symbol, entryInterval, STRATEGY.entry.emaFast.period),
         'EMA20',
@@ -360,7 +361,7 @@ export async function fetchIndicators(
         []
       ),
       fetchWithCache(
-        CacheService.makeKey(symbol, entryInterval, 'ema50', { style, bar: lastClosedBarTs }),
+        CacheService.makeKey(symbol, entryInterval, 'ema50', { style }),
         bundleTtl,
         () => twelveData.getEMA(symbol, entryInterval, STRATEGY.entry.emaSlow.period),
         'EMA50',
@@ -368,7 +369,7 @@ export async function fetchIndicators(
         []
       ),
       fetchWithCache(
-        CacheService.makeKey(symbol, entryInterval, 'rsi', { style, bar: lastClosedBarTs }),
+        CacheService.makeKey(symbol, entryInterval, 'rsi', { style }),
         bundleTtl,
         () => twelveData.getRSI(symbol, entryInterval, STRATEGY.entry.rsi.period),
         'RSI',
@@ -376,18 +377,10 @@ export async function fetchIndicators(
         []
       ),
       fetchWithCache(
-        CacheService.makeKey(symbol, entryInterval, 'atr', { style, bar: lastClosedBarTs }),
+        CacheService.makeKey(symbol, entryInterval, 'atr', { style }),
         bundleTtl,
         () => twelveData.getATR(symbol, entryInterval, STRATEGY.stopLoss.atr.period),
         'ATR',
-        errors,
-        []
-      ),
-      fetchWithCache(
-        CacheService.makeKey(symbol, entryInterval, 'adx-h1', { style, bar: lastClosedBarTs }),
-        bundleTtl,
-        () => twelveData.getADX(symbol, entryInterval, STRATEGY.trend.adx.period),
-        'H1 ADX',
         errors,
         []
       ),
@@ -478,25 +471,10 @@ export async function fetchIndicators(
     data.currentPrice = entryBars.length > 0 ? entryBars[entryBars.length - 1].close : 0;
     data.ema200 = ema200;
     data.adx = adx;
-    
-    // Use H1 indicators directly from Twelve Data (already sorted oldest-first, indexed to match bars)
-    data.ema20 = ema20Raw;
-    data.ema50 = ema50Raw;
-    data.rsi = rsiRaw;
-    data.atr = atrRaw;
-    data.adxH1 = adxH1Raw;
-    
-    // Debug: Log adxH1Raw assignment
-    if (!adxH1Raw || !Array.isArray(adxH1Raw) || adxH1Raw.length === 0) {
-      logger.warn('ADX_H1_RAW_DEBUG', {
-        symbol,
-        adxH1RawDefined: !!adxH1Raw,
-        adxH1RawIsArray: Array.isArray(adxH1Raw),
-        adxH1RawLength: adxH1Raw?.length ?? 0,
-        adxH1RawType: typeof adxH1Raw,
-      });
-    }
-    
+    data.ema20 = ema20;
+    data.ema50 = ema50;
+    data.rsi = rsi;
+    data.atr = atr;
     data.stoch = stoch;
     data.willr = willr;
     data.cci = cci;
@@ -508,19 +486,12 @@ export async function fetchIndicators(
     data.macd = macd;
     data.obv = obv;
 
-    // H4 trend data (may be null if H4 fetch failed - HARD BLOCK)
-    if (h4Trend) {
-      data.trendBarsH4 = h4Trend.trendBarsH4;
-      data.ema200H4 = h4Trend.ema200H4;
-      data.adxH4 = h4Trend.adxH4;
-      data.trendTimeframeUsed = h4Trend.trendTimeframeUsed;
-      data.trendFallbackUsed = h4Trend.trendFallbackUsed;
-      validateH4Alignment(data);
-    } else {
-      // H4 unavailable - leave fields undefined so strategies will reject
-      data.trendTimeframeUsed = undefined;
-      data.trendFallbackUsed = undefined;
-    }
+    data.trendBarsH4 = h4Trend.trendBarsH4;
+    data.ema200H4 = h4Trend.ema200H4;
+    data.adxH4 = h4Trend.adxH4;
+    data.trendTimeframeUsed = h4Trend.trendTimeframeUsed;
+    data.trendFallbackUsed = h4Trend.trendFallbackUsed;
+    validateH4Alignment(data);
   } catch (e) {
     errors.push(`General error: ${e instanceof Error ? e.message : 'Unknown error'}`);
   }

@@ -487,7 +487,7 @@ app.post('/api/scan', validateBody(ScanRequestSchema), async (req, res) => {
  */
 app.get('/api/signals', validateQuery(SignalsQuerySchema), async (req, res) => {
   try {
-    const { limit, offset, grade, symbol } = req.query as unknown as { limit: number; offset: number; grade?: string; symbol?: string };
+    const { limit, offset, grade, symbol } = req.query as { limit: number; offset: number; grade?: string; symbol?: string };
     const pageOffset = offset ?? 0;
 
     let signals;
@@ -871,7 +871,7 @@ gradeTracker.onUpgrade((upgrade) => {
  * Get recent grade upgrades
  */
 app.get('/api/upgrades/recent', validateQuery(UpgradesQuerySchema), (req, res) => {
-  const { minutes } = req.query as unknown as { minutes: number };
+  const { minutes } = req.query as { minutes: number };
   const upgrades = gradeTracker.getRecentUpgrades(minutes);
   res.json({ upgrades, count: upgrades.length });
 });
@@ -1118,7 +1118,7 @@ app.post('/api/sentiment/batch', validateBody(BatchSentimentSchema), async (req,
 
 app.get('/api/sentiment/:symbol/aggregated', validateParams(SymbolParamSchema), validateQuery(AggregatedSentimentQuerySchema), async (req, res) => {
   const { symbol } = req.params as { symbol: string };
-  const { samples } = req.query as unknown as { samples: number };
+  const { samples } = req.query as { samples: number };
   
   if (!grokSentimentService.isEnabled()) {
     return res.status(503).json({ 

@@ -89,32 +89,6 @@ function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-/**
- * Normalize timestamp to explicit UTC
- * Twelve Data returns timestamps without timezone - enforce UTC
- */
-function normalizeToUTC(datetime: string): string {
-  if (!datetime) return datetime;
-  // Already has timezone indicator
-  if (datetime.endsWith('Z') || datetime.includes('+') || /[+-]\d{2}:\d{2}$/.test(datetime)) {
-    return datetime;
-  }
-  // Add 'Z' suffix and convert space to 'T' for ISO format
-  return `${datetime.replace(' ', 'T')}Z`;
-}
-
-/**
- * Parse numeric value, return NaN for missing/invalid
- * Replaces || '0' pattern that silently converts missing data to 0
- */
-function parseNumeric(value: string | undefined | null): number {
-  if (value === undefined || value === null || value === '') {
-    return NaN;
-  }
-  const parsed = parseFloat(value);
-  return Number.isFinite(parsed) ? parsed : NaN;
-}
-
 function isTransientError(error: unknown): boolean {
   if (error instanceof Error) {
     const msg = error.message.toLowerCase();
@@ -281,11 +255,11 @@ class TwelveDataClient {
     }
 
     const bars: OHLCVBar[] = data.values.map(v => ({
-      timestamp: normalizeToUTC(v.datetime || ''),
-      open: parseNumeric(v.open),
-      high: parseNumeric(v.high),
-      low: parseNumeric(v.low),
-      close: parseNumeric(v.close),
+      timestamp: v.datetime || '',
+      open: parseFloat(v.open || '0'),
+      high: parseFloat(v.high || '0'),
+      low: parseFloat(v.low || '0'),
+      close: parseFloat(v.close || '0'),
       volume: parseFloat(v.volume || '0'),
     }));
 
@@ -388,8 +362,8 @@ class TwelveDataClient {
     }
 
     const values: IndicatorValue[] = data.values.map(v => ({
-      timestamp: normalizeToUTC(v.datetime || ''),
-      value: parseNumeric(v[valueKey]),
+      timestamp: v.datetime || '',
+      value: parseFloat(v[valueKey] || '0'),
     }));
 
     const sorted = this.oldestFirst(values.map(v => ({ ...v, datetime: v.timestamp })));
@@ -464,9 +438,9 @@ class TwelveDataClient {
     }
 
     const values: StochValue[] = data.values.map(v => ({
-      timestamp: normalizeToUTC(v.datetime || ''),
-      k: parseNumeric(v.slow_k),
-      d: parseNumeric(v.slow_d),
+      timestamp: v.datetime || '',
+      k: parseFloat(v.slow_k || '0'),
+      d: parseFloat(v.slow_d || '0'),
     }));
 
     const sorted = this.oldestFirst(values.map(v => ({ ...v, datetime: v.timestamp })));
@@ -512,10 +486,10 @@ class TwelveDataClient {
     }
 
     const values: BBandsValue[] = data.values.map(v => ({
-      timestamp: normalizeToUTC(v.datetime || ''),
-      upper: parseNumeric(v.upper_band),
-      middle: parseNumeric(v.middle_band),
-      lower: parseNumeric(v.lower_band),
+      timestamp: v.datetime || '',
+      upper: parseFloat(v.upper_band || '0'),
+      middle: parseFloat(v.middle_band || '0'),
+      lower: parseFloat(v.lower_band || '0'),
     }));
 
     const sorted = this.oldestFirst(values.map(v => ({ ...v, datetime: v.timestamp })));
@@ -562,10 +536,10 @@ class TwelveDataClient {
     }
 
     const values: MACDValue[] = data.values.map(v => ({
-      timestamp: normalizeToUTC(v.datetime || ''),
-      macd: parseNumeric(v.macd),
-      signal: parseNumeric(v.macd_signal),
-      histogram: parseNumeric(v.macd_hist),
+      timestamp: v.datetime || '',
+      macd: parseFloat(v.macd || '0'),
+      signal: parseFloat(v.macd_signal || '0'),
+      histogram: parseFloat(v.macd_hist || '0'),
     }));
 
     const sorted = this.oldestFirst(values.map(v => ({ ...v, datetime: v.timestamp })));
@@ -604,8 +578,8 @@ class TwelveDataClient {
       }
 
       const values: IndicatorValue[] = data.values.map(v => ({
-        timestamp: normalizeToUTC(v.datetime || ''),
-        value: parseNumeric(v.obv),
+        timestamp: v.datetime || '',
+        value: parseFloat(v.obv || '0'),
       }));
 
       const sorted = this.oldestFirst(values.map(v => ({ ...v, datetime: v.timestamp })));
