@@ -65,7 +65,7 @@ interface TrendDataH4 {
 }
 
 const indicatorInflight = new Map<string, Promise<unknown>>();
-const BUNDLE_CACHE_VERSION = 'v2';
+const BUNDLE_CACHE_VERSION = 'v4'; // Bumped to invalidate cached bundles without adxH1 field
 
 async function fetchWithCache<T>(
   key: string,
@@ -479,12 +479,23 @@ export async function fetchIndicators(
     data.ema200 = ema200;
     data.adx = adx;
     
-    // Align H1 indicators to entryBars by timestamp (not front-padding)
-    data.ema20 = alignIndicatorToBars(entryBars, ema20Raw, 'H1 EMA20');
-    data.ema50 = alignIndicatorToBars(entryBars, ema50Raw, 'H1 EMA50');
-    data.rsi = alignIndicatorToBars(entryBars, rsiRaw, 'H1 RSI');
-    data.atr = alignIndicatorToBars(entryBars, atrRaw, 'H1 ATR');
-    data.adxH1 = alignIndicatorToBars(entryBars, adxH1Raw, 'H1 ADX');
+    // Use H1 indicators directly from Twelve Data (already sorted oldest-first, indexed to match bars)
+    data.ema20 = ema20Raw;
+    data.ema50 = ema50Raw;
+    data.rsi = rsiRaw;
+    data.atr = atrRaw;
+    data.adxH1 = adxH1Raw;
+    
+    // Debug: Log adxH1Raw assignment
+    if (!adxH1Raw || !Array.isArray(adxH1Raw) || adxH1Raw.length === 0) {
+      logger.warn('ADX_H1_RAW_DEBUG', {
+        symbol,
+        adxH1RawDefined: !!adxH1Raw,
+        adxH1RawIsArray: Array.isArray(adxH1Raw),
+        adxH1RawLength: adxH1Raw?.length ?? 0,
+        adxH1RawType: typeof adxH1Raw,
+      });
+    }
     
     data.stoch = stoch;
     data.willr = willr;

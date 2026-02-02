@@ -168,13 +168,31 @@ export class EmaPullback implements IStrategy {
     const rsiSignal = atIndex(rsi, signalIdx);
     const adxSignal = atIndex(adx, signalIdx);
     const atrSignal = atIndex(atr, signalIdx);
-    const adxH1SignalVal = adxH1 && Array.isArray(adxH1) ? atIndex(adxH1 as { timestamp: string; value: number }[], signalIdx)?.value ?? null : null;
+    // H1 ADX: Use its own array length (ADX array may be shorter than bars due to warm-up period)
+    const adxH1Arr = adxH1 && Array.isArray(adxH1) ? adxH1 as { timestamp: string; value: number }[] : [];
+    const adxH1SignalIdx = adxH1Arr.length >= 2 ? adxH1Arr.length - 2 : -1;
+    const adxH1SignalVal = adxH1SignalIdx >= 0 ? adxH1Arr[adxH1SignalIdx]?.value ?? null : null;
+    
+    // Debug: Log adxH1 array info for troubleshooting
+    if (!adxH1SignalVal || !Number.isFinite(adxH1SignalVal)) {
+      logger.warn('ADX_H1_DEBUG', {
+        symbol,
+        adxH1Defined: !!adxH1,
+        adxH1IsArray: Array.isArray(adxH1),
+        adxH1Length: adxH1Arr.length,
+        adxH1SignalIdx,
+        adxH1SignalVal,
+        adxH1Sample: adxH1Arr.length > 0 ? adxH1Arr.slice(-3) : 'empty',
+      });
+    }
 
     // Entry bar indicators for comprehensive NaN check
     const ema20Entry = atIndex(ema20, entryIdx);
     const ema50Entry = atIndex(ema50, entryIdx);
     const atrEntry = atIndex(atr, entryIdx);
-    const adxH1EntryVal = adxH1 && Array.isArray(adxH1) ? atIndex(adxH1 as { timestamp: string; value: number }[], entryIdx)?.value ?? null : null;
+    // H1 ADX at entry bar (last element in adxH1 array)
+    const adxH1EntryIdx = adxH1Arr.length >= 1 ? adxH1Arr.length - 1 : -1;
+    const adxH1EntryVal = adxH1EntryIdx >= 0 ? adxH1Arr[adxH1EntryIdx]?.value ?? null : null;
     const rsiEntry = atIndex(rsi, entryIdx);
 
     // Comprehensive NaN check at BOTH signal and entry bars
