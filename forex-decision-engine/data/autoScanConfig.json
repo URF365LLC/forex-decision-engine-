@@ -1,6 +1,6 @@
 {
   "enabled": true,
-  "intervalMs": 300000,
+  "intervalMs": 600000,
   "symbols": [
     "EURUSD",
     "GBPUSD",
