@@ -22,7 +22,7 @@
 
 import { createLogger } from './logger.js';
 import { analyzeWithStrategy } from '../engine/strategyAnalyzer.js';
-import { ALL_INSTRUMENTS, FOREX_SPECS, CRYPTO_SPECS, METAL_SPECS, INDEX_SPECS, COMMODITY_SPECS } from '../config/e8InstrumentSpecs.js';
+import { ALL_INSTRUMENTS, ACTIVE_INSTRUMENTS, FOREX_SPECS, CRYPTO_SPECS, METAL_SPECS, INDEX_SPECS, COMMODITY_SPECS } from '../config/e8InstrumentSpecs.js';
 import { isNewSignal, trackSignal } from '../storage/signalFreshnessTracker.js';
 import { strategyRegistry } from '../strategies/registry.js';
 import { gradeTracker } from './gradeTracker.js';
@@ -102,8 +102,8 @@ export type WatchlistPreset = 'majors' | 'majors-gold' | 'minors' | 'crypto' | '
 const MAJOR_PAIRS = ['EURUSD', 'GBPUSD', 'USDJPY', 'USDCHF', 'AUDUSD', 'NZDUSD', 'USDCAD'];
 const MINOR_PAIRS = FOREX_SPECS.map(s => s.symbol).filter(s => !MAJOR_PAIRS.includes(s));
 
-// Exclude indices from 'all' preset - requires higher Twelve Data plan for real-time data
-const ALL_EXCEPT_INDICES = ALL_INSTRUMENTS.filter(s => s.type !== 'index').map(s => s.symbol);
+// Use ACTIVE_INSTRUMENTS to exclude disabled instruments (indices, commodities without realtime data)
+const ACTIVE_SYMBOLS = ACTIVE_INSTRUMENTS.map(s => s.symbol);
 
 export const WATCHLIST_PRESETS: Record<WatchlistPreset, { symbols: string[]; description: string }> = {
   'majors': { symbols: MAJOR_PAIRS, description: '7 major forex pairs' },
@@ -111,9 +111,9 @@ export const WATCHLIST_PRESETS: Record<WatchlistPreset, { symbols: string[]; des
   'minors': { symbols: MINOR_PAIRS, description: '21 minor forex pairs' },
   'crypto': { symbols: CRYPTO_SPECS.map(s => s.symbol), description: '8 cryptocurrencies (24/7)' },
   'metals': { symbols: METAL_SPECS.map(s => s.symbol), description: 'Gold & silver' },
-  'indices': { symbols: INDEX_SPECS.map(s => s.symbol), description: '6 major indices (requires upgraded plan)' },
-  'commodities': { symbols: COMMODITY_SPECS.map(s => s.symbol), description: 'Oil & energy' },
-  'all': { symbols: ALL_EXCEPT_INDICES, description: `All ${ALL_EXCEPT_INDICES.length} instruments (excl. indices)` },
+  'indices': { symbols: INDEX_SPECS.filter(s => !s.disabled).map(s => s.symbol), description: 'Major indices (requires upgraded plan)' },
+  'commodities': { symbols: COMMODITY_SPECS.filter(s => !s.disabled).map(s => s.symbol), description: 'Oil & energy (disabled - no realtime data)' },
+  'all': { symbols: ACTIVE_SYMBOLS, description: `All ${ACTIVE_SYMBOLS.length} active instruments` },
   'custom': { symbols: [], description: 'Custom selection' },
 };
 
