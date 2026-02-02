@@ -26,7 +26,7 @@ Detects ICT-based institutional trading patterns like Order Blocks, Fair Value G
 Classifies volatility regimes (Compression, Normal, Expansion) using ATR percentiles to adapt strategy parameters and risk-reward multipliers.
 
 #### Configuration
-`e8InstrumentSpecs.ts` is the single source of truth for 46 instruments (40 active, 6 disabled), strategy parameters, and default settings adhering to E8 Markets rules (0.5% risk, 4% daily loss limit, 6% max drawdown).
+`e8InstrumentSpecs.ts` is the single source of truth for 46 instruments (38 active, 8 disabled), strategy parameters, and default settings adhering to E8 Markets rules (0.5% risk, 4% daily loss limit, 6% max drawdown). Active breakdown: 28 forex, 2 metals, 8 crypto. Disabled: 4 indices (no realtime data), 2 commodities (WTI/BRENT - no realtime data).
 
 #### Services
 Core services include a Twelve Data Client with retry logic, an in-memory TTL Cache, a Token Bucket Rate Limiter, Signal Cooldown mechanisms, a Volatility Gate, structured Logging, and a Circuit Breaker Service for external dependencies. A Portfolio Risk Manager enforces a maximum of 2% net currency exposure per currency.
