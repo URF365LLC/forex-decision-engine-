@@ -1229,6 +1229,19 @@ app.post('/api/detections/:id/dismiss', validateParams(IdParamSchema), validateB
   }
 });
 
+app.post('/api/detections/clear-expired', async (req, res) => {
+  try {
+    const cleared = await detectionService.clearExpiredDetections();
+    logger.info(`Cleared ${cleared} expired/dismissed/invalidated detections`);
+    res.json({ success: true, cleared });
+  } catch (error) {
+    logger.error('Clear expired detections error', { error });
+    res.status(500).json({
+      error: error instanceof Error ? error.message : 'Failed to clear expired detections',
+    });
+  }
+});
+
 // ═══════════════════════════════════════════════════════════════
 // SERVE FRONTEND
 // ═══════════════════════════════════════════════════════════════

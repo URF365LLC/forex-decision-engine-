@@ -356,6 +356,39 @@ export async function markAsInvalidated(id: string, reason: string): Promise<Det
   });
 }
 
+export async function clearExpiredDetections(): Promise<number> {
+  let cleared = 0;
+
+  if (isDbAvailable()) {
+    try {
+      const db = getDb();
+      const result = await db
+        .deleteFrom('detections')
+        .where('status', 'in', ['expired', 'dismissed', 'invalidated'])
+        .executeTakeFirst();
+
+      cleared = Number(result.numDeletedRows ?? 0);
+      logger.info(`Cleared ${cleared} terminal detections from database`);
+      return cleared;
+    } catch (error) {
+      logger.error('Failed to clear expired detections from DB', { error });
+    }
+  }
+
+  for (const [id, detection] of inMemoryStore) {
+    if (['expired', 'dismissed', 'invalidated'].includes(detection.status)) {
+      inMemoryStore.delete(id);
+      cleared++;
+    }
+  }
+
+  if (cleared > 0) {
+    logger.info(`Cleared ${cleared} terminal detections (in-memory)`);
+  }
+
+  return cleared;
+}
+
 // ═══════════════════════════════════════════════════════════════
 // COOLDOWN LIFECYCLE
 // ═══════════════════════════════════════════════════════════════
