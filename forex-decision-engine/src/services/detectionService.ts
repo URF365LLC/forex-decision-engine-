@@ -234,13 +234,6 @@ export async function getSummary(): Promise<DetectionSummary> {
   return detectionStore.getDetectionSummary();
 }
 
-/**
- * Clear expired/dismissed/invalidated detections
- */
-export async function clearExpiredDetections(): Promise<number> {
-  return detectionStore.clearExpiredDetections();
-}
-
 // ═══════════════════════════════════════════════════════════════
 // LIFECYCLE MANAGEMENT
 // ═══════════════════════════════════════════════════════════════

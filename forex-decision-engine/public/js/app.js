@@ -2278,30 +2278,6 @@ const App = {
         this.loadDetections();
       });
     });
-
-    const refreshDetectionsBtn = document.getElementById('refresh-detections-btn');
-    if (refreshDetectionsBtn) {
-      refreshDetectionsBtn.addEventListener('click', async () => {
-        refreshDetectionsBtn.disabled = true;
-        refreshDetectionsBtn.textContent = 'Clearing...';
-        try {
-          const resp = await fetch('/api/detections/clear-expired', { method: 'POST' });
-          const data = await resp.json();
-          if (data.success && data.cleared > 0) {
-            UI.toast(`Cleared ${data.cleared} expired detections`, 'success');
-          } else {
-            UI.toast('No expired detections to clear', 'info');
-          }
-          await this.loadDetections();
-        } catch (err) {
-          console.error('Failed to clear expired detections:', err);
-          UI.toast('Failed to clear expired detections', 'error');
-        } finally {
-          refreshDetectionsBtn.disabled = false;
-          refreshDetectionsBtn.textContent = 'Refresh';
-        }
-      });
-    }
   },
 
   /**
