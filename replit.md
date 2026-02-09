@@ -47,7 +47,6 @@ API endpoints cover system health, symbol retrieval, signal analysis and scannin
 -   **Multi-Asset Class Support**: Supports Forex, Metals, Indices, Commodities, and Crypto.
 -   **H4 Trend Support**: Uses Twelve Data's 4h interval for trend analysis with D1 fallback.
 -   **Detection System**: Manages detection lifecycle with statuses like `cooling_down`, `eligible`, `taken`, `dismissed`, `expired`, `invalidated`.
--   **Detection Archive**: Expired/dismissed/invalidated detections can be archived to a separate `archived_detections` table for future backtesting. Archive uses database transactions for data safety. Refresh button in Detected Trades section triggers archiving. Archived detections viewable via "Archived" filter tab.
 -   **Regime Detector Integration**: Adjusts confidence and risk-reward based on volatility regimes.
 -   **Bar Freshness Validation**: Rejects signals if bar data is stale.
 

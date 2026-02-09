@@ -277,47 +277,6 @@ export async function runMigrations(): Promise<void> {
   await sql`CREATE INDEX IF NOT EXISTS idx_alerts_key ON alert_history(alert_key)`.execute(database);
   await sql`CREATE INDEX IF NOT EXISTS idx_alerts_expires ON alert_history(expires_at)`.execute(database);
 
-  // Create archived_detections table
-  await database.schema
-    .createTable('archived_detections')
-    .ifNotExists()
-    .addColumn('id', 'uuid', (col) =>
-      col.primaryKey().defaultTo(sql`gen_random_uuid()`)
-    )
-    .addColumn('original_id', 'uuid', (col) => col.notNull())
-    .addColumn('symbol', 'varchar(20)', (col) => col.notNull())
-    .addColumn('strategy_id', 'varchar(50)', (col) => col.notNull())
-    .addColumn('strategy_name', 'varchar(100)')
-    .addColumn('grade', 'varchar(10)', (col) => col.notNull())
-    .addColumn('direction', 'varchar(10)', (col) => col.notNull())
-    .addColumn('entry_price', 'numeric')
-    .addColumn('stop_loss', 'numeric')
-    .addColumn('take_profit', 'numeric')
-    .addColumn('confidence', 'integer')
-    .addColumn('reason', 'text')
-    .addColumn('triggers', 'jsonb')
-    .addColumn('first_detected_at', 'timestamptz', (col) =>
-      col.notNull().defaultTo(sql`NOW()`)
-    )
-    .addColumn('last_detected_at', 'timestamptz', (col) =>
-      col.notNull().defaultTo(sql`NOW()`)
-    )
-    .addColumn('detection_count', 'integer', (col) => col.defaultTo(1))
-    .addColumn('cooldown_ends_at', 'timestamptz')
-    .addColumn('lot_size', 'numeric')
-    .addColumn('risk_amount', 'numeric')
-    .addColumn('tiered_exits', 'jsonb')
-    .addColumn('bar_expires_at', 'timestamptz')
-    .addColumn('status', 'varchar(20)', (col) => col.defaultTo('expired'))
-    .addColumn('status_reason', 'text')
-    .addColumn('archived_at', 'timestamptz', (col) => col.defaultTo(sql`NOW()`))
-    .addColumn('created_at', 'timestamptz', (col) => col.defaultTo(sql`NOW()`))
-    .addColumn('updated_at', 'timestamptz', (col) => col.defaultTo(sql`NOW()`))
-    .execute();
-
-  await sql`CREATE INDEX IF NOT EXISTS idx_archived_detections_archived_at ON archived_detections(archived_at DESC)`.execute(database);
-  await sql`CREATE INDEX IF NOT EXISTS idx_archived_detections_symbol ON archived_detections(symbol)`.execute(database);
-
   // Create account_settings table for persistent settings
   await database.schema
     .createTable('account_settings')
