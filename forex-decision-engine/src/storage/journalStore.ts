@@ -218,14 +218,14 @@ class JournalStore {
       logger.error('Failed to save journal', e);
       try {
         await fsPromises.unlink(tempPath);
-      } catch { /* ignore cleanup errors */ }
+      } catch (cleanupErr) { logger.warn('Failed to clean up temp journal file', { error: String(cleanupErr) }); }
     }
   }
 
   private parseExtras(rawExtras: unknown): Record<string, unknown> {
     if (!rawExtras) return {};
     if (typeof rawExtras === 'string') {
-      try { return JSON.parse(rawExtras); } catch { return {}; }
+      try { return JSON.parse(rawExtras); } catch (parseErr) { logger.warn(`Failed to parse journal extras: ${parseErr}`); return {}; }
     }
     if (typeof rawExtras === 'object') return rawExtras as Record<string, unknown>;
     return {};
@@ -760,7 +760,6 @@ class JournalStore {
       const tempPath = `${this.filePath}.tmp`;
       fs.writeFileSync(tempPath, JSON.stringify({
         entries: this.entries,
-        nextId: this.nextId,
       }, null, 2));
       fs.renameSync(tempPath, this.filePath);
       logger.debug('Journal persisted to file synchronously on shutdown');

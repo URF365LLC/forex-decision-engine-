@@ -46,7 +46,8 @@ export function formatTimestamp(
     };
     
     return new Intl.DateTimeFormat('en-US', defaultOptions).format(date);
-  } catch {
+  } catch (err) {
+    console.warn(`[Timezone] Failed to format timestamp "${isoString}": ${err}`);
     return isoString;
   }
 }
@@ -69,7 +70,8 @@ export function formatDateTime(
       hour12: true,
       timeZone: timezone,
     }).format(date);
-  } catch {
+  } catch (err) {
+    console.warn(`[Timezone] Failed to format dateTime "${isoString}": ${err}`);
     return isoString;
   }
 }

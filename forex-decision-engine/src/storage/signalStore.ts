@@ -162,7 +162,8 @@ class SignalStore {
       
       try {
         await fsPromises.access(dir);
-      } catch {
+      } catch (accessErr) {
+        logger.debug(`Signal store directory not found, creating: ${dir}`);
         await fsPromises.mkdir(dir, { recursive: true });
       }
       
@@ -179,7 +180,7 @@ class SignalStore {
       logger.error('Failed to save signals', e);
       try {
         await fsPromises.unlink(tempPath);
-      } catch {}
+      } catch (cleanupErr) { logger.warn('Failed to clean up temp signal file', { error: String(cleanupErr) }); }
     } finally {
       this.writeInProgress = false;
       

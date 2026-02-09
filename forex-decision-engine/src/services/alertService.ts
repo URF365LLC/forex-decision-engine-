@@ -12,6 +12,9 @@ class AlertService {
   private resendApiKey: string | null = null;
   private fromEmail: string = 'Forex Engine <alerts@resend.dev>';
   private sentAlerts: Map<string, { grade: SignalGrade; expiresAt: number; lastSent: string }> = new Map();
+  private sendQueue: Array<{ decision: Decision; toEmail: string; isNew: boolean; resolve: (v: boolean) => void }> = [];
+  private isProcessingQueue: boolean = false;
+  private readonly SEND_INTERVAL_MS = 600;
   
   constructor() {
     this.resendApiKey = process.env.RESEND_API_KEY || null;
@@ -20,7 +23,6 @@ class AlertService {
       logger.warn('RESEND_API_KEY not configured - email alerts disabled');
     }
 
-    // Clean up expired dedupe windows
     setInterval(() => this.cleanup(), 5 * 60 * 1000);
   }
   
@@ -35,7 +37,33 @@ class AlertService {
     if (!sendCheck.allowed) {
       return false;
     }
+
+    return new Promise<boolean>((resolve) => {
+      this.sendQueue.push({ decision, toEmail, isNew, resolve });
+      this.processQueue();
+    });
+  }
+
+  private async processQueue(): Promise<void> {
+    if (this.isProcessingQueue || this.sendQueue.length === 0) return;
+    this.isProcessingQueue = true;
+
+    while (this.sendQueue.length > 0) {
+      const item = this.sendQueue.shift()!;
+      const result = await this.sendEmailDirect(item.decision, item.toEmail, item.isNew);
+      item.resolve(result);
+
+      if (this.sendQueue.length > 0) {
+        await new Promise(r => setTimeout(r, this.SEND_INTERVAL_MS));
+      }
+    }
+
+    this.isProcessingQueue = false;
+  }
+
+  private async sendEmailDirect(decision: Decision, toEmail: string, isNew: boolean): Promise<boolean> {
     const key = this.makeKey(decision);
+    const sendCheck = this.shouldSend(decision, isNew);
     
     try {
       const subject = `🎯 ${decision.grade} Signal: ${decision.symbol} ${decision.direction.toUpperCase()}`;

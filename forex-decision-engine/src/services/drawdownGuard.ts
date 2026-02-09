@@ -170,8 +170,6 @@ export function checkDrawdownLimits(params: DrawdownCheckParams): DrawdownCheckR
     startOfDayEquity = brokerStartOfDay;
     stateSource = 'broker';
   } else if (state && state.dayKey === today) {
-    // SANITY CHECK: If stored startOfDay is more than 50% different from current equity,
-    // it's likely the account size was changed. Reset to current equity.
     const storedStart = state.startOfDayEquity;
     if (storedStart > equity * 1.5 || storedStart < equity * 0.5) {
       startOfDayEquity = equity;
@@ -180,7 +178,6 @@ export function checkDrawdownLimits(params: DrawdownCheckParams): DrawdownCheckR
     } else {
       startOfDayEquity = storedStart;
       stateSource = 'calculated';
-      warnings.push('Using persisted startOfDayEquity');
     }
   } else {
     startOfDayEquity = equity;

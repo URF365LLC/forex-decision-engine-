@@ -32,7 +32,7 @@ export function broadcastSSE(payload: Record<string, unknown>): void {
       client.write(`data: ${message}\n\n`);
     } catch (e) {
       clients.delete(client);
-      try { client.end(); } catch {}
+      try { client.end(); } catch (err) { logger.warn('Failed to end SSE client connection', { error: String(err) }); }
     }
   }
 }
