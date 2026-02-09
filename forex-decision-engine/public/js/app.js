@@ -1937,14 +1937,40 @@ const App = {
   /**
    * Load detections from API
    */
+  async refreshDetections() {
+    const btn = document.getElementById('refresh-detections-btn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Archiving...'; }
+    try {
+      const res = await fetch('/api/detections/archive-expired', { method: 'POST' });
+      const data = await res.json();
+      if (data.success && data.archived > 0) {
+        UI.toast(`Archived ${data.archived} expired detections`, 'success');
+      } else {
+        UI.toast('Detections refreshed', 'success');
+      }
+      await this.loadDetections();
+    } catch (err) {
+      console.error('Refresh detections failed:', err);
+      UI.toast('Refresh failed', 'error');
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = 'Refresh'; }
+    }
+  },
+
   async loadDetections() {
     try {
-      const params = new URLSearchParams();
-      if (this.detectionFilter !== 'all') {
-        params.set('status', this.detectionFilter);
+      let response;
+      if (this.detectionFilter === 'archived') {
+        const params = new URLSearchParams();
+        params.set('limit', '100');
+        response = await fetch(`/api/detections/archived?${params}`);
+      } else {
+        const params = new URLSearchParams();
+        if (this.detectionFilter !== 'all') {
+          params.set('status', this.detectionFilter);
+        }
+        response = await fetch(`/api/detections?${params}`);
       }
-
-      const response = await fetch(`/api/detections?${params}`);
       if (!response.ok) throw new Error('Failed to load detections');
 
       const data = await response.json();
@@ -2019,14 +2045,14 @@ const App = {
    * Render single detection card
    */
   renderDetectionCard(detection) {
+    const isArchived = detection.status === 'archived';
     const isEligible = detection.status === 'eligible';
     const isCooling = detection.status === 'cooling_down';
-    // Allow taking trade from both eligible AND cooling_down states
-    const canTake = isEligible || isCooling;
+    const canTake = !isArchived && (isEligible || isCooling);
 
-    const statusClass = isEligible ? 'eligible' : (isCooling ? 'cooling' : 'other');
-    const statusIcon = isEligible ? '✅' : (isCooling ? '⏱️' : '📋');
-    const statusText = isEligible ? 'ELIGIBLE' : (isCooling ? 'Cooling Down' : detection.status.replace('_', ' '));
+    const statusClass = isArchived ? 'archived' : (isEligible ? 'eligible' : (isCooling ? 'cooling' : 'other'));
+    const statusIcon = isArchived ? '📦' : (isEligible ? '✅' : (isCooling ? '⏱️' : '📋'));
+    const statusText = isArchived ? 'ARCHIVED' : (isEligible ? 'ELIGIBLE' : (isCooling ? 'Cooling Down' : detection.status.replace('_', ' ')));
 
     const gradeClass = detection.grade.replace('+', '-plus').toLowerCase();
     const directionIcon = detection.direction === 'long' ? '📈' : '📉';
@@ -2037,14 +2063,14 @@ const App = {
       cooldownHtml = `<span class="cooldown-timer" data-ends="${detection.cooldownEndsAt}">${remaining}</span>`;
     }
 
-    const actionsHtml = canTake ? `
+    const actionsHtml = isArchived ? '' : (canTake ? `
       <button class="btn btn-small btn-primary ${isCooling ? 'cooling' : ''}" onclick="App.executeDetection('${detection.id}')">
         ${isCooling ? 'Take (Cooling)' : 'Take Trade'}
       </button>
       <button class="btn btn-small btn-secondary" onclick="App.dismissDetection('${detection.id}')">Dismiss</button>
     ` : `
       <button class="btn btn-small btn-secondary" onclick="App.dismissDetection('${detection.id}')">Dismiss</button>
-    `;
+    `);
 
     return `
       <div class="detection-card ${statusClass}" data-id="${detection.id}">
@@ -2108,11 +2134,10 @@ const App = {
             Expires: ${this.formatBarExpiry(detection.barExpiresAt)}
           </span>
           ` : ''}
+          ${detection.archivedAt ? `<span title="Archived at">Archived: ${new Date(detection.archivedAt).toLocaleString()}</span>` : ''}
         </div>
 
-        <div class="detection-actions">
-          ${actionsHtml}
-        </div>
+        ${actionsHtml ? `<div class="detection-actions">${actionsHtml}</div>` : ''}
       </div>
     `;
   },
@@ -2190,10 +2215,12 @@ const App = {
     const coolingEl = UI.$('stat-cooling');
     const eligibleEl = UI.$('stat-eligible');
     const totalEl = UI.$('stat-total-detections');
+    const archivedEl = UI.$('stat-archived');
 
     if (coolingEl) coolingEl.textContent = summary.coolingDown || 0;
     if (eligibleEl) eligibleEl.textContent = summary.eligible || 0;
     if (totalEl) totalEl.textContent = summary.total || 0;
+    if (archivedEl) archivedEl.textContent = summary.archived || 0;
   },
 
   /**

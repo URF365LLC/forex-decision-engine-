@@ -453,7 +453,7 @@
           <div class="detections-panel">
             <div class="panel-header">
               <h3>Detected Trades</h3>
-              <button class="btn btn-small" id="refresh-detections-btn">Refresh</button>
+              <button class="btn btn-small" id="refresh-detections-btn" onclick="App.refreshDetections()">Refresh</button>
             </div>
             
             <div class="detections-summary">
@@ -469,12 +469,17 @@
                 <span class="stat-value" id="stat-total-detections">0</span>
                 <span class="stat-label">Total</span>
               </div>
+              <div class="stat-card archived">
+                <span class="stat-value" id="stat-archived">0</span>
+                <span class="stat-label">Archived</span>
+              </div>
             </div>
             
             <div class="detections-filters">
               <button class="filter-btn active" data-detection-filter="all">All</button>
               <button class="filter-btn" data-detection-filter="cooling_down">Cooling</button>
               <button class="filter-btn" data-detection-filter="eligible">Ready</button>
+              <button class="filter-btn" data-detection-filter="archived">Archived</button>
             </div>
             
             <div class="detections-container" id="detections-container">

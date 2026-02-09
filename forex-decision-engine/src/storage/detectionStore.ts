@@ -646,5 +646,176 @@ export function clearInMemoryStore(): void {
   logger.info('In-memory detection store cleared');
 }
 
+// ═══════════════════════════════════════════════════════════════
+// ARCHIVE FUNCTIONS (PostgreSQL only)
+// ═══════════════════════════════════════════════════════════════
+
+export async function archiveExpiredDetections(): Promise<number> {
+  if (!isDbAvailable()) {
+    logger.warn('Cannot archive detections - database not available');
+    return 0;
+  }
+
+  try {
+    const db = getDb();
+    const archiveStatuses = ['expired', 'dismissed', 'invalidated'];
+
+    const rows = await db
+      .selectFrom('detections')
+      .selectAll()
+      .where('status', 'in', archiveStatuses)
+      .execute();
+
+    if (rows.length === 0) {
+      logger.info('No detections to archive');
+      return 0;
+    }
+
+    const archivedIds: string[] = [];
+
+    await db.transaction().execute(async (trx) => {
+      for (const row of rows) {
+        await trx
+          .insertInto('archived_detections')
+          .values({
+            original_id: String(row.id),
+            symbol: String(row.symbol),
+            strategy_id: String(row.strategy_id),
+            strategy_name: row.strategy_name ? String(row.strategy_name) : null,
+            grade: String(row.grade),
+            direction: String(row.direction),
+            entry_price: row.entry_price != null ? Number(row.entry_price) : null,
+            stop_loss: row.stop_loss != null ? Number(row.stop_loss) : null,
+            take_profit: row.take_profit != null ? Number(row.take_profit) : null,
+            confidence: row.confidence != null ? Number(row.confidence) : null,
+            reason: row.reason ? String(row.reason) : null,
+            triggers: row.triggers as any,
+            lot_size: row.lot_size != null ? Number(row.lot_size) : null,
+            risk_amount: row.risk_amount != null ? Number(row.risk_amount) : null,
+            tiered_exits: row.tiered_exits as any,
+            first_detected_at: String(row.first_detected_at),
+            last_detected_at: String(row.last_detected_at),
+            detection_count: Number(row.detection_count || 1),
+            cooldown_ends_at: row.cooldown_ends_at ? String(row.cooldown_ends_at) : null,
+            bar_expires_at: row.bar_expires_at ? String(row.bar_expires_at) : null,
+            status: String(row.status),
+            status_reason: null,
+            created_at: String(row.created_at),
+            updated_at: String(row.updated_at),
+          })
+          .execute();
+        archivedIds.push(String(row.id));
+      }
+
+      if (archivedIds.length > 0) {
+        await trx
+          .deleteFrom('detections')
+          .where('id', 'in', archivedIds)
+          .execute();
+      }
+    });
+
+    logger.info(`Archived ${archivedIds.length} detections (expired/dismissed/invalidated)`);
+    return archivedIds.length;
+  } catch (error) {
+    logger.error('Failed to archive detections - transaction rolled back, no data lost', { error });
+    return 0;
+  }
+}
+
+export async function listArchivedDetections(filters?: {
+  symbol?: string;
+  strategyId?: string;
+  limit?: number;
+  offset?: number;
+}): Promise<any[]> {
+  if (!isDbAvailable()) {
+    return [];
+  }
+
+  try {
+    const db = getDb();
+    const limit = filters?.limit ?? 100;
+    const offset = filters?.offset ?? 0;
+
+    let query = db
+      .selectFrom('archived_detections')
+      .selectAll()
+      .orderBy('archived_at', 'desc')
+      .limit(limit)
+      .offset(offset);
+
+    if (filters?.symbol) query = query.where('symbol', '=', filters.symbol);
+    if (filters?.strategyId) query = query.where('strategy_id', '=', filters.strategyId);
+
+    const rows = await query.execute();
+
+    return rows.map((row) => {
+      const symbol = String(row.symbol);
+      const entryPrice = Number(row.entry_price || 0);
+      const stopLossPrice = row.stop_loss ? Number(row.stop_loss) : null;
+      const takeProfitPrice = row.take_profit ? Number(row.take_profit) : null;
+
+      return {
+        id: String(row.id),
+        originalId: String(row.original_id),
+        symbol,
+        strategyId: String(row.strategy_id),
+        strategyName: String(row.strategy_name || ''),
+        grade: String(row.grade),
+        direction: row.direction as 'long' | 'short',
+        confidence: Number(row.confidence || 0),
+        entry: {
+          price: entryPrice,
+          formatted: formatPriceForSymbol(entryPrice, symbol),
+        },
+        stopLoss: stopLossPrice !== null
+          ? { price: stopLossPrice, formatted: formatPriceForSymbol(stopLossPrice, symbol) }
+          : null,
+        takeProfit: takeProfitPrice !== null
+          ? { price: takeProfitPrice, formatted: formatPriceForSymbol(takeProfitPrice, symbol) }
+          : null,
+        lotSize: row.lot_size != null ? Number(row.lot_size) : null,
+        riskAmount: row.risk_amount != null ? Number(row.risk_amount) : null,
+        tieredExits: formatTieredExits(safeJsonParse(row.tiered_exits, null), symbol),
+        firstDetectedAt: String(row.first_detected_at),
+        lastDetectedAt: String(row.last_detected_at),
+        detectionCount: Number(row.detection_count || 1),
+        cooldownEndsAt: String(row.cooldown_ends_at || ''),
+        barExpiresAt: row.bar_expires_at ? String(row.bar_expires_at) : null,
+        status: 'archived',
+        statusReason: row.status_reason ? String(row.status_reason) : null,
+        archivedAt: String(row.archived_at),
+        reason: String(row.reason || ''),
+        triggers: safeJsonParse(row.triggers, []),
+        createdAt: String(row.created_at),
+        updatedAt: String(row.updated_at),
+      };
+    });
+  } catch (error) {
+    logger.error('Failed to list archived detections', { error });
+    return [];
+  }
+}
+
+export async function getArchivedDetectionCount(): Promise<number> {
+  if (!isDbAvailable()) {
+    return 0;
+  }
+
+  try {
+    const db = getDb();
+    const result = await db
+      .selectFrom('archived_detections')
+      .select(db.fn.countAll().as('count'))
+      .executeTakeFirst();
+
+    return Number(result?.count ?? 0);
+  } catch (error) {
+    logger.error('Failed to get archived detection count', { error });
+    return 0;
+  }
+}
+
 // Auto-start cleanup on module load
 startInMemoryCleanup();

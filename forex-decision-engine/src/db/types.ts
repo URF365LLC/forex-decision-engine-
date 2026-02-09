@@ -131,6 +131,38 @@ export interface AlertHistoryTable {
   created_at: Generated<string>;
 }
 
+export interface ArchivedDetectionsTable {
+  id: Generated<string>;
+  original_id: string;
+  symbol: string;
+  strategy_id: string;
+  strategy_name: string | null;
+  grade: string;
+  direction: string;
+  entry_price: number | null;
+  stop_loss: number | null;
+  take_profit: number | null;
+  confidence: number | null;
+  reason: string | null;
+  triggers: string | null;
+
+  lot_size: number | null;
+  risk_amount: number | null;
+  tiered_exits: string | null;
+
+  first_detected_at: string;
+  last_detected_at: string;
+  detection_count: Generated<number>;
+  cooldown_ends_at: string | null;
+  bar_expires_at: string | null;
+  status: Generated<string>;
+
+  status_reason: string | null;
+  archived_at: Generated<string>;
+  created_at: Generated<string>;
+  updated_at: Generated<string>;
+}
+
 // ═══════════════════════════════════════════════════════════════
 // DATABASE SCHEMA
 // ═══════════════════════════════════════════════════════════════
@@ -141,6 +173,7 @@ export interface Database {
   journal_entries: JournalEntriesTable;
   cooldowns: CooldownsTable;
   alert_history: AlertHistoryTable;
+  archived_detections: ArchivedDetectionsTable;
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -163,3 +196,6 @@ export type NewCooldown = Insertable<CooldownsTable>;
 
 export type AlertHistory = Selectable<AlertHistoryTable>;
 export type NewAlertHistory = Insertable<AlertHistoryTable>;
+
+export type ArchivedDetection = Selectable<ArchivedDetectionsTable>;
+export type NewArchivedDetection = Insertable<ArchivedDetectionsTable>;

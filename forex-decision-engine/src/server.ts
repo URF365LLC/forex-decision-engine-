@@ -62,7 +62,7 @@ import {
 import { z } from 'zod';
 import * as detectionService from './services/detectionService.js';
 import { DetectionFilters } from './types/detection.js';
-import { findActiveDetection as detectionStoreFindActive } from './storage/detectionStore.js';
+import { findActiveDetection as detectionStoreFindActive, archiveExpiredDetections, listArchivedDetections, getArchivedDetectionCount } from './storage/detectionStore.js';
 import { initDb, runMigrations, isDbAvailable, loadAccountSettings, saveAccountSettings } from './db/client.js';
 import { signalCooldown } from './services/signalCooldown.js';
 
@@ -1093,11 +1093,48 @@ app.get('/api/detections', validateQuery(DetectionsQuerySchema), async (req, res
 app.get('/api/detections/summary', async (req, res) => {
   try {
     const summary = await detectionService.getSummary();
-    res.json({ success: true, summary });
+    const archivedCount = await getArchivedDetectionCount();
+    res.json({ success: true, summary: { ...summary, archived: archivedCount } });
   } catch (error) {
     logger.error('Get detection summary error', { error });
     res.status(500).json({
       error: error instanceof Error ? error.message : 'Failed to get summary',
+    });
+  }
+});
+
+/**
+ * Archive expired/dismissed/invalidated detections
+ */
+app.post('/api/detections/archive-expired', async (req, res) => {
+  try {
+    const count = await archiveExpiredDetections();
+    res.json({ success: true, archived: count });
+  } catch (error) {
+    logger.error('Archive expired detections error', { error });
+    res.status(500).json({
+      error: error instanceof Error ? error.message : 'Failed to archive detections',
+    });
+  }
+});
+
+/**
+ * List archived detections
+ */
+app.get('/api/detections/archived', async (req, res) => {
+  try {
+    const filters: { symbol?: string; strategyId?: string; limit?: number; offset?: number } = {};
+    if (req.query.symbol) filters.symbol = String(req.query.symbol);
+    if (req.query.strategyId) filters.strategyId = String(req.query.strategyId);
+    filters.limit = req.query.limit ? parseInt(String(req.query.limit), 10) : 100;
+    filters.offset = req.query.offset ? parseInt(String(req.query.offset), 10) : 0;
+
+    const detections = await listArchivedDetections(filters);
+    res.json({ success: true, detections, count: detections.length });
+  } catch (error) {
+    logger.error('List archived detections error', { error });
+    res.status(500).json({
+      error: error instanceof Error ? error.message : 'Failed to list archived detections',
     });
   }
 });

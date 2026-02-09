@@ -2824,6 +2824,11 @@ textarea:focus {
   color: var(--accent-success);
 }
 
+.status-badge.archived {
+  background: rgba(107, 114, 128, 0.15);
+  color: #9ca3af;
+}
+
 .cooldown-timer {
   font-size: 0.8rem;
   color: var(--accent-warning);
