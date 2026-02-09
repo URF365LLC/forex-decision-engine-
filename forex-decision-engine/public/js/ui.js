@@ -240,10 +240,12 @@ const UI = {
       </div>` : '';
     
     // Reason codes (tags)
+    // L-06 FIX: Escape HTML entities in reason codes to prevent XSS
+    const escapeHtml = (str) => str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     const reasonCodesHTML = decision.reasonCodes && decision.reasonCodes.length > 0 ?
       `<div class="reason-tags">
-        ${decision.reasonCodes.map(code => 
-          `<span class="reason-tag">${code.replace(/_/g, ' ')}</span>`
+        ${decision.reasonCodes.map(code =>
+          `<span class="reason-tag">${escapeHtml(code.replace(/_/g, ' '))}</span>`
         ).join('')}
       </div>` : '';
     
@@ -537,10 +539,14 @@ const UI = {
     tbody.innerHTML = filtered.map(d => {
       const dirClass = d.direction === 'long' ? 'long' : 'short';
       const gradeClass = d.grade.replace('+', '-plus').toLowerCase();
-      const tp1 = d.tieredExits?.tp1?.formatted || d.takeProfit?.formatted || '-';
-      const tp2 = d.tieredExits?.tp2?.formatted || '-';
-      const lots = d.positionSize?.recommendedLots || d.lotSize || '-';
-      const rr = d.riskReward ? d.riskReward.toFixed(1) : '-';
+      // C-03 FIX: Use same field paths as card view for tiered exits
+      const exitMgmt = d.exitManagement;
+      const tp1 = exitMgmt?.tieredExits?.[0]?.formatted || d.takeProfit?.formatted || '-';
+      const tp2 = exitMgmt?.tieredExits?.[1]?.formatted || '-';
+      // C-03 FIX: Use d.position?.lots (matches card view), not d.positionSize or d.lotSize
+      const lots = d.position?.lots || '-';
+      // C-03 FIX: Use d.takeProfit?.rr for risk-reward ratio
+      const rr = d.takeProfit?.rr ? Number(d.takeProfit.rr).toFixed(1) : '-';
       const stratName = d.strategyName || d.strategyId || '-';
       const key = `${d.strategyId || 'default'}:${d.symbol}`;
 
@@ -549,7 +555,7 @@ const UI = {
           <td class="col-symbol">${d.symbol}</td>
           <td class="col-direction ${dirClass}">${d.direction?.toUpperCase() || '-'}</td>
           <td class="col-grade"><span class="grade-badge ${gradeClass}">${d.grade}</span></td>
-          <td class="col-price">${d.entry?.formatted || '-'}</td>
+          <td class="col-price">${d.entryZone?.formatted || d.entry?.formatted || '-'}</td>
           <td class="col-price">${d.stopLoss?.formatted || '-'}</td>
           <td class="col-price">${tp1}</td>
           <td class="col-price">${tp2}</td>
@@ -600,10 +606,10 @@ const UI = {
           <td class="col-symbol">${e.symbol}</td>
           <td class="col-direction ${dirClass}">${e.direction?.toUpperCase() || '-'}</td>
           <td><span class="grade-badge ${(e.grade || '').replace('+', '-plus').toLowerCase()}">${e.grade || '-'}</span></td>
-          <td class="col-price">${e.entryPrice?.toFixed(5) || '-'}</td>
-          <td class="col-price">${e.stopLoss?.toFixed(5) || '-'}</td>
-          <td class="col-price">${e.takeProfit?.toFixed(5) || '-'}</td>
-          <td class="col-price">${e.exitPrice?.toFixed(5) || '-'}</td>
+          <td class="col-price">${e.entryPrice != null ? UI.formatJournalPrice(e.entryPrice, e.symbol) : '-'}</td>
+          <td class="col-price">${e.stopLoss != null ? UI.formatJournalPrice(e.stopLoss, e.symbol) : '-'}</td>
+          <td class="col-price">${e.takeProfit != null ? UI.formatJournalPrice(e.takeProfit, e.symbol) : '-'}</td>
+          <td class="col-price">${e.exitPrice != null ? UI.formatJournalPrice(e.exitPrice, e.symbol) : '-'}</td>
           <td class="col-numeric">${e.lots || '-'}</td>
           <td class="col-pnl ${pnlClass}">${pnlDisplay}</td>
           <td class="col-numeric">${rDisplay}</td>
@@ -641,8 +647,8 @@ const UI = {
         <tr data-id="${e.id}">
           <td class="col-symbol">${e.symbol}</td>
           <td class="col-direction ${dirClass}">${e.direction?.toUpperCase() || '-'}</td>
-          <td class="col-price">${e.entryPrice?.toFixed(5) || '-'}</td>
-          <td class="col-price">${e.currentPrice?.toFixed(5) || '-'}</td>
+          <td class="col-price">${e.entryPrice != null ? UI.formatJournalPrice(e.entryPrice, e.symbol) : '-'}</td>
+          <td class="col-price">${e.currentPrice != null ? UI.formatJournalPrice(e.currentPrice, e.symbol) : '-'}</td>
           <td class="col-pnl ${pnlClass}">${e.unrealizedPnl ? `$${e.unrealizedPnl.toFixed(2)}` : '-'}</td>
           <td class="col-numeric">${e.lots || '-'}</td>
           <td><span class="status-badge-inline ${e.status}">${e.status}</span></td>
@@ -872,6 +878,28 @@ const UI = {
     if (container) {
       container.innerHTML = this.createMarketSidebar(overview);
     }
+  },
+
+  /**
+   * M-01 FIX: Format price with instrument-appropriate decimal precision.
+   * JPY pairs: 3 decimals, crypto (BTC/ETH/SOL/LTC/BCH/BNB): 2 decimals,
+   * standard forex: 5 decimals, metals (XAU/XAG): 2-3 decimals.
+   */
+  formatJournalPrice(price, symbol) {
+    if (price == null || !Number.isFinite(price)) return '-';
+    const s = (symbol || '').toUpperCase();
+    // JPY pairs use 3 decimal places
+    if (s.includes('JPY')) return price.toFixed(3);
+    // Crypto and metals use 2 decimal places
+    if (['BTC', 'ETH', 'SOL', 'LTC', 'BCH', 'BNB', 'ADA', 'XRP'].some(c => s.includes(c))) {
+      // XRP and ADA use 5 decimal places
+      if (s.includes('XRP') || s.includes('ADA')) return price.toFixed(5);
+      return price.toFixed(2);
+    }
+    if (s.includes('XAU')) return price.toFixed(2);
+    if (s.includes('XAG')) return price.toFixed(3);
+    // Standard forex: 5 decimal places
+    return price.toFixed(5);
   },
 };
 

@@ -263,7 +263,36 @@ class TwelveDataClient {
       volume: parseFloat(v.volume || '0'),
     }));
 
-    const sorted = this.oldestFirst(bars.map(b => ({ ...b, datetime: b.timestamp })));
+    // H-07 FIX: Validate OHLCV data integrity before processing
+    const validBars = bars.filter(b => {
+      // Reject bars with non-finite or negative prices
+      if (!Number.isFinite(b.open) || !Number.isFinite(b.high) ||
+          !Number.isFinite(b.low) || !Number.isFinite(b.close)) {
+        logger.warn(`Invalid OHLCV bar for ${symbol}: non-finite price values`, b);
+        return false;
+      }
+      if (b.open <= 0 || b.high <= 0 || b.low <= 0 || b.close <= 0) {
+        logger.warn(`Invalid OHLCV bar for ${symbol}: zero/negative price`, b);
+        return false;
+      }
+      // Reject bars where high < low (corrupted data)
+      if (b.high < b.low) {
+        logger.warn(`Invalid OHLCV bar for ${symbol}: high (${b.high}) < low (${b.low})`, b);
+        return false;
+      }
+      // Reject bars with missing timestamps
+      if (!b.timestamp) {
+        logger.warn(`Invalid OHLCV bar for ${symbol}: missing timestamp`);
+        return false;
+      }
+      return true;
+    });
+
+    if (validBars.length < bars.length) {
+      logger.warn(`Filtered ${bars.length - validBars.length} invalid OHLCV bars for ${symbol} (${validBars.length}/${bars.length} valid)`);
+    }
+
+    const sorted = this.oldestFirst(validBars.map(b => ({ ...b, datetime: b.timestamp })));
     const result = sorted.map(b => ({ timestamp: b.timestamp, open: b.open, high: b.high, low: b.low, close: b.close, volume: b.volume }));
 
     const ttl = interval === 'daily' || interval === '1day' ? CACHE_TTL.D1 : CACHE_TTL.H1;

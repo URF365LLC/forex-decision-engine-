@@ -15,7 +15,7 @@
  * Created: 2026-01-02 (Three-way audit)
  */
 
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
+import { existsSync, readFileSync, writeFileSync, mkdirSync, renameSync } from 'fs';
 import { join, dirname } from 'path';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -102,11 +102,14 @@ function loadState(accountId: string): DrawdownState | null {
 
 function saveState(accountId: string, state: DrawdownState): void {
   stateCache.set(accountId, state);
-  
+
   try {
-    const path = getStatePath(accountId);
-    mkdirSync(dirname(path), { recursive: true });
-    writeFileSync(path, JSON.stringify(state, null, 2));
+    const filePath = getStatePath(accountId);
+    mkdirSync(dirname(filePath), { recursive: true });
+    // H-14 FIX: Atomic write using temp file + rename to prevent corruption on crash
+    const tmpPath = filePath + '.tmp';
+    writeFileSync(tmpPath, JSON.stringify(state, null, 2));
+    renameSync(tmpPath, filePath);
   } catch (err) {
     console.error(`[DrawdownGuard] Failed to save state for ${accountId}:`, err);
   }
@@ -116,8 +119,19 @@ function saveState(accountId: string, state: DrawdownState): void {
 // Core Functions
 // ═══════════════════════════════════════════════════════════════════════════
 
+/**
+ * M-13 FIX: Use forex rollover time (5 PM ET / 22:00 UTC) as day boundary
+ * instead of server-local midnight. This aligns daily drawdown reset with
+ * the standard forex trading day boundary.
+ */
 function getDayKey(date = new Date()): string {
-  return date.toISOString().split('T')[0];
+  // Forex day rolls over at 22:00 UTC (5 PM ET)
+  // If current UTC hour >= 22, we're in the "next" trading day
+  const adjusted = new Date(date.getTime());
+  if (adjusted.getUTCHours() >= 22) {
+    adjusted.setUTCDate(adjusted.getUTCDate() + 1);
+  }
+  return adjusted.toISOString().split('T')[0];
 }
 
 function round2(n: number): number {

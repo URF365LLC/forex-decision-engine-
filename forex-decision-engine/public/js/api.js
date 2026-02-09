@@ -14,11 +14,16 @@ const API = {
     
     const config = {
       headers: {
-        'Content-Type': 'application/json',
         ...options.headers,
       },
       ...options,
     };
+
+    // M-16 FIX: Only set Content-Type for requests with a body.
+    // GET requests should not include Content-Type per HTTP semantics.
+    if (config.body || options.method === 'POST' || options.method === 'PUT' || options.method === 'PATCH') {
+      config.headers['Content-Type'] = config.headers['Content-Type'] || 'application/json';
+    }
 
     if (config.body && typeof config.body === 'object') {
       config.body = JSON.stringify(config.body);

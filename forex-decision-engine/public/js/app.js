@@ -10,6 +10,7 @@ const App = {
   results: [],
   currentFilter: 'all',
   isScanning: false,
+  settingsSynced: false, // H-12 FIX: Track whether server settings sync is complete
   journalEntries: [],
   journalFilter: 'all',
   currentTradeData: null,
@@ -421,8 +422,12 @@ const App = {
       this.updateTickerBar(serverSettings);
       this.updateRiskHint();
       this.updateAccountLimitsHint();
+      // H-12 FIX: Mark settings as synced from server
+      this.settingsSynced = true;
     } catch (error) {
       console.warn('Failed to sync account settings from server:', error);
+      // Even on failure, mark as synced to allow scans with local settings
+      this.settingsSynced = true;
     }
   },
 
@@ -682,10 +687,16 @@ const App = {
     this.isScanning = true;
     const scanBtn = UI.$('scan-btn');
     const refreshBtn = UI.$('refresh-btn');
-    
+
     UI.setButtonLoading(scanBtn, true);
     if (refreshBtn) refreshBtn.disabled = true;
-    
+
+    // H-12 FIX: Wait for server settings sync to complete before scanning
+    // to avoid using stale local account size/risk values
+    if (!this.settingsSynced) {
+      await this.syncAccountSettingsFromServer();
+    }
+
     const settings = Storage.getSettings();
     
     UI.showLoading('Starting scan...');
@@ -870,7 +881,8 @@ const App = {
    * Format signal as text
    */
   formatSignalText(d) {
-    const dir = d.direction.toUpperCase();
+    // M-06 FIX: Null-check direction for no-trade signals
+    const dir = d.direction ? d.direction.toUpperCase() : 'NO TRADE';
     const lines = [
       `${d.displayName} ${dir} ${d.grade}`,
       `Entry: ${d.entryZone?.formatted || '—'}`,
