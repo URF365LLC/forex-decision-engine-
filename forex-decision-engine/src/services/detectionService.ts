@@ -268,6 +268,15 @@ export function startCooldownChecker(intervalMs: number = 60000): void {
     } catch (error) {
       logger.error('Cooldown check failed', { error });
     }
+
+    try {
+      const archived = await detectionStore.archiveExpiredDetections();
+      if (archived > 0) {
+        logger.info(`Auto-archive: ${archived} expired/dismissed/invalidated detections archived`);
+      }
+    } catch (error) {
+      logger.error('Auto-archive failed', { error });
+    }
   }, intervalMs);
 }
 
