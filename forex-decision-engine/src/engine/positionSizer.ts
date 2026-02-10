@@ -100,11 +100,18 @@ export function calculatePositionSize(input: SizingInput): PositionSize | null {
     });
   } else {
     const pipSize = spec?.pipSize ?? 0.0001;
+
+    // C-01/C-02 FIX: Always use per-instrument pipValue from specs.
+    // The spec pipValue accounts for quote currency (e.g., JPY pairs = ~6.41, CHF pairs = ~12.65).
+    // PIP_VALUES.standard ($10) is only correct for USD-quoted pairs.
+    if (!spec?.pipValue) {
+      logger.warn(`No instrument spec pipValue for ${symbol} — falling back to $${PIP_VALUES.standard}/pip. Position size may be inaccurate for non-USD-quoted pairs.`);
+    }
     const basePipValue = spec?.pipValue ?? PIP_VALUES.standard;
     stopLossPips = stopLossDistance / pipSize;
-    
+
     pipValue = basePipValue;
-    
+
     if (stopLossPips > 0 && pipValue > 0) {
       lots = riskAmount / (stopLossPips * pipValue);
     }
@@ -245,21 +252,26 @@ export function calculateTakeProfit(
   
   const riskDistance = Math.abs(entryPrice - stopLossPrice);
   const rewardDistance = riskDistance * minRR;
-  
+
+  // M-14 FIX: Deduct spread cost from reward to compute actual R:R
+  const spreadCost = spec?.avgSpread ?? 0;
+  const effectiveReward = Math.max(0, rewardDistance - spreadCost);
+  const actualRR = riskDistance > 0 ? effectiveReward / riskDistance : minRR;
+
   let takeProfit: number;
-  
+
   if (direction === 'long') {
     takeProfit = entryPrice + rewardDistance;
   } else {
     takeProfit = entryPrice - rewardDistance;
   }
-  
+
   const pips = rewardDistance / pipSize;
-  
+
   return {
     price: roundPrice(takeProfit, pipDecimals),
     pips: Math.round(pips * 10) / 10,
-    riskReward: minRR,
+    riskReward: Math.round(actualRR * 100) / 100,
   };
 }
 

@@ -301,6 +301,8 @@ function meetsMinGrade(grade: SignalGrade, minGrade: SignalGrade): boolean {
 class AutoScanService {
   private timers: Map<string, NodeJS.Timeout> = new Map();
   private isRunning: boolean = false;
+  // H-01 FIX: Track which strategies are currently mid-scan to prevent overlapping execution
+  private scanningStrategies: Set<string> = new Set();
   private config: AutoScanConfig;
   private status: AutoScanStatus;
   private startedAt: string | null = null;
@@ -588,8 +590,15 @@ class AutoScanService {
   }
   
   private async runScan(schedule: StrategyScheduleConfig): Promise<void> {
+    // H-01 FIX: Prevent overlapping scans for the same strategy
+    if (this.scanningStrategies.has(schedule.strategyId)) {
+      logger.warn(`AUTO_SCAN: Strategy ${schedule.strategyId} still scanning from previous cycle, skipping`);
+      return;
+    }
+    this.scanningStrategies.add(schedule.strategyId);
+
     const startTime = Date.now();
-    
+
     // Update market status
     const dayInfo = getMarketDayInfo();
     this.status.marketStatus = {
@@ -614,6 +623,8 @@ class AutoScanService {
         errors: 0,
         skippedMarketClosed: skipped.length,
       };
+      // H-01 FIX: Clear scanning lock on early return
+      this.scanningStrategies.delete(schedule.strategyId);
       return;
     }
     
@@ -865,6 +876,9 @@ class AutoScanService {
     // Log API call stats for rate limit monitoring
     const apiStats = twelveData.getApiStats();
     logger.info(`AUTO_SCAN: ${schedule.strategyId} complete in ${elapsed}ms - ${symbolsScanned} symbols, ${signalsFound} signals (${newSignals} new), ${errors} errors | API: ${apiStats.callsLastMinute}/${apiStats.limit} (${apiStats.percentUsed}%)`);
+
+    // H-01 FIX: Clear scanning lock when scan completes
+    this.scanningStrategies.delete(schedule.strategyId);
   }
 
   private shouldNotify(decision: Decision, isNew: boolean): boolean {

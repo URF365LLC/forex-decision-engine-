@@ -51,14 +51,20 @@ class TokenBucketRateLimiter {
   }
 
   /**
-   * Refill tokens based on elapsed time
+   * Refill tokens based on elapsed time.
+   * H-04 FIX: Cap burst size to prevent slamming the API after idle periods.
+   * After extended idle (e.g., overnight), limit available tokens to a safe
+   * burst size (~2 seconds' worth) instead of the full bucket capacity.
    */
   private refill(): void {
     const now = Date.now();
     const elapsed = (now - this.lastRefill) / 1000; // seconds
     const tokensToAdd = elapsed * this.config.refillRate;
-    
-    this.tokens = Math.min(this.config.maxTokens, this.tokens + tokensToAdd);
+
+    // Cap burst: after idle, don't allow more than 2 seconds' worth of tokens
+    // to accumulate. This prevents exceeding per-second API limits at market open.
+    const maxBurstTokens = Math.min(this.config.maxTokens, this.config.refillRate * 2);
+    this.tokens = Math.min(maxBurstTokens, this.tokens + tokensToAdd);
     this.lastRefill = now;
   }
 
