@@ -337,10 +337,10 @@ function checkSession(symbol: string): SessionResult {
         return { allowed: true, adjustment: -15, reason: 'FX: Asian session (low liquidity)' };
       }
       
-      // London Open Killzone: 07:00-09:00 UTC (+15 confidence)
-      // Prime institutional order flow, key reversals/continuations
+      // London Open Killzone: 07:00-09:00 UTC (+10 confidence)
+      // Prime institutional order flow — reduced from +15 to prevent grade inflation
       if (utcHour >= 7 && utcHour < 9) {
-        return { allowed: true, adjustment: 15 };
+        return { allowed: true, adjustment: 10 };
       }
       
       // London Session: 09:00-13:00 UTC (+10 confidence)
@@ -348,10 +348,10 @@ function checkSession(symbol: string): SessionResult {
         return { allowed: true, adjustment: 10 };
       }
       
-      // London/NY Overlap Killzone: 13:00-17:00 UTC (+20 confidence)
-      // HIGHEST VOLUME PERIOD - best signals
+      // London/NY Overlap Killzone: 13:00-17:00 UTC (+10 confidence)
+      // HIGHEST VOLUME PERIOD — reduced from +20 to prevent session-only grade inflation
       if (utcHour >= 13 && utcHour < 17) {
-        return { allowed: true, adjustment: 20 };
+        return { allowed: true, adjustment: 10 };
       }
       
       // NY Open Killzone: 13:30-15:30 UTC (+15 within overlap)
@@ -446,13 +446,13 @@ function detectRegime(h4Trend: H4TrendResult | undefined, atrPercent: number): R
     return { regime: 'strong-trend', allowTrend: true, allowMeanReversion: true, reason: `Strong trend (ADX=${adx.toFixed(1)})` };
   }
   
-  // Weak trend: ADX 14-30 (LOWERED from 18 to capture more opportunities)
-  // ADX 14-18 is "developing trend" - allow with confidence penalty
-  if (adx >= 14) {
+  // Weak trend: ADX 20-30 (RESTORED to industry standard per Wilder's ADX specification)
+  // ADX < 20 = no confirmed trend — trend strategies should not fire
+  if (adx >= 20) {
     return { regime: 'weak-trend', allowTrend: true, allowMeanReversion: true };
   }
   
-  // Range: ADX < 14 (LOWERED from 18)
+  // Range: ADX < 20 (industry standard: no trend present)
   return { regime: 'range', allowTrend: false, allowMeanReversion: true, reason: `Range (ADX=${adx.toFixed(1)})` };
 }
 
@@ -563,6 +563,11 @@ export function runPreFlight(input: PreFlightInput): PreFlightResult {
     const strongTrendPenalty = -15;
     confidenceAdjustments += strongTrendPenalty;
     warnings.push(`Mean-reversion in strong trend: ${strongTrendPenalty}pt penalty (clamped at 0)`);
+  }
+  if (strategyType === 'mean-reversion' && regime.regime === 'weak-trend') {
+    const weakTrendPenalty = -10;
+    confidenceAdjustments += weakTrendPenalty;
+    warnings.push(`Mean-reversion in weak trend: ${weakTrendPenalty}pt penalty`);
   }
   if (regime.regime === 'chop') {
     return {

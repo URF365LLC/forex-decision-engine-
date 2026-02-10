@@ -83,6 +83,7 @@ export class BollingerMR implements IStrategy {
     if (signalBar.low <= bbSignal.lower) {
       const rejection = isRejectionCandle(signalBar, 'long');
       if (!rejection.ok) return null;
+      if (rsiSignal! > 40) return null;
       
       direction = 'long';
       confidence += 20;
@@ -104,6 +105,7 @@ export class BollingerMR implements IStrategy {
     } else if (signalBar.high >= bbSignal.upper) {
       const rejection = isRejectionCandle(signalBar, 'short');
       if (!rejection.ok) return null;
+      if (rsiSignal! < 60) return null;
       
       direction = 'short';
       confidence += 20;

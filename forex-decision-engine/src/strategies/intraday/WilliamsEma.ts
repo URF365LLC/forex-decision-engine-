@@ -74,11 +74,11 @@ export class WilliamsEma implements IStrategy {
     if (!allValidNumbers(willrSignal, willrPrev, willrPrev2, ema200Signal, ema20Signal, ema20Prev, atrSignal)) return null;
     
     // ═══════════════════════════════════════════════════════════════════════
-    // RULE 1: H4 TREND DIRECTION REQUIRED (ADX gate moved to SignalQualityGate)
-    // NOTE: Redundant ADX>=20 check REMOVED - preflight already gates ADX>=14
+    // RULE 1: H4 TREND DIRECTION + ADX STRENGTH REQUIRED
+    // ADX >= 20 restored as defense-in-depth (matches strategy header documentation)
     // ═══════════════════════════════════════════════════════════════════════
     if (!preflight.h4Trend) return null;
-    // ADX check removed - SignalQualityGate handles regime detection with adaptive thresholds
+    if (preflight.h4Trend.adxValue < 20) return null;
     
     const triggers: string[] = [];
     const reasonCodes: ReasonCode[] = [];

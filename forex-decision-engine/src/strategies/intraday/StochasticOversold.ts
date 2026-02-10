@@ -94,7 +94,7 @@ export class StochasticOversold implements IStrategy {
       if (!rejection.ok) return null;
       
       direction = 'long';
-      confidence += 35;
+      confidence += 25;
       triggers.push(`Stochastic oversold at K=${stochSignal.k.toFixed(1)}`);
       reasonCodes.push('STOCH_OVERSOLD');
       triggers.push('Stochastic K crossed above D');
@@ -123,7 +123,7 @@ export class StochasticOversold implements IStrategy {
       if (!rejection.ok) return null;
       
       direction = 'short';
-      confidence += 35;
+      confidence += 25;
       triggers.push(`Stochastic overbought at K=${stochSignal.k.toFixed(1)}`);
       reasonCodes.push('STOCH_OVERBOUGHT');
       triggers.push('Stochastic K crossed below D');

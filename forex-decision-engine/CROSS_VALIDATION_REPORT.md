@@ -887,51 +887,37 @@ const swings = findSwingPoints(bars.slice(-80), 8);
 ---
 
 <a id="p-10"></a>
-### P-10: Liquidity Sweep — Sweep Lookback Too Short
+### P-10: Liquidity Sweep — ~~Sweep Lookback Too Short~~ WITHDRAWN
 
 **File:** `src/strategies/intraday/LiquiditySweep.ts`  
 **Lines:** 81-82  
-**Severity:** LOW  
-**Category:** Loose detection
+**Severity:** ~~LOW~~ N/A  
+**Status:** WITHDRAWN after external cross-validation
 
-#### Problem
+#### Original Claim (INCORRECT)
 
-The sweep detection uses a 3-bar lookback: `getRecentSweep(smcBars, 'long', 3)`. This means only the last 3 bars are checked for a sweep event. A minor wick that slightly exceeds a swing low within the last 3 hours counts as a "liquidity sweep," even though genuine ICT liquidity sweeps are typically more deliberate events.
+The original report proposed changing `getRecentSweep(smcBars, 'long', 3)` to use `5` as the third parameter, claiming it was a "detection lookback" that was too narrow.
 
-#### Before Code
+#### External Validation Finding
 
-```typescript
-// Lines 81-82
-const longSweep = getRecentSweep(smcBars, 'long', 3);
-const shortSweep = getRecentSweep(smcBars, 'short', 3);
-```
-
-#### Proposed After Code
+The third parameter is `maxAgeBars`, not a detection lookback. The actual `getRecentSweep` implementation (liquiditySweep.ts lines 279-300):
 
 ```typescript
-// Extend to 5-bar lookback for more reliable sweep detection
-const longSweep = getRecentSweep(smcBars, 'long', 5);
-const shortSweep = getRecentSweep(smcBars, 'short', 5);
+export function getRecentSweep(bars, direction, maxAgeBars = 5) {
+  const sweeps = detectLiquiditySweeps(bars);  // detects ALL sweeps from ALL bars
+  const relevantSweeps = sweeps.filter(s => {
+    const age = bars.length - 1 - s.reversalBarIndex;
+    if (age > maxAgeBars) return false;  // filters by AGE of reversal
+    // ...
+  });
+}
 ```
 
-#### Rationale
+Changing 3→5 would accept **older/staler sweeps** (up to 5 hours old instead of 3), making the strategy **more permissive**, not less. This contradicts the stated goal of reducing false signals.
 
-- ICT liquidity sweeps are deliberate institutional moves that take time to develop
-- A 3-bar window (3 hours on H1) is too narrow — the sweep might be detected mid-formation
-- A 5-bar window (5 hours) allows the full sweep-and-reversal pattern to complete before being detected
-- The wider window also reduces the chance of false sweeps from normal price noise
+#### Resolution
 
-#### Expected Impact
-
-- Fewer false sweep detections from minor wicks
-- More time for the sweep pattern to confirm before signaling
-- Estimated false signal reduction: **5-10%** for this strategy
-
-#### Verification Steps
-
-1. Read `getRecentSweep()` implementation in `src/modules/smartMoney/liquiditySweep.ts` to understand what the lookback parameter controls
-2. Verify the function signature accepts numeric lookback
-3. Confirm that a wider lookback doesn't cause the sweep to expire before the reversal candle is detected
+**No change.** The current `maxAgeBars=3` is appropriate — it ensures only fresh sweeps (within 3 bars/hours) are acted upon. Sweep freshness is important for reversal timing; staler sweeps have lower reversal probability.
 
 ---
 
@@ -1051,7 +1037,7 @@ Both current and proposed systems block this signal. The current system blocks i
 | P-07 | Bollinger MR | 15-20% | Very Low (RSI 40/60 is very soft) |
 | P-08 | Stochastic Oversold | Grade shift only | None (no signals blocked) |
 | P-09 | Break & Retest | 10-15% | Low (better structure detection) |
-| P-10 | Liquidity Sweep | 5-10% | Very Low (pattern needs time) |
+| P-10 | Liquidity Sweep | WITHDRAWN — maxAgeBars=3 is correct | N/A |
 
 **Overall estimated false signal reduction:** 30-40% across the system, primarily from the ADX gate fix (S-01) and session bonus reduction (S-02) which affect all strategies.
 

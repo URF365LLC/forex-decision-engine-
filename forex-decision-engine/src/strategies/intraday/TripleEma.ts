@@ -91,7 +91,11 @@ export class TripleEma implements IStrategy {
     const bullishStack = ema8Signal! > ema21Signal! && ema21Signal! > ema55Signal!;
     const bearishStack = ema8Signal! < ema21Signal! && ema21Signal! < ema55Signal!;
     
-    if (bullishStack && signalBar.low <= ema21Signal! && signalBar.close > ema21Signal!) {
+    const pullbackDepthLong = ema21Signal! - signalBar.low;
+    const pullbackDepthShort = signalBar.high - ema21Signal!;
+    
+    if (bullishStack && signalBar.low <= ema21Signal! && signalBar.close > ema21Signal!
+        && pullbackDepthLong >= atrSignal! * 0.3) {
       direction = 'long';
       confidence += 30;
       triggers.push('EMA8 > EMA21 > EMA55 (bullish stack)');
@@ -102,7 +106,8 @@ export class TripleEma implements IStrategy {
       const slope = normalizedSlope(validEma21, 5);
       if (slope > 0.0001) { confidence += 15; triggers.push('EMA21 sloping upward'); }
       if (signalBar.close > signalBar.open) { confidence += 10; triggers.push('Bullish candle'); reasonCodes.push('CANDLE_CONFIRMATION'); }
-    } else if (bearishStack && signalBar.high >= ema21Signal! && signalBar.close < ema21Signal!) {
+    } else if (bearishStack && signalBar.high >= ema21Signal! && signalBar.close < ema21Signal!
+        && pullbackDepthShort >= atrSignal! * 0.3) {
       direction = 'short';
       confidence += 30;
       triggers.push('EMA8 < EMA21 < EMA55 (bearish stack)');

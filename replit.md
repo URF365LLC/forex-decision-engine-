@@ -17,7 +17,7 @@ The frontend, built with Vanilla JavaScript, features a mobile-first dark theme 
 The backend is an Express.js application written in TypeScript using ES modules.
 
 #### Decision Engine
-Orchestrates trade signal generation, including an Indicator Factory, Trend Filter (EMA 200, ADX), Entry Trigger (RSI confirmation), Position Sizer, and Grader for confidence scoring. It routes to 11 distinct intraday strategies, incorporates Safety Gates (volatility, signal cooldowns), and performs startup validation and signal quality checks (including ICT Killzone session bonuses).
+Orchestrates trade signal generation, including an Indicator Factory, Trend Filter (EMA 200, ADX), Entry Trigger (RSI confirmation), Position Sizer, and Grader for confidence scoring. It routes to 10 active intraday strategies, incorporates Safety Gates (volatility, signal cooldowns), and performs startup validation and signal quality checks (including ICT Killzone session bonuses).
 
 #### Smart Money Concepts
 Detects ICT-based institutional trading patterns like Order Blocks, Fair Value Gaps, Liquidity Sweeps, and Market Structure (BOS, CHOCH).
@@ -38,7 +38,7 @@ A hybrid PostgreSQL and JSON file storage approach is used, with PostgreSQL for 
 API endpoints cover system health, symbol retrieval, signal analysis and scanning, signal history, strategy listings, trade journaling, and statistics. Real-time grade upgrades are streamed via SSE.
 
 ### Feature Specifications
--   **Multi-Strategy System**: Implements 11 intraday strategies.
+-   **Multi-Strategy System**: Implements 10 active intraday strategies (RsiBounce removed as dead code).
 -   **Confidence Scoring**: Trade decisions receive a 0-100 score, mapped to A+/A/B+/B/C grades, with reason codes.
 -   **Journaling**: Comprehensive trade journaling with P&L and statistics.
 -   **Auto-Scan v2.1**: Background scanning with configurable intervals, watchlist presets, market hours filters, and email alerts for high-grade signals.
@@ -49,6 +49,29 @@ API endpoints cover system health, symbol retrieval, signal analysis and scannin
 -   **Detection System**: Manages detection lifecycle with statuses like `cooling_down`, `eligible`, `taken`, `dismissed`, `expired`, `invalidated`.
 -   **Regime Detector Integration**: Adjusts confidence and risk-reward based on volatility regimes.
 -   **Bar Freshness Validation**: Rejects signals if bar data is stale.
+
+## Recent Changes (February 2026)
+
+### Signal Quality Hardening (14 validated fixes)
+Cross-validated audit by Claude and ChatGPT Codex to reduce false signals by 30-40%. Key changes:
+
+**Systemic (all strategies):**
+- S-01: ADX weak-trend threshold raised 14→20 (SignalQualityGate.ts)
+- S-02: Session bonuses reduced — London/NY Overlap +20→+10 (SignalQualityGate.ts)
+- S-03: Mean-reversion weak-trend penalty -10 added (SignalQualityGate.ts)
+
+**Per-strategy:**
+- P-01: EmaPullback — tiered ADX bonus (≥25: +15, 20-24: +8, <20: +0)
+- P-02/P-03: MultiOscillatorMomentum — RSI 35→30/65→70, Stoch 25→20/75→80
+- P-04: TripleEma — 0.3×ATR minimum pullback depth filter
+- P-05: WilliamsEma — ADX ≥ 20 hard gate
+- P-06: CciZeroLine — extreme thresholds ±100→±150
+- P-07: BollingerMR — RSI soft gate (long ≤40, short ≥60)
+- P-08: StochasticOversold — base confidence 35→25
+- P-09: BreakRetest — swing lookbacks 5→8, S/R 3→5, structure slice 50→80
+- P-11: Deleted dead RsiBounce.ts strategy file
+
+**Documentation:** Full audit in CROSS_VALIDATION_REPORT.md
 
 ## External Dependencies
 

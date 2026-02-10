@@ -60,6 +60,8 @@ export type ReasonCode =
   | 'CCI_ZERO_CROSS_DOWN'
   | 'CCI_EXTREME_LOW'
   | 'CCI_EXTREME_HIGH'
+  | 'MACD_HISTOGRAM_FLIP_UP'
+  | 'MACD_HISTOGRAM_FLIP_DOWN'
   // Structure
   | 'BREAK_CONFIRMED'
   | 'RETEST_CONFIRMED'

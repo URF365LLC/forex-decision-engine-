@@ -76,8 +76,13 @@ export class EmaPullback implements IStrategy {
       triggers.push('EMA20 > EMA50 (bullish structure)');
       triggers.push('Price pulled back to EMA20/50 zone');
       reasonCodes.push('EMA_PULLBACK');
-      confidence += 15;
-      triggers.push(`Strong trend (ADX: ${adxSignal!.toFixed(1)})`);
+      if (adxSignal! >= 25) {
+        confidence += 15;
+        triggers.push(`Strong trend (ADX: ${adxSignal!.toFixed(1)})`);
+      } else if (adxSignal! >= 20) {
+        confidence += 8;
+        triggers.push(`Moderate trend (ADX: ${adxSignal!.toFixed(1)})`);
+      }
       if (rsiSignal! >= 40 && rsiSignal! <= 60) { confidence += 10; triggers.push(`RSI reset to neutral (${rsiSignal!.toFixed(1)})`); }
       const slope = normalizedSlope(ema200!, 10);
       if (slope > 0.00005) { confidence += 10; triggers.push('EMA200 sloping upward'); }
@@ -89,8 +94,13 @@ export class EmaPullback implements IStrategy {
       triggers.push('EMA20 < EMA50 (bearish structure)');
       triggers.push('Price pulled back to EMA20/50 zone');
       reasonCodes.push('EMA_PULLBACK');
-      confidence += 15;
-      triggers.push(`Strong trend (ADX: ${adxSignal!.toFixed(1)})`);
+      if (adxSignal! >= 25) {
+        confidence += 15;
+        triggers.push(`Strong trend (ADX: ${adxSignal!.toFixed(1)})`);
+      } else if (adxSignal! >= 20) {
+        confidence += 8;
+        triggers.push(`Moderate trend (ADX: ${adxSignal!.toFixed(1)})`);
+      }
       if (rsiSignal! >= 40 && rsiSignal! <= 60) { confidence += 10; triggers.push(`RSI reset to neutral (${rsiSignal!.toFixed(1)})`); }
       const slope = normalizedSlope(ema200!, 10);
       if (slope < -0.00005) { confidence += 10; triggers.push('EMA200 sloping downward'); }

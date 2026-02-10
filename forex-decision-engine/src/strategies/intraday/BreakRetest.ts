@@ -27,7 +27,7 @@ interface SwingPoint {
   type: 'high' | 'low';
 }
 
-function findSwingPoints(bars: Bar[], lookback: number = 5): SwingPoint[] {
+function findSwingPoints(bars: Bar[], lookback: number = 8): SwingPoint[] {
   const swings: SwingPoint[] = [];
   
   for (let i = lookback; i < bars.length - lookback; i++) {
@@ -77,14 +77,14 @@ function detectStructure(swings: SwingPoint[]): MarketStructure {
 // ═══════════════════════════════════════════════════════════════════════════
 
 function findRecentResistance(bars: Bar[], lookback: number): number | null {
-  const swings = findSwingPoints(bars.slice(-lookback - 10), 3);
+  const swings = findSwingPoints(bars.slice(-lookback - 10), 5);
   const highs = swings.filter(s => s.type === 'high');
   if (highs.length === 0) return null;
   return Math.max(...highs.map(h => h.price));
 }
 
 function findRecentSupport(bars: Bar[], lookback: number): number | null {
-  const swings = findSwingPoints(bars.slice(-lookback - 10), 3);
+  const swings = findSwingPoints(bars.slice(-lookback - 10), 5);
   const lows = swings.filter(s => s.type === 'low');
   if (lows.length === 0) return null;
   return Math.min(...lows.map(l => l.price));
@@ -176,7 +176,7 @@ export class BreakRetest implements IStrategy {
     // ═══════════════════════════════════════════════════════════════════════
     // RULE A: Market structure must support direction
     // ═══════════════════════════════════════════════════════════════════════
-    const swings = findSwingPoints(bars.slice(-50), 5);
+    const swings = findSwingPoints(bars.slice(-80));
     const structure = detectStructure(swings);
     
     const triggers: string[] = [];

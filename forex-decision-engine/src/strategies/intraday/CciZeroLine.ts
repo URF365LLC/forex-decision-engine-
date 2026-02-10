@@ -78,8 +78,8 @@ export class CciZeroLine implements IStrategy {
     let confidence = 0;
     let direction: 'long' | 'short' | null = null;
 
-    const wasExtremeLow = cciPrev2! < -100 || cciPrev! < -100;
-    const wasExtremeHigh = cciPrev2! > 100 || cciPrev! > 100;
+    const wasExtremeLow = cciPrev2! < -150 || cciPrev! < -150;
+    const wasExtremeHigh = cciPrev2! > 150 || cciPrev! > 150;
 
     // V3: Calculate close-in-range for momentum confirmation
     const range = signalBar.high - signalBar.low;
@@ -93,8 +93,8 @@ export class CciZeroLine implements IStrategy {
       reasonCodes.push('CCI_ZERO_CROSS_UP');
       triggers.push('CCI was recently in extreme oversold');
 
-      // Deep extreme bonus
-      if (cciPrev2! < -150 || cciPrev! < -150) {
+      // Deep extreme bonus (shifted to -200 for truly deep extremes)
+      if (cciPrev2! < -200 || cciPrev! < -200) {
         confidence += 10;
         triggers.push('CCI was deeply oversold');
       }
@@ -113,8 +113,8 @@ export class CciZeroLine implements IStrategy {
       reasonCodes.push('CCI_ZERO_CROSS_DOWN');
       triggers.push('CCI was recently in extreme overbought');
 
-      // Deep extreme bonus
-      if (cciPrev2! > 150 || cciPrev! > 150) {
+      // Deep extreme bonus (shifted to +200 for truly deep extremes)
+      if (cciPrev2! > 200 || cciPrev! > 200) {
         confidence += 10;
         triggers.push('CCI was deeply overbought');
       }

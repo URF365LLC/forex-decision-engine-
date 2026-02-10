@@ -196,14 +196,14 @@ export class MultiOscillatorMomentum implements IStrategy {
     
     if (!isValidNumber(rsiSignal) || !isValidNumber(rsiPrev) || !isValidNumber(rsiPrev2)) return null;
     
-    const wasOversold = rsiPrev < 35 || rsiPrev2 < 35;
-    const wasOverbought = rsiPrev > 65 || rsiPrev2 > 65;
+    const wasOversold = rsiPrev < 30 || rsiPrev2 < 30;
+    const wasOverbought = rsiPrev > 70 || rsiPrev2 > 70;
     
     if (wasOversold && rsiSignal > 50 && rsiPrev <= 50) {
       return {
         name: 'RSI',
         direction: 'long',
-        strength: rsiPrev < 30 ? 15 : 10,
+        strength: rsiPrev < 20 ? 15 : 10,
         trigger: `RSI crossed above 50 from oversold (${rsiPrev.toFixed(1)} → ${rsiSignal.toFixed(1)})`,
         reasonCode: 'RSI_OVERSOLD',
       };
@@ -213,7 +213,7 @@ export class MultiOscillatorMomentum implements IStrategy {
       return {
         name: 'RSI',
         direction: 'short',
-        strength: rsiPrev > 70 ? 15 : 10,
+        strength: rsiPrev > 80 ? 15 : 10,
         trigger: `RSI crossed below 50 from overbought (${rsiPrev.toFixed(1)} → ${rsiSignal.toFixed(1)})`,
         reasonCode: 'RSI_OVERBOUGHT',
       };
@@ -235,7 +235,7 @@ export class MultiOscillatorMomentum implements IStrategy {
         direction: 'long',
         strength: Math.abs(macdSignal.histogram) > Math.abs(macdPrev.histogram) * 1.5 ? 15 : 10,
         trigger: `MACD histogram flipped positive (${macdPrev.histogram.toFixed(5)} → ${macdSignal.histogram.toFixed(5)})`,
-        reasonCode: 'CCI_ZERO_CROSS_UP',
+        reasonCode: 'MACD_HISTOGRAM_FLIP_UP',
       };
     }
     
@@ -245,7 +245,7 @@ export class MultiOscillatorMomentum implements IStrategy {
         direction: 'short',
         strength: Math.abs(macdSignal.histogram) > Math.abs(macdPrev.histogram) * 1.5 ? 15 : 10,
         trigger: `MACD histogram flipped negative (${macdPrev.histogram.toFixed(5)} → ${macdSignal.histogram.toFixed(5)})`,
-        reasonCode: 'CCI_ZERO_CROSS_DOWN',
+        reasonCode: 'MACD_HISTOGRAM_FLIP_DOWN',
       };
     }
     
@@ -260,14 +260,14 @@ export class MultiOscillatorMomentum implements IStrategy {
     if (!isValidNumber(stochSignal.k) || !isValidNumber(stochSignal.d)) return null;
     if (!isValidNumber(stochPrev.k) || !isValidNumber(stochPrev.d)) return null;
     
-    const wasOversold = stochPrev.k < 25 || stochPrev.d < 25;
-    const wasOverbought = stochPrev.k > 75 || stochPrev.d > 75;
+    const wasOversold = stochPrev.k < 20 || stochPrev.d < 20;
+    const wasOverbought = stochPrev.k > 80 || stochPrev.d > 80;
     
     if (wasOversold && stochSignal.k > stochSignal.d && stochPrev.k <= stochPrev.d) {
       return {
         name: 'Stochastic',
         direction: 'long',
-        strength: stochPrev.k < 20 ? 15 : 10,
+        strength: stochPrev.k < 10 ? 15 : 10,
         trigger: `Stochastic bullish crossover from oversold (%K: ${stochSignal.k.toFixed(1)}, %D: ${stochSignal.d.toFixed(1)})`,
         reasonCode: 'STOCH_CROSS_UP',
       };
@@ -277,7 +277,7 @@ export class MultiOscillatorMomentum implements IStrategy {
       return {
         name: 'Stochastic',
         direction: 'short',
-        strength: stochPrev.k > 80 ? 15 : 10,
+        strength: stochPrev.k > 90 ? 15 : 10,
         trigger: `Stochastic bearish crossover from overbought (%K: ${stochSignal.k.toFixed(1)}, %D: ${stochSignal.d.toFixed(1)})`,
         reasonCode: 'STOCH_CROSS_DOWN',
       };
