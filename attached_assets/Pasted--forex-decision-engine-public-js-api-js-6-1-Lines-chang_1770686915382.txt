@@ -1,0 +1,399 @@
+‎forex-decision-engine/public/js/api.js‎
++6
+-1
+Lines changed: 6 additions & 1 deletion
+Original file line number	Diff line number	Diff line change
+
+    const config = {
+      headers: {
+        'Content-Type': 'application/json',
+        ...options.headers,
+      },
+      ...options,
+    };
+
+    // M-16 FIX: Only set Content-Type for requests with a body.
+    // GET requests should not include Content-Type per HTTP semantics.
+    if (config.body || options.method === 'POST' || options.method === 'PUT' || options.method === 'PATCH') {
+      config.headers['Content-Type'] = config.headers['Content-Type'] || 'application/json';
+    }
+    if (config.body && typeof config.body === 'object') {
+      config.body = JSON.stringify(config.body);
+    }
+‎forex-decision-engine/public/js/app.js‎
++15
+-3
+Lines changed: 15 additions & 3 deletions
+Original file line number	Diff line number	Diff line change
+  results: [],
+  currentFilter: 'all',
+  isScanning: false,
+  settingsSynced: false, // H-12 FIX: Track whether server settings sync is complete
+  journalEntries: [],
+  journalFilter: 'all',
+  currentTradeData: null,
+      this.updateTickerBar(serverSettings);
+      this.updateRiskHint();
+      this.updateAccountLimitsHint();
+      // H-12 FIX: Mark settings as synced from server
+      this.settingsSynced = true;
+    } catch (error) {
+      console.warn('Failed to sync account settings from server:', error);
+      // Even on failure, mark as synced to allow scans with local settings
+      this.settingsSynced = true;
+    }
+  },
+
+    this.isScanning = true;
+    const scanBtn = UI.$('scan-btn');
+    const refreshBtn = UI.$('refresh-btn');
+    
+    UI.setButtonLoading(scanBtn, true);
+    if (refreshBtn) refreshBtn.disabled = true;
+    
+    // H-12 FIX: Wait for server settings sync to complete before scanning
+    // to avoid using stale local account size/risk values
+    if (!this.settingsSynced) {
+      await this.syncAccountSettingsFromServer();
+    }
+    const settings = Storage.getSettings();
+
+    UI.showLoading('Starting scan...');
+   * Format signal as text
+   */
+  formatSignalText(d) {
+    const dir = d.direction.toUpperCase();
+    // M-06 FIX: Null-check direction for no-trade signals
+    const dir = d.direction ? d.direction.toUpperCase() : 'NO TRADE';
+    const lines = [
+      `${d.displayName} ${dir} ${d.grade}`,
+      `Entry: ${d.entryZone?.formatted || '—'}`,
+‎forex-decision-engine/public/js/ui.js‎
++41
+-13
+Lines changed: 41 additions & 13 deletions
+Original file line number	Diff line number	Diff line change
+      </div>` : '';
+
+    // Reason codes (tags)
+    // L-06 FIX: Escape HTML entities in reason codes to prevent XSS
+    const escapeHtml = (str) => str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    const reasonCodesHTML = decision.reasonCodes && decision.reasonCodes.length > 0 ?
+      `<div class="reason-tags">
+        ${decision.reasonCodes.map(code => 
+          `<span class="reason-tag">${code.replace(/_/g, ' ')}</span>`
+        ${decision.reasonCodes.map(code =>
+          `<span class="reason-tag">${escapeHtml(code.replace(/_/g, ' '))}</span>`
+        ).join('')}
+      </div>` : '';
+
+    tbody.innerHTML = filtered.map(d => {
+      const dirClass = d.direction === 'long' ? 'long' : 'short';
+      const gradeClass = d.grade.replace('+', '-plus').toLowerCase();
+      const tp1 = d.tieredExits?.tp1?.formatted || d.takeProfit?.formatted || '-';
+      const tp2 = d.tieredExits?.tp2?.formatted || '-';
+      const lots = d.positionSize?.recommendedLots || d.lotSize || '-';
+      const rr = d.riskReward ? d.riskReward.toFixed(1) : '-';
+      // C-03 FIX: Use same field paths as card view for tiered exits
+      const exitMgmt = d.exitManagement;
+      const tp1 = exitMgmt?.tieredExits?.[0]?.formatted || d.takeProfit?.formatted || '-';
+      const tp2 = exitMgmt?.tieredExits?.[1]?.formatted || '-';
+      // C-03 FIX: Use d.position?.lots (matches card view), not d.positionSize or d.lotSize
+      const lots = d.position?.lots || '-';
+      // C-03 FIX: Use d.takeProfit?.rr for risk-reward ratio
+      const rr = d.takeProfit?.rr ? Number(d.takeProfit.rr).toFixed(1) : '-';
+      const stratName = d.strategyName || d.strategyId || '-';
+      const key = `${d.strategyId || 'default'}:${d.symbol}`;
+
+          <td class="col-symbol">${d.symbol}</td>
+          <td class="col-direction ${dirClass}">${d.direction?.toUpperCase() || '-'}</td>
+          <td class="col-grade"><span class="grade-badge ${gradeClass}">${d.grade}</span></td>
+          <td class="col-price">${d.entry?.formatted || '-'}</td>
+          <td class="col-price">${d.entryZone?.formatted || d.entry?.formatted || '-'}</td>
+          <td class="col-price">${d.stopLoss?.formatted || '-'}</td>
+          <td class="col-price">${tp1}</td>
+          <td class="col-price">${tp2}</td>
+          <td class="col-symbol">${e.symbol}</td>
+          <td class="col-direction ${dirClass}">${e.direction?.toUpperCase() || '-'}</td>
+          <td><span class="grade-badge ${(e.grade || '').replace('+', '-plus').toLowerCase()}">${e.grade || '-'}</span></td>
+          <td class="col-price">${e.entryPrice?.toFixed(5) || '-'}</td>
+          <td class="col-price">${e.stopLoss?.toFixed(5) || '-'}</td>
+          <td class="col-price">${e.takeProfit?.toFixed(5) || '-'}</td>
+          <td class="col-price">${e.exitPrice?.toFixed(5) || '-'}</td>
+          <td class="col-price">${e.entryPrice != null ? UI.formatJournalPrice(e.entryPrice, e.symbol) : '-'}</td>
+          <td class="col-price">${e.stopLoss != null ? UI.formatJournalPrice(e.stopLoss, e.symbol) : '-'}</td>
+          <td class="col-price">${e.takeProfit != null ? UI.formatJournalPrice(e.takeProfit, e.symbol) : '-'}</td>
+          <td class="col-price">${e.exitPrice != null ? UI.formatJournalPrice(e.exitPrice, e.symbol) : '-'}</td>
+          <td class="col-numeric">${e.lots || '-'}</td>
+          <td class="col-pnl ${pnlClass}">${pnlDisplay}</td>
+          <td class="col-numeric">${rDisplay}</td>
+        <tr data-id="${e.id}">
+          <td class="col-symbol">${e.symbol}</td>
+          <td class="col-direction ${dirClass}">${e.direction?.toUpperCase() || '-'}</td>
+          <td class="col-price">${e.entryPrice?.toFixed(5) || '-'}</td>
+          <td class="col-price">${e.currentPrice?.toFixed(5) || '-'}</td>
+          <td class="col-price">${e.entryPrice != null ? UI.formatJournalPrice(e.entryPrice, e.symbol) : '-'}</td>
+          <td class="col-price">${e.currentPrice != null ? UI.formatJournalPrice(e.currentPrice, e.symbol) : '-'}</td>
+          <td class="col-pnl ${pnlClass}">${e.unrealizedPnl ? `$${e.unrealizedPnl.toFixed(2)}` : '-'}</td>
+          <td class="col-numeric">${e.lots || '-'}</td>
+          <td><span class="status-badge-inline ${e.status}">${e.status}</span></td>
+      container.innerHTML = this.createMarketSidebar(overview);
+    }
+  },
+  /**
+   * M-01 FIX: Format price with instrument-appropriate decimal precision.
+   * JPY pairs: 3 decimals, crypto (BTC/ETH/SOL/LTC/BCH/BNB): 2 decimals,
+   * standard forex: 5 decimals, metals (XAU/XAG): 2-3 decimals.
+   */
+  formatJournalPrice(price, symbol) {
+    if (price == null || !Number.isFinite(price)) return '-';
+    const s = (symbol || '').toUpperCase();
+    // JPY pairs use 3 decimal places
+    if (s.includes('JPY')) return price.toFixed(3);
+    // Crypto and metals use 2 decimal places
+    if (['BTC', 'ETH', 'SOL', 'LTC', 'BCH', 'BNB', 'ADA', 'XRP'].some(c => s.includes(c))) {
+      // XRP and ADA use 5 decimal places
+      if (s.includes('XRP') || s.includes('ADA')) return price.toFixed(5);
+      return price.toFixed(2);
+    }
+    if (s.includes('XAU')) return price.toFixed(2);
+    if (s.includes('XAG')) return price.toFixed(3);
+    // Standard forex: 5 decimal places
+    return price.toFixed(5);
+  },
+};
+
+// Export for use in other scripts
+‎forex-decision-engine/src/engine/positionSizer.ts‎
++19
+-7
+Lines changed: 19 additions & 7 deletions
+Original file line number	Diff line number	Diff line change
+    });
+  } else {
+    const pipSize = spec?.pipSize ?? 0.0001;
+    // C-01/C-02 FIX: Always use per-instrument pipValue from specs.
+    // The spec pipValue accounts for quote currency (e.g., JPY pairs = ~6.41, CHF pairs = ~12.65).
+    // PIP_VALUES.standard ($10) is only correct for USD-quoted pairs.
+    if (!spec?.pipValue) {
+      logger.warn(`No instrument spec pipValue for ${symbol} — falling back to $${PIP_VALUES.standard}/pip. Position size may be inaccurate for non-USD-quoted pairs.`);
+    }
+    const basePipValue = spec?.pipValue ?? PIP_VALUES.standard;
+    stopLossPips = stopLossDistance / pipSize;
+    
+    pipValue = basePipValue;
+    
+    if (stopLossPips > 0 && pipValue > 0) {
+      lots = riskAmount / (stopLossPips * pipValue);
+    }
+
+  const riskDistance = Math.abs(entryPrice - stopLossPrice);
+  const rewardDistance = riskDistance * minRR;
+  
+  // M-14 FIX: Deduct spread cost from reward to compute actual R:R
+  const spreadCost = spec?.avgSpread ?? 0;
+  const effectiveReward = Math.max(0, rewardDistance - spreadCost);
+  const actualRR = riskDistance > 0 ? effectiveReward / riskDistance : minRR;
+  let takeProfit: number;
+  
+  if (direction === 'long') {
+    takeProfit = entryPrice + rewardDistance;
+  } else {
+    takeProfit = entryPrice - rewardDistance;
+  }
+  
+  const pips = rewardDistance / pipSize;
+  
+  return {
+    price: roundPrice(takeProfit, pipDecimals),
+    pips: Math.round(pips * 10) / 10,
+    riskReward: minRR,
+    riskReward: Math.round(actualRR * 100) / 100,
+  };
+}
+
+‎forex-decision-engine/src/services/autoScanService.ts‎
++15
+-1
+Lines changed: 15 additions & 1 deletion
+Original file line number	Diff line number	Diff line change
+class AutoScanService {
+  private timers: Map<string, NodeJS.Timeout> = new Map();
+  private isRunning: boolean = false;
+  // H-01 FIX: Track which strategies are currently mid-scan to prevent overlapping execution
+  private scanningStrategies: Set<string> = new Set();
+  private config: AutoScanConfig;
+  private status: AutoScanStatus;
+  private startedAt: string | null = null;
+    this.status.strategyRuns = this.getStrategyRuns();
+  }
+
+  private async runScan(schedule: StrategyScheduleConfig): Promise<void> {
+    // H-01 FIX: Prevent overlapping scans for the same strategy
+    if (this.scanningStrategies.has(schedule.strategyId)) {
+      logger.warn(`AUTO_SCAN: Strategy ${schedule.strategyId} still scanning from previous cycle, skipping`);
+      return;
+    }
+    this.scanningStrategies.add(schedule.strategyId);
+Comment on lines R592 to R599
+chatgpt-codex-connector[bot] commented 12 minutes ago
+@chatgpt-codex-connector[bot]
+chatgpt-codex-connector[bot]
+12 minutes ago
+P1 Badge Release strategy lock on unexpected errors
+
+The new scanningStrategies guard is only cleared on the early-return path and at the end of a successful run. If anything throws between the add() here and the final delete() (e.g., promisePool rejects or any downstream async throws), the strategy ID stays in the set forever, and future scans for that strategy will be skipped by the early guard. Wrapping the body of runScan in a try/finally (or deleting in a catch) would avoid a permanent scan lock when an unexpected error occurs.
+
+Useful? React with 👍 / 👎.
+
+Write a reply
+    const startTime = Date.now();
+    
+    // Update market status
+    const dayInfo = getMarketDayInfo();
+    this.status.marketStatus = {
+        errors: 0,
+        skippedMarketClosed: skipped.length,
+      };
+      // H-01 FIX: Clear scanning lock on early return
+      this.scanningStrategies.delete(schedule.strategyId);
+      return;
+    }
+
+    // Log API call stats for rate limit monitoring
+    const apiStats = twelveData.getApiStats();
+    logger.info(`AUTO_SCAN: ${schedule.strategyId} complete in ${elapsed}ms - ${symbolsScanned} symbols, ${signalsFound} signals (${newSignals} new), ${errors} errors | API: ${apiStats.callsLastMinute}/${apiStats.limit} (${apiStats.percentUsed}%)`);
+    // H-01 FIX: Clear scanning lock when scan completes
+    this.scanningStrategies.delete(schedule.strategyId);
+  }
+
+  private shouldNotify(decision: Decision, isNew: boolean): boolean {
+‎forex-decision-engine/src/services/drawdownGuard.ts‎
++20
+-6
+Lines changed: 20 additions & 6 deletions
+Original file line number	Diff line number	Diff line change
+ * Created: 2026-01-02 (Three-way audit)
+ */
+
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
+import { existsSync, readFileSync, writeFileSync, mkdirSync, renameSync } from 'fs';
+import { join, dirname } from 'path';
+
+// ═══════════════════════════════════════════════════════════════════════════
+
+function saveState(accountId: string, state: DrawdownState): void {
+  stateCache.set(accountId, state);
+  
+  try {
+    const path = getStatePath(accountId);
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, JSON.stringify(state, null, 2));
+    const filePath = getStatePath(accountId);
+    mkdirSync(dirname(filePath), { recursive: true });
+    // H-14 FIX: Atomic write using temp file + rename to prevent corruption on crash
+    const tmpPath = filePath + '.tmp';
+    writeFileSync(tmpPath, JSON.stringify(state, null, 2));
+    renameSync(tmpPath, filePath);
+  } catch (err) {
+    console.error(`[DrawdownGuard] Failed to save state for ${accountId}:`, err);
+  }
+// Core Functions
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * M-13 FIX: Use forex rollover time (5 PM ET / 22:00 UTC) as day boundary
+ * instead of server-local midnight. This aligns daily drawdown reset with
+ * the standard forex trading day boundary.
+ */
+function getDayKey(date = new Date()): string {
+  return date.toISOString().split('T')[0];
+  // Forex day rolls over at 22:00 UTC (5 PM ET)
+  // If current UTC hour >= 22, we're in the "next" trading day
+  const adjusted = new Date(date.getTime());
+  if (adjusted.getUTCHours() >= 22) {
+    adjusted.setUTCDate(adjusted.getUTCDate() + 1);
+  }
+  return adjusted.toISOString().split('T')[0];
+}
+
+function round2(n: number): number {
+‎forex-decision-engine/src/services/rateLimiter.ts‎
++9
+-3
+Lines changed: 9 additions & 3 deletions
+Original file line number	Diff line number	Diff line change
+  }
+
+  /**
+   * Refill tokens based on elapsed time
+   * Refill tokens based on elapsed time.
+   * H-04 FIX: Cap burst size to prevent slamming the API after idle periods.
+   * After extended idle (e.g., overnight), limit available tokens to a safe
+   * burst size (~2 seconds' worth) instead of the full bucket capacity.
+   */
+  private refill(): void {
+    const now = Date.now();
+    const elapsed = (now - this.lastRefill) / 1000; // seconds
+    const tokensToAdd = elapsed * this.config.refillRate;
+    
+    this.tokens = Math.min(this.config.maxTokens, this.tokens + tokensToAdd);
+    // Cap burst: after idle, don't allow more than 2 seconds' worth of tokens
+    // to accumulate. This prevents exceeding per-second API limits at market open.
+    const maxBurstTokens = Math.min(this.config.maxTokens, this.config.refillRate * 2);
+    this.tokens = Math.min(maxBurstTokens, this.tokens + tokensToAdd);
+Comment on lines R64 to R67
+chatgpt-codex-connector[bot] commented 12 minutes ago
+@chatgpt-codex-connector[bot]
+chatgpt-codex-connector[bot]
+12 minutes ago
+P2 Badge Don’t clamp token bucket capacity on every refill
+
+The refill now always caps tokens to refillRate * 2, which effectively reduces the bucket’s maximum from maxTokens (60) to 20 at all times, not just after idle periods. That means the limiter can never accumulate the configured capacity even during normal operation, causing unnecessary throttling/backpressure and longer scan times. If the intent is only to avoid large bursts after long idle, the cap should apply conditionally based on elapsed (e.g., only when elapsed exceeds a threshold), not on every refill.
+
+Useful? React with 👍 / 👎.
+
+Write a reply
+    this.lastRefill = now;
+  }
+
+‎forex-decision-engine/src/services/twelveDataClient.ts‎
++30
+-1
+Lines changed: 30 additions & 1 deletion
+Original file line number	Diff line number	Diff line change
+      volume: parseFloat(v.volume || '0'),
+    }));
+
+    const sorted = this.oldestFirst(bars.map(b => ({ ...b, datetime: b.timestamp })));
+    // H-07 FIX: Validate OHLCV data integrity before processing
+    const validBars = bars.filter(b => {
+      // Reject bars with non-finite or negative prices
+      if (!Number.isFinite(b.open) || !Number.isFinite(b.high) ||
+          !Number.isFinite(b.low) || !Number.isFinite(b.close)) {
+        logger.warn(`Invalid OHLCV bar for ${symbol}: non-finite price values`, b);
+        return false;
+      }
+      if (b.open <= 0 || b.high <= 0 || b.low <= 0 || b.close <= 0) {
+        logger.warn(`Invalid OHLCV bar for ${symbol}: zero/negative price`, b);
+        return false;
+      }
+      // Reject bars where high < low (corrupted data)
+      if (b.high < b.low) {
+        logger.warn(`Invalid OHLCV bar for ${symbol}: high (${b.high}) < low (${b.low})`, b);
+        return false;
+      }
+      // Reject bars with missing timestamps
+      if (!b.timestamp) {
+        logger.warn(`Invalid OHLCV bar for ${symbol}: missing timestamp`);
+        return false;
+      }
+      return true;
+    });
+    if (validBars.length < bars.length) {
+      logger.warn(`Filtered ${bars.length - validBars.length} invalid OHLCV bars for ${symbol} (${validBars.length}/${bars.length} valid)`);
+    }
+    const sorted = this.oldestFirst(validBars.map(b => ({ ...b, datetime: b.timestamp })));
+    const result = sorted.map(b => ({ timestamp: b.timestamp, open: b.open, high: b.high, low: b.low, close: b.close, volume: b.volume }));
+
+    const ttl = interval === 'daily' || interval === '1day' ? CACHE_TTL.D1 : CACHE_TTL.H1;

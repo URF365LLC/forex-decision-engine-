@@ -568,6 +568,7 @@ class AutoScanService {
     }
     this.scanningStrategies.add(schedule.strategyId);
 
+    try {
     const startTime = Date.now();
 
     // Update market status
@@ -592,8 +593,6 @@ class AutoScanService {
         errors: 0,
         skippedMarketClosed: skipped.length,
       };
-      // H-01 FIX: Clear scanning lock on early return
-      this.scanningStrategies.delete(schedule.strategyId);
       return;
     }
     
@@ -824,8 +823,9 @@ class AutoScanService {
     const apiStats = twelveData.getApiStats();
     logger.info(`AUTO_SCAN: ${schedule.strategyId} complete in ${elapsed}ms - ${symbolsScanned} symbols, ${signalsFound} signals (${newSignals} new), ${errors} errors | API: ${apiStats.callsLastMinute}/${apiStats.limit} (${apiStats.percentUsed}%)`);
 
-    // H-01 FIX: Clear scanning lock when scan completes
-    this.scanningStrategies.delete(schedule.strategyId);
+    } finally {
+      this.scanningStrategies.delete(schedule.strategyId);
+    }
   }
 
   private shouldNotify(decision: Decision, isNew: boolean): boolean {
