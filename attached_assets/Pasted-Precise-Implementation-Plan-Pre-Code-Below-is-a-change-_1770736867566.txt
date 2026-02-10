@@ -1,0 +1,250 @@
+Precise Implementation Plan (Pre-Code)
+Below is a change-ready plan you can execute in small, reversible increments.
+
+Phase 0 — Baseline + Safety Snapshot
+Create a baseline signal-quality snapshot (counts by strategy, grade distribution, overlap counts).
+
+Capture current confidence component contribution totals (session, trend, RR, candle, strategy-base).
+
+Tag current commit as pre-hardening checkpoint.
+
+Why first: lets us quantify impact and rollback quickly.
+
+Phase 1 — Systemic guardrails (highest leverage)
+1) SignalQualityGate.ts — ADX floor and session inflation
+Raise weak-trend threshold from adx >= 14 to adx >= 20.
+
+Range fallback becomes <20 automatically.
+
+Reduce session boosts:
+
+London Open +15 → +10
+
+London/NY Overlap +20 → +10
+
+These are currently implemented as described in report (checkSession, detectRegime, confidenceAdjustments).
+
+2) SignalQualityGate.ts — weak-trend MR penalty
+Keep allowMeanReversion: true for weak-trend, but add penalty:
+
+strong-trend MR: keep -15
+
+weak-trend MR: add -10
+
+Emit warnings for both penalties.
+
+Current code only penalizes MR in strong-trend; weak-trend has no penalty yet.
+
+Acceptance criteria (Phase 1)
+
+Trend-continuation blocked for ADX<20 regimes.
+
+Session adjustments reduced and still applied through preflight.
+
+MR receives deterministic penalty in both strong/weak trend regimes.
+
+Phase 2 — Strategy-level quality hardening
+3) EmaPullback.ts (P-01)
+Replace unconditional +15 ADX bonus with tiered logic:
+
+ADX ≥25: +15
+
+ADX 20–24.99: +8
+
+ADX <20: +0
+
+Fix trigger wording from always “Strong trend” to conditional language.
+
+Issue is currently unconditional both long/short paths.
+
+4) MultiOscillatorMomentum.ts + types.ts (P-02/P-03)
+Tighten RSI extreme detection: 35/65 → 30/70.
+
+Tighten Stoch extreme detection: 25/75 → 20/80.
+
+Recalibrate “extra strength” thresholds:
+
+RSI bonus threshold move deeper (e.g., <20 / >80)
+
+Stoch bonus threshold move deeper (e.g., <10 / >90)
+
+Rename MACD reason codes from CCI codes to MACD-specific values.
+
+Add new reason-code literals in ReasonCode union type.
+
+Current looseness/mislabeling confirmed in code.
+
+5) TripleEma.ts (P-04)
+Add minimum pullback depth filter using ATR proportion for both sides (e.g., 0.3 * ATR).
+
+Keep existing EMA stack + close reclaim logic.
+
+Current trigger fires on any EMA21 touch/reclaim without depth requirement.
+
+6) WilliamsEma.ts (P-05)
+Add explicit H4 ADX hard gate (preflight.h4Trend.adxValue >= 20) in strategy.
+
+Keep preflight regime filtering as upstream gate; this is defense-in-depth.
+
+Current strategy has no explicit ADX check despite comments mentioning removal.
+
+7) CciZeroLine.ts (P-06)
+Raise extreme entry thresholds ±100 → ±150.
+
+Shift deep-extreme bonus from ±150 → ±200.
+
+Current thresholds are as reported.
+
+8) BollingerMR.ts (P-07)
+Add RSI soft hard-gate before scoring:
+
+long: require RSI ≤40
+
+short: require RSI ≥60
+
+Keep current RSI tier bonuses for stronger extremes.
+
+Current RSI only contributes optional bonus, not gating.
+
+9) StochasticOversold.ts (P-08)
+Reduce base confidence from +35 to +25.
+
+Keep trend/session/RR contributions unchanged.
+
+Current base is +35 in both directions.
+
+10) BreakRetest.ts (P-09)
+Increase swing detection strictness:
+
+default lookback 5→8
+
+S/R helper swing lookback 3→5
+
+structure window bars 50→80 with stronger lookback
+
+Keep breakout/retest/acceptance checks unchanged.
+
+Current short lookbacks are confirmed.
+
+11) LiquiditySweep.ts + validate module behavior (P-10)
+Change getRecentSweep max age 3→5 only after validating impact.
+
+Note: this parameter is “max sweep age”, not sweep-formation depth.
+
+Call site and function semantics confirmed here.
+
+12) RsiBounce.ts + registry.ts (P-11)
+Preferred: delete dead strategy file if truly superseded.
+
+Alternative: retain file but mark clearly disabled.
+
+Confirm no runtime references before deletion.
+
+RsiBounce exists but is not in registry instantiation list.
+
+Phase 3 — Structural follow-up (non-blocking)
+Document overlap/dedupe design options (family-level suppression, highest-confidence per symbol-cycle).
+
+Do not implement dedupe in this hardening PR unless explicitly scoped.
+
+Risk Matrix
+Change Area	Risk Type	Likelihood	Impact	Mitigation
+ADX 14→20 regime gate	Under-trading during emerging trends	Medium	High	Stage rollout; compare signal volume by strategy pre/post.
+Session bonus reductions	Grade compression	High	Medium	Monitor grade distribution shift (A+/A/B+).
+MR weak-trend penalty	Legit MR setups downgraded	Medium	Medium	Keep as penalty not hard block; review rejection+RSI confluence survivors.
+EMA Pullback ADX tiering	Fewer trend entries	Medium	Medium	Validate win-rate change vs volume reduction.
+Multi-oscillator threshold tightening	Signal scarcity	Medium	Medium	Recalibrate extreme bonus thresholds in same commit.
+MACD reason-code rename	Downstream analytics breakage	Medium	Medium	Add new codes in ReasonCode; map old→new in dashboards.
+Triple EMA ATR-depth gate	Miss shallow but valid pullbacks	Low	Medium	Use conservative 0.3*ATR; run backtest sensitivity.
+Williams explicit ADX check	Duplicate filtering	Low	Low	Intended defense-in-depth; verify no contradictory behavior.
+CCI ±150/±200	Fewer CCI opportunities	Medium	Medium	Monitor strategy-specific throughput and expectancy.
+Bollinger RSI soft gate	Excluding neutral-momentum reversals	Medium	Medium	Use soft thresholds (40/60), not 30/70 hard extremes.
+BreakRetest longer lookback	Late structure recognition	Medium	Medium	Validate retest timing; tune 8↔7 if needed.
+Liquidity sweep 3→5 age	Staler sweeps accepted	Medium	Medium	A/B evaluate; potentially keep at 3 if decay worsens.
+Remove RsiBounce	Hidden dependency risk	Low	Medium	global reference search + CI compile pass before delete.
+Rollback Checklist (Operational)
+A) Fast rollback (single revert)
+Revert hardening commit(s) as one batch.
+
+Redeploy previous known-good tag.
+
+Verify scanner health and signal throughput.
+
+B) Selective rollback (if one change regresses)
+Revert specific file(s) only:
+
+systemic: SignalQualityGate.ts
+
+strategy-level: one strategy file at a time.
+
+Re-run quick smoke checks:
+
+build/typecheck
+
+one scan cycle for major symbols
+
+confidence/grade histogram sanity
+
+C) Data/analytics rollback
+If reason-code rename breaks consumers, temporarily alias new MACD reason-codes to legacy CCI labels in analytics layer.
+
+Keep app runtime on hardened logic while restoring dashboard compatibility.
+
+D) Go/No-Go rollback triggers
+35% unexpected drop in total signal volume (outside planned window).
+
+Significant degradation in pass-through quality metrics (e.g., A/B win-rate proxy).
+
+Any runtime/type errors in strategy registry path.
+
+Validation Gates Before Any Merge
+Type/build clean for changed strategy files and shared types.
+
+Confidence-path spot checks for at least:
+
+EMA Pullback
+
+Bollinger MR
+
+Multi-Oscillator
+
+Pre/post distribution comparison:
+
+signal count by strategy
+
+grade mix (A+/A/B+/B/C)
+
+overlap frequency per symbol/scan cycle
+
+No side-effect checks for grade and position sizing functions (unchanged expected).
+
+Commands I used for this analysis
+✅ nl -ba src/strategies/SignalQualityGate.ts | sed -n '318,590p'
+
+✅ nl -ba src/strategies/intraday/EmaPullback.ts | sed -n '1,180p'
+
+✅ nl -ba src/strategies/intraday/MultiOscillatorMomentum.ts | sed -n '180,290p'
+
+✅ nl -ba src/strategies/intraday/TripleEma.ts | sed -n '70,150p'
+
+✅ nl -ba src/strategies/intraday/WilliamsEma.ts | sed -n '60,130p'
+
+✅ nl -ba src/strategies/intraday/CciZeroLine.ts | sed -n '72,130p'
+
+✅ nl -ba src/strategies/intraday/BollingerMR.ts | sed -n '70,155p'
+
+✅ nl -ba src/strategies/intraday/StochasticOversold.ts | sed -n '76,200p'
+
+✅ nl -ba src/strategies/intraday/BreakRetest.ts | sed -n '1,240p'
+
+✅ nl -ba src/strategies/intraday/LiquiditySweep.ts | sed -n '68,140p'
+
+✅ nl -ba src/modules/smartMoney/liquiditySweep.ts | sed -n '260,340p'
+
+✅ nl -ba src/strategies/registry.ts | sed -n '1,120p'
+
+✅ nl -ba src/strategies/intraday/RsiBounce.ts | sed -n '1,70p'
+
+✅ nl -ba src/strategies/types.ts | sed -n '24,90p'
+
+✅ nl -ba src/strategies/utils.ts | sed -n '160,230p'
