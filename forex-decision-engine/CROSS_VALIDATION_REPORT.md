@@ -3,7 +3,8 @@
 **Date:** February 10, 2026  
 **Scope:** All 11 strategy files + SignalQualityGate shared infrastructure  
 **Purpose:** Document every proposed fix with before/after code, rationale, and verification steps for external review  
-**Status:** PRE-IMPLEMENTATION — No code changes have been made
+**Status:** PRE-IMPLEMENTATION — No code changes have been made  
+**Line numbers verified against:** Current codebase as of February 10, 2026 (commit 8dfef52)
 
 ---
 
@@ -981,37 +982,57 @@ Registry file (`src/strategies/registry.ts`) imports and instantiates these 10 s
 
 ## 4. Confidence Scoring Walkthrough
 
-To illustrate how confidence inflation works, here's a walkthrough of a typical **EMA Pullback** signal under current vs. proposed rules:
+To illustrate how confidence inflation works, here are two walkthroughs using the **Bollinger MR** strategy (BollingerMR.ts) with exact line references.
 
-### Scenario: EUR/USD, H4 bullish (ADX=22), London/NY overlap, RSI at 48
+*Line number verification date: February 10, 2026*
 
-| Component | Current Score | Proposed Score | Source |
+### Scenario A: EUR/USD Long, H4 bullish (ADX=25), London/NY overlap, RSI at 50 (neutral)
+
+| Component | Current Score | Proposed Score | Code Reference |
 |-----------|:------------:|:--------------:|--------|
-| Base (EMA pullback zone + close above EMA20) | +25 | +25 | Line 74 |
-| ADX trend bonus | +15 (unconditional) | +8 (ADX 22 = moderate) | Lines 79-80 |
-| RSI neutral reset | +10 | +10 | Line 81 |
-| Bullish candle confirmation | +10 | +10 | Line 84 |
-| H4 trend aligned (moderate) | +15 | +15 | getTrendConfidenceAdjustment() |
-| Session bonus (London/NY) | +20 | +10 | S-02 fix |
-| RR favorable | +10 | +10 | Line 123 |
-| **Total** | **105 → clamped to 100 (A+)** | **88 (A)** | |
+| BB lower touch | +20 | +20 | BollingerMR.ts line 88 |
+| Rejection candle confirmed | +20 | +20 | BollingerMR.ts line 91 |
+| RSI bonus (RSI=50 → no bonus) | +0 | +0 | BollingerMR.ts lines 95-103 |
+| RSI hard gate (P-07 fix) | — | **blocks** (RSI 50 > 40) | Proposed gate before line 87 |
+| H4 trend aligned (moderate) | +15 | — | BollingerMR.ts line 130-131 |
+| Session bonus (London/NY) | +20 | — | SignalQualityGate.ts line 354 |
+| RR favorable | +10 | — | BollingerMR.ts line 164 |
+| **Total** | **85 (A)** | **Blocked** | |
 
-After clamping, current system gives A+ for what is a decent but not exceptional setup. With proposed fixes, it grades A — still a high-quality signal, but with room for truly exceptional setups to differentiate.
+**Current system grades A** for a BB touch with rejection but zero RSI confirmation. With P-07 fix, signal is blocked because RSI (50) > 40 threshold, correctly identifying this as not a genuine mean-reversion setup.
 
-### Scenario: Same pair, ADX=16 (weak trend), Asian session
+### Scenario B: EUR/USD Long, H4 bullish (ADX=25), London/NY overlap, RSI at 28 (oversold)
 
-| Component | Current Score | Proposed Score | Source |
+| Component | Current Score | Proposed Score | Code Reference |
 |-----------|:------------:|:--------------:|--------|
-| Base | +25 | +25 | |
-| ADX trend bonus | +15 (unconditional) | +0 (ADX < 20) | P-01 fix |
-| RSI neutral reset | +10 | +10 | |
-| Bullish candle | +10 | +10 | |
-| H4 trend (weak) | +10 | +10 | |
-| Session (Asian) | -15 | -15 | |
-| RR favorable | +10 | +10 | |
-| **Total** | **65 (B)** | **50 (C)** | |
+| BB lower touch | +20 | +20 | BollingerMR.ts line 88 |
+| Rejection candle confirmed | +20 | +20 | BollingerMR.ts line 91 |
+| RSI oversold bonus (RSI=28 < 30) | +15 | +15 | BollingerMR.ts lines 99-101 |
+| RSI hard gate (P-07, RSI 28 < 40) | — | passes | — |
+| H4 trend aligned (moderate) | +15 | +15 | BollingerMR.ts line 130-131 |
+| Session bonus (London/NY) | +20 | +10 | S-02 fix: 20→10 |
+| RR favorable | +10 | +10 | BollingerMR.ts line 164 |
+| **Total** | **100 → clamped (A+)** | **90 (A)** | |
 
-Current system gives B grade for a trade in a weak trend during low-liquidity Asian session. With fixes, it barely passes at C — correctly reflecting the low-quality conditions.
+With RSI confirmation present, the signal passes both systems. The proposed fixes reduce from A+ to A — still a high-grade signal, but with room for truly exceptional setups (RSI < 20, strong trend ADX > 30, extreme rejection) to differentiate.
+
+### Scenario C: GBP/USD Long, ADX=16 (weak trend), Asian session, RSI at 32
+
+This scenario tests the systemic ADX fix (S-01) and session penalty interaction.
+
+| Component | Current Score | Proposed Score | Code Reference |
+|-----------|:------------:|:--------------:|--------|
+| BB lower touch | +20 | +20 | BollingerMR.ts line 88 |
+| Rejection candle confirmed | +20 | +20 | BollingerMR.ts line 91 |
+| RSI bonus (RSI=32, not < 30) | +0 | +0 | BollingerMR.ts line 99 threshold |
+| RSI hard gate (P-07, RSI 32 < 40) | — | passes | — |
+| H4 trend (weak, moderate adj) | +10 | +10 | BollingerMR.ts line 130-131 |
+| MR weak-trend penalty (S-03) | +0 | -10 | Proposed penalty |
+| Session (Asian, -15) | -15 | -15 | SignalQualityGate.ts line 336 |
+| RR favorable | +10 | +10 | BollingerMR.ts line 164 |
+| **Total** | **45 → blocked (<50)** | **35 → blocked (<50)** | |
+
+Both current and proposed systems block this signal. The current system blocks it marginally (45). The proposed system blocks it more decisively (35), providing a wider safety margin against scoring noise. This confirms the fixes don't over-filter — weak signals are already correctly blocked in the worst conditions.
 
 ---
 
