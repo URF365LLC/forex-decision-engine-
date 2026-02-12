@@ -141,6 +141,13 @@ export interface UpdateDetectionInput {
   statusReason?: string;
   grade?: string;
   confidence?: number;
+  fvg?: {
+    status: 'pro' | 'against' | 'none';
+    summary: string;
+    tpAdjusted: boolean;
+    tpAdjustmentNote?: string;
+    confidenceAdjustment: number;
+  } | null;
 }
 
 // ═══════════════════════════════════════════════════════════════

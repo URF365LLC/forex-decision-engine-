@@ -12,7 +12,8 @@ import { Generated, Insertable, Selectable, Updateable } from 'kysely';
 export type DetectionStatus =
   | 'cooling_down'   // Just detected, in cooldown period
   | 'eligible'       // Cooldown complete, ready for action
-  | 'executed'       // User took the trade
+  | 'taken'          // User took the trade (unified)
+  | 'executed'       // DEPRECATED: Use 'taken'
   | 'dismissed'      // User dismissed
   | 'expired'        // Signal validity passed
   | 'invalidated';   // Market conditions changed

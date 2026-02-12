@@ -70,7 +70,13 @@ export type ReasonCode =
   // Risk
   | 'RR_FAVORABLE'
   | 'ATR_NORMAL'
-  | 'ATR_ELEVATED';
+  | 'ATR_ELEVATED'
+  // FVG / Smart Money
+  | 'FVG_TARGET'
+  | 'FVG_CONFLUENCE'
+  | 'FVG_WALL'
+  | 'CONFLUENCE_ZONE'
+  | 'OB_ALIGNED';
 
 export interface Bar {
   timestamp: string;

@@ -169,7 +169,7 @@ export class LiquiditySweep implements IStrategy {
         obConfidenceBoost = 10;
         triggers.push(`Entry near Order Block zone`);
       }
-      reasonCodes.push('OB_ALIGNED' as ReasonCode);
+      reasonCodes.push('OB_ALIGNED');
       confidence += obConfidenceBoost;
     }
 
@@ -242,7 +242,7 @@ export class LiquiditySweep implements IStrategy {
         hasConfluence = true;
         confidence += 25;
         triggers.push(`OB-FVG CONFLUENCE ZONE detected (institutional + imbalance)`);
-        reasonCodes.push('CONFLUENCE_ZONE' as ReasonCode);
+        reasonCodes.push('CONFLUENCE_ZONE');
       }
     }
 
@@ -255,7 +255,7 @@ export class LiquiditySweep implements IStrategy {
         // Use FVG midpoint as primary target
         takeProfitPrice = activeFVG.midpoint - (atrSignal * 0.1);
         triggers.push(`FVG target at ${activeFVG.midpoint.toFixed(5)} (${activeFVG.fillPercent.toFixed(0)}% filled)`);
-        reasonCodes.push('FVG_TARGET' as ReasonCode);
+        reasonCodes.push('FVG_TARGET');
       } else {
         // Fallback to liquidity zone or fixed RR
         const targetZones = opposingZones
@@ -273,7 +273,7 @@ export class LiquiditySweep implements IStrategy {
         // Use FVG midpoint as primary target
         takeProfitPrice = activeFVG.midpoint + (atrSignal * 0.1);
         triggers.push(`FVG target at ${activeFVG.midpoint.toFixed(5)} (${activeFVG.fillPercent.toFixed(0)}% filled)`);
-        reasonCodes.push('FVG_TARGET' as ReasonCode);
+        reasonCodes.push('FVG_TARGET');
       } else {
         // Fallback to liquidity zone or fixed RR
         const targetZones = opposingZones

@@ -219,6 +219,7 @@ export async function updateDetection(
       }
       if (updates.grade) updateData.grade = updates.grade;
       if (updates.confidence !== undefined) updateData.confidence = updates.confidence;
+      if (updates.fvg !== undefined) updateData.fvg_data = updates.fvg ? JSON.stringify(updates.fvg) : null;
 
       await db
         .updateTable('detections')
@@ -235,12 +236,15 @@ export async function updateDetection(
   // Fallback to in-memory
   const detection = inMemoryStore.get(id);
   if (detection) {
-    const updated = {
+    const updated: DetectedTrade = {
       ...detection,
       ...updates,
       updatedAt: now,
       statusChangedAt: updates.status ? now : detection.statusChangedAt,
     };
+    if (updates.fvg !== undefined) {
+      updated.fvg = updates.fvg;
+    }
     inMemoryStore.set(id, updated);
     return updated;
   }

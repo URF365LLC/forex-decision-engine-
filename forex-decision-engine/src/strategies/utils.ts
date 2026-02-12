@@ -841,16 +841,19 @@ export function buildDecision(params: DecisionParams): Decision {
   const fvgAnalysis = analyzeFVGConfluence(bars, direction, entryPrice, takeProfitPrice, pipSize);
 
   let adjustedConfidence = confidence;
-  if (!strategyAlreadyUsesFVG) {
+  if (strategyAlreadyUsesFVG) {
+    fvgAnalysis.confidenceAdjustment = 0;
+    fvgAnalysis.summary = `${fvgAnalysis.summary} (strategy has own FVG logic)`;
+  } else {
     adjustedConfidence += fvgAnalysis.confidenceAdjustment;
     adjustedConfidence = Math.max(0, Math.min(100, adjustedConfidence));
 
     if (fvgAnalysis.confidenceAdjustment > 0) {
       triggers.push(`FVG confluence: ${fvgAnalysis.summary}`);
-      reasonCodes.push('FVG_CONFLUENCE' as ReasonCode);
+      reasonCodes.push('FVG_CONFLUENCE');
     } else if (fvgAnalysis.confidenceAdjustment < 0) {
       triggers.push(`FVG wall warning: ${fvgAnalysis.summary}`);
-      reasonCodes.push('FVG_WALL' as ReasonCode);
+      reasonCodes.push('FVG_WALL');
     }
   }
 

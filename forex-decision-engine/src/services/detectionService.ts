@@ -85,6 +85,18 @@ export async function processAutoScanDecision(
       logger.info(`Grade upgrade for ${existing.id}: ${existing.grade} → ${decision.grade}`);
     }
 
+    if (decision.fvg) {
+      updates.fvg = {
+        status: decision.fvg.status,
+        summary: decision.fvg.summary,
+        tpAdjusted: decision.fvg.tpAdjusted,
+        tpAdjustmentNote: decision.fvg.tpAdjustmentNote,
+        confidenceAdjustment: decision.fvg.confidenceAdjustment,
+      };
+    } else if (existing.fvg) {
+      updates.fvg = null;
+    }
+
     return detectionStore.updateDetection(existing.id, updates);
   }
 
