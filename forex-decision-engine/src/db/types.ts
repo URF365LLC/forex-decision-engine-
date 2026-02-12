@@ -133,6 +133,13 @@ export interface AlertHistoryTable {
   created_at: Generated<string>;
 }
 
+export interface AutoScanConfigTable {
+  id: Generated<number>;
+  config_json: string;
+  enabled: boolean;
+  updated_at: Generated<string>;
+}
+
 // ═══════════════════════════════════════════════════════════════
 // DATABASE SCHEMA
 // ═══════════════════════════════════════════════════════════════
@@ -143,6 +150,7 @@ export interface Database {
   journal_entries: JournalEntriesTable;
   cooldowns: CooldownsTable;
   alert_history: AlertHistoryTable;
+  auto_scan_config: AutoScanConfigTable;
 }
 
 // ═══════════════════════════════════════════════════════════════

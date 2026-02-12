@@ -532,23 +532,29 @@ const UI = {
     }
 
     if (filtered.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="11" class="empty-cell">No signals found. Select instruments and scan.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="12" class="empty-cell">No signals found. Select instruments and scan.</td></tr>';
       return;
     }
 
     tbody.innerHTML = filtered.map(d => {
       const dirClass = d.direction === 'long' ? 'long' : 'short';
       const gradeClass = d.grade.replace('+', '-plus').toLowerCase();
-      // C-03 FIX: Use same field paths as card view for tiered exits
       const exitMgmt = d.exitManagement;
       const tp1 = exitMgmt?.tieredExits?.[0]?.formatted || d.takeProfit?.formatted || '-';
       const tp2 = exitMgmt?.tieredExits?.[1]?.formatted || '-';
-      // C-03 FIX: Use d.position?.lots (matches card view), not d.positionSize or d.lotSize
       const lots = d.position?.lots || '-';
-      // C-03 FIX: Use d.takeProfit?.rr for risk-reward ratio
       const rr = d.takeProfit?.rr ? Number(d.takeProfit.rr).toFixed(1) : '-';
       const stratName = d.strategyName || d.strategyId || '-';
       const key = `${d.strategyId || 'default'}:${d.symbol}`;
+      const sentimentId = `table-sentiment-${(d.strategyId || 'default')}-${d.symbol}`.replace(/[^a-zA-Z0-9-]/g, '-');
+
+      const cached = window.App?.sentimentCache?.[d.symbol];
+      let sentimentCell = `<button class="table-btn sentiment-btn" onclick="App.fetchSentiment('${d.symbol}', '${sentimentId}')">🧠</button>`;
+      if (cached && (Date.now() - cached.fetchedAt < 5 * 60 * 1000)) {
+        const s = cached.data;
+        const emoji = { bullish: '🟢', slightly_bullish: '🟢', extremely_bullish: '🟢', bearish: '🔴', slightly_bearish: '🔴', extremely_bearish: '🔴', neutral: '⚪' }[s.rating] || '⚪';
+        sentimentCell = `<span class="sentiment-inline" title="${s.summary || s.rating}">${emoji} ${s.score > 0 ? '+' : ''}${s.score}</span>`;
+      }
 
       return `
         <tr data-key="${key}">
@@ -562,6 +568,7 @@ const UI = {
           <td class="col-numeric">${lots}</td>
           <td class="col-numeric">${rr}</td>
           <td>${stratName}</td>
+          <td class="col-sentiment" id="${sentimentId}">${sentimentCell}</td>
           <td class="col-actions">
             ${d.grade !== 'no-trade' ? `
               <button class="table-btn primary" onclick="App.takeSignalTrade('${key}')">Take</button>

@@ -5,6 +5,7 @@
 
 import { createLogger } from './logger.js';
 import { Decision, SignalGrade, FVGConfluence } from '../strategies/types.js';
+import { grokSentimentService } from './grokSentimentService.js';
 
 const logger = createLogger('AlertService');
 
@@ -131,6 +132,27 @@ class AlertService {
 
     const gatingSummary = gatingNotes.length > 0 ? gatingNotes.join(' | ') : 'Clear: no gating blocks';
 
+    const sentiment = grokSentimentService.getCachedSentiment(decision.symbol);
+    let sentimentHtml = '';
+    if (sentiment) {
+      const sentColor = sentiment.score > 15 ? '#22c55e' : sentiment.score < -15 ? '#ef4444' : '#94a3b8';
+      const sentEmoji = sentiment.score > 15 ? '🟢' : sentiment.score < -15 ? '🔴' : '⚪';
+      const sentLabel = sentiment.rating.replace(/_/g, ' ').toUpperCase();
+      const scoreDisplay = sentiment.score > 0 ? `+${sentiment.score}` : `${sentiment.score}`;
+      sentimentHtml = `
+      <tr>
+        <td style="padding: 12px 0; border-bottom: 1px solid #334155; color: #94a3b8;">Sentiment</td>
+        <td style="padding: 12px 0; border-bottom: 1px solid #334155; text-align: right;">
+          <span style="color: ${sentColor}; font-weight: bold;">${sentEmoji} ${sentLabel} (${scoreDisplay})</span>
+        </td>
+      </tr>
+      ${sentiment.summary ? `<tr>
+        <td colspan="2" style="padding: 8px 0; border-bottom: 1px solid #334155; color: #94a3b8; font-size: 12px;">
+          ${sentiment.summary}
+        </td>
+      </tr>` : ''}`;
+    }
+
     const fvg = decision.fvg;
     let fvgHtml = '';
     if (fvg && fvg.status !== 'none') {
@@ -221,10 +243,11 @@ class AlertService {
         <td style="padding: 12px 0; border-bottom: 1px solid #334155; text-align: right; color: #f1f5f9;">${validity}</td>
       </tr>
       <tr>
-        <td style="padding: 12px 0; ${fvgHtml ? 'border-bottom: 1px solid #334155; ' : ''}color: #94a3b8;">Gating</td>
-        <td style="padding: 12px 0; ${fvgHtml ? 'border-bottom: 1px solid #334155; ' : ''}text-align: right; color: #e2e8f0;">${gatingSummary}</td>
+        <td style="padding: 12px 0; ${fvgHtml || sentimentHtml ? 'border-bottom: 1px solid #334155; ' : ''}color: #94a3b8;">Gating</td>
+        <td style="padding: 12px 0; ${fvgHtml || sentimentHtml ? 'border-bottom: 1px solid #334155; ' : ''}text-align: right; color: #e2e8f0;">${gatingSummary}</td>
       </tr>
       ${fvgHtml}
+      ${sentimentHtml}
     </table>
     
     <div style="margin-top: 20px; padding: 12px; background: #0f172a; border-radius: 8px;">

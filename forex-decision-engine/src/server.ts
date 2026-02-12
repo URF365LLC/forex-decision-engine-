@@ -1312,15 +1312,17 @@ async function startServer() {
     broadcastUpgrade({ type: 'new_signal', decision, isNew });
   });
   
-  autoScanService.autoStartIfEnabled();
-  
-  const scanStatus = autoScanService.getStatus();
-  if (scanStatus.config.enabled && !scanStatus.config.email) {
-    logger.warn('AUTO_SCAN: Enabled but no email configured - alerts will not be sent!');
-  }
-  if (!alertService.isConfigured()) {
-    logger.warn('RESEND_API_KEY not set - email alerts disabled system-wide');
-  }
+  autoScanService.autoStartIfEnabled().then(() => {
+    const scanStatus = autoScanService.getStatus();
+    if (scanStatus.config.enabled && !scanStatus.config.email) {
+      logger.warn('AUTO_SCAN: Enabled but no email configured - alerts will not be sent!');
+    }
+    if (!alertService.isConfigured()) {
+      logger.warn('RESEND_API_KEY not set - email alerts disabled system-wide');
+    }
+  }).catch(err => {
+    logger.error(`AUTO_SCAN: Auto-start failed: ${err}`);
+  });
   });
 }
 

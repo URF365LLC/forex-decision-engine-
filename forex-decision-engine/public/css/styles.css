@@ -3770,3 +3770,29 @@ textarea:focus {
   text-align: center;
   padding: var(--spacing-2xl);
 }
+
+.col-sentiment {
+  width: 50px;
+  text-align: center;
+}
+
+.sentiment-inline {
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: default;
+}
+
+.sentiment-btn {
+  padding: 2px 6px !important;
+  font-size: 12px !important;
+  min-width: unset !important;
+}
+
+.detection-sentiment {
+  margin: 8px 0;
+}
+
+.detection-sentiment .btn-sentiment {
+  font-size: 12px;
+  padding: 4px 10px;
+}

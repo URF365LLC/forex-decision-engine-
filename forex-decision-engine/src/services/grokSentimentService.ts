@@ -508,6 +508,14 @@ Provide your analysis in JSON format with these exact fields:
     };
   }
   
+  getCachedSentiment(symbol: string): SentimentResult | null {
+    const cached = sentimentCache.get(symbol);
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.result;
+    }
+    return null;
+  }
+
   clearCache(): void {
     sentimentCache.clear();
     logger.info('Sentiment cache cleared');

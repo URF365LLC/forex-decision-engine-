@@ -2124,6 +2124,10 @@ const App = {
           ` : ''}
         </div>
 
+        <div class="detection-sentiment" id="detection-sentiment-${detection.id}">
+          <button class="btn btn-small btn-sentiment" onclick="App.fetchSentiment('${detection.symbol}', 'detection-sentiment-${detection.id}')">🧠 Sentiment</button>
+        </div>
+
         <div class="detection-actions">
           ${actionsHtml}
         </div>

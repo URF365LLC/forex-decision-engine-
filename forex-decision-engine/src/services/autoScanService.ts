@@ -32,6 +32,7 @@ import { promisePool } from '../utils/promisePool.js';
 import { UserSettings, Decision, SignalGrade } from '../strategies/types.js';
 import { twelveDataCircuit, CircuitOpenError } from './circuitBreaker.js';
 import { twelveData } from './twelveDataClient.js';
+import { saveAutoScanConfig, loadAutoScanConfig } from '../db/client.js';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -830,76 +831,121 @@ class AutoScanService {
   }
 
   private saveConfig(): void {
+    const persistedConfig: PersistedConfig = {
+      enabled: this.config.enabled,
+      intervalMs: this.config.intervalMs,
+      symbols: this.config.symbols,
+      strategies: this.config.strategies,
+      minGrade: this.config.minGrade,
+      email: this.config.email,
+      watchlistPreset: this.config.watchlistPreset,
+      customSymbols: this.config.customSymbols,
+      respectMarketHours: this.config.respectMarketHours,
+    };
+
+    saveAutoScanConfig(persistedConfig as unknown as Record<string, unknown>, this.config.enabled).catch(dbErr => {
+      logger.warn('AUTO_SCAN: DB save failed, falling back to file', { error: dbErr instanceof Error ? dbErr.message : 'Unknown error' });
+    });
+
     try {
       const dir = path.dirname(CONFIG_FILE);
       if (!fs.existsSync(dir)) {
         fs.mkdirSync(dir, { recursive: true });
       }
-      
-      const persistedConfig: PersistedConfig = {
-        enabled: this.config.enabled,
-        intervalMs: this.config.intervalMs,
-        symbols: this.config.symbols,
-        strategies: this.config.strategies,
-        minGrade: this.config.minGrade,
-        email: this.config.email,
-        watchlistPreset: this.config.watchlistPreset,
-        customSymbols: this.config.customSymbols,
-        respectMarketHours: this.config.respectMarketHours,
-      };
-      
       fs.writeFileSync(CONFIG_FILE, JSON.stringify(persistedConfig, null, 2), 'utf-8');
-      logger.debug(`AUTO_SCAN: Config saved to ${CONFIG_FILE}`);
+      logger.debug(`AUTO_SCAN: Config saved to DB and file`);
     } catch (error) {
-      logger.error('AUTO_SCAN: Failed to save config', { error: error instanceof Error ? error.message : 'Unknown error' });
+      logger.error('AUTO_SCAN: Failed to save config to file', { error: error instanceof Error ? error.message : 'Unknown error' });
     }
   }
 
-  private loadConfig(): PersistedConfig | null {
+  private async loadConfigFromDb(): Promise<PersistedConfig | null> {
+    try {
+      const dbResult = await loadAutoScanConfig();
+      if (dbResult && dbResult.config) {
+        const config = dbResult.config as unknown as PersistedConfig;
+        config.enabled = dbResult.enabled;
+
+        const registeredStrategies = strategyRegistry.list().map(s => s.id);
+        const savedStrategyIds = (config.strategies || []).map(s => s.strategyId);
+        let migrated = false;
+
+        for (const stratId of registeredStrategies) {
+          if (!savedStrategyIds.includes(stratId)) {
+            logger.info(`AUTO_SCAN: Auto-migrating new strategy to config: ${stratId}`);
+            config.strategies.push({ strategyId: stratId, intervalMs: config.intervalMs });
+            migrated = true;
+          }
+        }
+
+        if (migrated) {
+          await saveAutoScanConfig(config as unknown as Record<string, unknown>, config.enabled);
+        }
+
+        logger.info('AUTO_SCAN: Loaded config from database', { enabled: config.enabled, strategies: config.strategies.length });
+        return config;
+      }
+    } catch (error) {
+      logger.warn('AUTO_SCAN: DB config load failed', { error: error instanceof Error ? error.message : 'Unknown error' });
+    }
+    return null;
+  }
+
+  private loadConfigFromFile(): PersistedConfig | null {
     try {
       if (!fs.existsSync(CONFIG_FILE)) {
-        logger.debug('AUTO_SCAN: No saved config found');
+        logger.debug('AUTO_SCAN: No saved config file found');
         return null;
       }
-      
+
       const content = fs.readFileSync(CONFIG_FILE, 'utf-8');
       const config = JSON.parse(content) as PersistedConfig;
-      
+
       const registeredStrategies = strategyRegistry.list().map(s => s.id);
       const savedStrategyIds = config.strategies.map(s => s.strategyId);
       let migrated = false;
-      
+
       for (const stratId of registeredStrategies) {
         if (!savedStrategyIds.includes(stratId)) {
           logger.info(`AUTO_SCAN: Auto-migrating new strategy to config: ${stratId}`);
-          config.strategies.push({
-            strategyId: stratId,
-            intervalMs: config.intervalMs
-          });
+          config.strategies.push({ strategyId: stratId, intervalMs: config.intervalMs });
           migrated = true;
         }
       }
-      
+
       if (migrated) {
         fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2), 'utf-8');
         logger.info('AUTO_SCAN: Config migrated with new strategies');
       }
-      
-      logger.info('AUTO_SCAN: Loaded saved config', { enabled: config.enabled, strategies: config.strategies.length });
+
+      logger.info('AUTO_SCAN: Loaded saved config from file', { enabled: config.enabled, strategies: config.strategies.length });
       return config;
     } catch (error) {
-      logger.error('AUTO_SCAN: Failed to load config', { error: error instanceof Error ? error.message : 'Unknown error' });
+      logger.error('AUTO_SCAN: Failed to load config from file', { error: error instanceof Error ? error.message : 'Unknown error' });
       return null;
     }
   }
 
-  autoStartIfEnabled(): void {
+  async autoStartIfEnabled(): Promise<void> {
     if (!this.alertCallback) {
       logger.error('AUTO_SCAN: Cannot auto-start - alert callback not registered. Call setAlertCallback() first.');
       return;
     }
-    
-    const savedConfig = this.loadConfig();
+
+    let savedConfig = await this.loadConfigFromDb();
+
+    const fileConfig = this.loadConfigFromFile();
+
+    if (!savedConfig && fileConfig) {
+      savedConfig = fileConfig;
+      await saveAutoScanConfig(savedConfig as unknown as Record<string, unknown>, savedConfig.enabled).catch(() => {});
+      logger.info('AUTO_SCAN: Migrated file config to database');
+    } else if (savedConfig && !savedConfig.enabled && fileConfig && fileConfig.enabled) {
+      savedConfig = fileConfig;
+      await saveAutoScanConfig(savedConfig as unknown as Record<string, unknown>, savedConfig.enabled).catch(() => {});
+      logger.info('AUTO_SCAN: File config has enabled=true, overriding DB (one-time migration)');
+    }
+
     if (savedConfig && savedConfig.enabled) {
       if (!savedConfig.email || !savedConfig.email.includes('@')) {
         logger.warn('AUTO_SCAN: Cannot auto-start - saved config missing valid email');

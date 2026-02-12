@@ -289,6 +289,15 @@ export async function runMigrations(): Promise<void> {
     .addColumn('updated_at', 'timestamptz', (col) => col.defaultTo(sql`NOW()`))
     .execute();
 
+  await database.schema
+    .createTable('auto_scan_config')
+    .ifNotExists()
+    .addColumn('id', 'integer', (col) => col.primaryKey().defaultTo(1))
+    .addColumn('config_json', 'jsonb', (col) => col.notNull())
+    .addColumn('enabled', 'boolean', (col) => col.notNull().defaultTo(false))
+    .addColumn('updated_at', 'timestamptz', (col) => col.defaultTo(sql`NOW()`))
+    .execute();
+
   logger.info('Database migrations completed successfully');
 }
 
@@ -320,6 +329,43 @@ export async function loadAccountSettings(): Promise<AccountSettingsRow | null> 
     return null;
   } catch (error) {
     logger.warn('Failed to load account settings from database', { error });
+    return null;
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// AUTO-SCAN CONFIG PERSISTENCE
+// ═══════════════════════════════════════════════════════════════
+
+export async function saveAutoScanConfig(config: Record<string, unknown>, enabled: boolean): Promise<boolean> {
+  try {
+    const database = getDb();
+    await sql`
+      INSERT INTO auto_scan_config (id, config_json, enabled, updated_at)
+      VALUES (1, ${JSON.stringify(config)}::jsonb, ${enabled}, NOW())
+      ON CONFLICT (id) DO UPDATE SET
+        config_json = EXCLUDED.config_json,
+        enabled = EXCLUDED.enabled,
+        updated_at = NOW()
+    `.execute(database);
+    logger.debug(`Saved auto-scan config to database (enabled=${enabled})`);
+    return true;
+  } catch (error) {
+    logger.error('Failed to save auto-scan config to database', { error: error instanceof Error ? error.message : 'Unknown error' });
+    return false;
+  }
+}
+
+export async function loadAutoScanConfig(): Promise<{ config: Record<string, unknown>; enabled: boolean } | null> {
+  try {
+    const database = getDb();
+    const result = await sql`SELECT config_json, enabled FROM auto_scan_config WHERE id = 1`.execute(database);
+    const row = (result.rows as any[])[0];
+    if (!row) return null;
+    const config = typeof row.config_json === 'string' ? JSON.parse(row.config_json) : row.config_json;
+    return { config, enabled: row.enabled };
+  } catch (error) {
+    logger.warn('Failed to load auto-scan config from database', { error: error instanceof Error ? error.message : 'Unknown error' });
     return null;
   }
 }

@@ -73,6 +73,11 @@ Cross-validated audit by Claude and ChatGPT Codex to reduce false signals by 30-
 
 **Documentation:** Full audit in CROSS_VALIDATION_REPORT.md
 
+### Auto-Scan Persistence & Sentiment Integration (Feb 2026)
+- **Auto-scan config persistence**: Migrated from JSON file to PostgreSQL `auto_scan_config` table (singleton pattern, id=1). Config auto-loads and auto-starts on server restart when `enabled=true`. One-time file-to-DB migration on first run with file fallback.
+- **Sentiment display**: Grok AI sentiment badges shown inline in signals table, detection cards (with fetch button), and sidebar container. Uses 5-minute cache to avoid rate limiting.
+- **Email alerts**: Sentiment data included in alert emails when cached (avoids API calls during email send).
+
 ### FVG Confluence Gate (Feb 2026)
 Added Fair Value Gap (FVG) analysis to the shared `buildDecision` pipeline, giving all 10 strategies institutional-level FVG awareness:
 - **Supportive FVG**: Unfilled FVG aligned with trade direction near entry → +5 to +10 confidence bonus
