@@ -477,7 +477,7 @@ app.post('/api/scan', validateBody(ScanRequestSchema), async (req, res) => {
  */
 app.get('/api/signals', validateQuery(SignalsQuerySchema), async (req, res) => {
   try {
-    const { limit, grade, symbol } = req.query as { limit: number; grade?: string; symbol?: string };
+    const { limit, grade, symbol } = req.query as unknown as { limit: number; grade?: string; symbol?: string };
 
     let signals;
     if (grade) {
@@ -750,7 +750,7 @@ gradeTracker.onUpgrade((upgrade) => {
  * Get recent grade upgrades
  */
 app.get('/api/upgrades/recent', validateQuery(UpgradesQuerySchema), (req, res) => {
-  const { minutes } = req.query as { minutes: number };
+  const { minutes } = req.query as unknown as { minutes: number };
   const upgrades = gradeTracker.getRecentUpgrades(minutes);
   res.json({ upgrades, count: upgrades.length });
 });
@@ -944,31 +944,15 @@ app.get('/api/sentiment/status', (req, res) => {
   });
 });
 
-app.get('/api/sentiment/:symbol', async (req, res) => {
-  const { symbol } = req.params;
-  
+app.get('/api/sentiment/overview', (req, res) => {
   if (!grokSentimentService.isEnabled()) {
     return res.status(503).json({ 
-      error: 'Sentiment analysis not configured',
-      message: 'XAI_API_KEY is required for sentiment analysis'
+      error: 'Sentiment analysis not configured'
     });
   }
   
-  try {
-    const sentiment = await grokSentimentService.getSentiment(symbol.toUpperCase());
-    
-    if (!sentiment) {
-      return res.status(404).json({ 
-        error: 'Sentiment unavailable',
-        symbol 
-      });
-    }
-    
-    res.json(sentiment);
-  } catch (error) {
-    logger.error(`Sentiment fetch error: ${error}`);
-    res.status(500).json({ error: 'Failed to fetch sentiment' });
-  }
+  const overview = grokSentimentService.getMarketOverview();
+  res.json(overview);
 });
 
 app.post('/api/sentiment/batch', validateBody(BatchSentimentSchema), async (req, res) => {
@@ -997,7 +981,7 @@ app.post('/api/sentiment/batch', validateBody(BatchSentimentSchema), async (req,
 
 app.get('/api/sentiment/:symbol/aggregated', validateParams(SymbolParamSchema), validateQuery(AggregatedSentimentQuerySchema), async (req, res) => {
   const { symbol } = req.params as { symbol: string };
-  const { samples } = req.query as { samples: number };
+  const { samples } = req.query as unknown as { samples: number };
   
   if (!grokSentimentService.isEnabled()) {
     return res.status(503).json({ 
@@ -1028,15 +1012,31 @@ app.get('/api/sentiment/:symbol/history', (req, res) => {
   res.json({ symbol: symbol.toUpperCase(), history });
 });
 
-app.get('/api/sentiment/overview', (req, res) => {
+app.get('/api/sentiment/:symbol', async (req, res) => {
+  const { symbol } = req.params;
+  
   if (!grokSentimentService.isEnabled()) {
     return res.status(503).json({ 
-      error: 'Sentiment analysis not configured'
+      error: 'Sentiment analysis not configured',
+      message: 'XAI_API_KEY is required for sentiment analysis'
     });
   }
   
-  const overview = grokSentimentService.getMarketOverview();
-  res.json(overview);
+  try {
+    const sentiment = await grokSentimentService.getSentiment(symbol.toUpperCase());
+    
+    if (!sentiment) {
+      return res.status(404).json({ 
+        error: 'Sentiment unavailable',
+        symbol 
+      });
+    }
+    
+    res.json(sentiment);
+  } catch (error) {
+    logger.error(`Sentiment fetch error: ${error}`);
+    res.status(500).json({ error: 'Failed to fetch sentiment' });
+  }
 });
 
 // ═══════════════════════════════════════════════════════════════
@@ -1330,10 +1330,13 @@ startServer().catch(err => {
 });
 
 // Graceful shutdown
-process.on('SIGTERM', () => {
-  logger.info('Shutting down...');
+function gracefulShutdown(signal: string) {
+  logger.info(`${signal} received, shutting down...`);
   signalStore.close();
   journalStore.close();
   cache.close();
   process.exit(0);
-});
+}
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
