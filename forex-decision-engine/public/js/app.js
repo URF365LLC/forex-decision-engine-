@@ -1066,10 +1066,10 @@ const App = {
         confidence: decision.confidence,
         riskReward: decision.riskReward,
         tradeType: this.inferTradeType(strategyId),
-        entry: entryPrice,
+        entryPrice: entryPrice,
         stopLoss: decision.stopLoss?.price || 0,
-        takeProfit1: decision.takeProfit?.price || 0,
-        lotSize: decision.position?.lots || 0.01,
+        takeProfit: decision.takeProfit?.price || 0,
+        lots: decision.position?.lots || 0.01,
         status: 'closed',
         action: action,
         entryDate: new Date().toISOString(),
@@ -1561,9 +1561,10 @@ const App = {
     const settingsForm = UI.$('settings-form');
     if (settingsForm && !settingsForm._hasListener) {
       settingsForm._hasListener = true;
-      settingsForm.addEventListener('submit', (e) => {
+      settingsForm.addEventListener('submit', async (e) => {
         e.preventDefault();
-        if (this.saveSettings()) {
+        const saved = await this.saveSettings();
+        if (saved) {
           UI.switchScreen('dashboard');
         }
       });

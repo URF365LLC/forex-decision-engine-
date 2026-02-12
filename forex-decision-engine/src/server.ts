@@ -1159,6 +1159,7 @@ app.post('/api/detections/:id/execute', validateParams(IdParamSchema), validateB
     // Only create journal entry if we have essential price data
     if (entryPrice && entryPrice > 0) {
       try {
+        const isLong = detection.direction === 'long';
         journalEntry = await journalStore.add({
           source: 'signal',
           symbol: detection.symbol,
@@ -1170,8 +1171,8 @@ app.post('/api/detections/:id/execute', validateParams(IdParamSchema), validateB
           confidence: detection.confidence,
           tradeType: 'pullback',
           entryPrice,
-          stopLoss: stopLoss || entryPrice * 0.99, // Fallback: 1% below entry for long
-          takeProfit: takeProfit || entryPrice * 1.02, // Fallback: 2% above entry for long
+          stopLoss: stopLoss || (isLong ? entryPrice * 0.99 : entryPrice * 1.01),
+          takeProfit: takeProfit || (isLong ? entryPrice * 1.02 : entryPrice * 0.98),
           lots: detection.lotSize || 0.01,
           status: 'running',
           action: 'taken',
