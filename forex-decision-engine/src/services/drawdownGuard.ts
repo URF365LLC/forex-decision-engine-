@@ -15,7 +15,7 @@
  * Created: 2026-01-02 (Three-way audit)
  */
 
-import { existsSync, readFileSync, writeFileSync, mkdirSync, renameSync } from 'fs';
+import { existsSync, readFileSync, writeFileSync, mkdirSync, renameSync, unlinkSync } from 'fs';
 import { join, dirname } from 'path';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -269,8 +269,7 @@ export function resetDrawdownState(accountId = 'default'): void {
   try {
     const path = getStatePath(accountId);
     if (existsSync(path)) {
-      const fs = require('fs');
-      fs.unlinkSync(path);
+      unlinkSync(path);
     }
     console.log(`[DrawdownGuard] State reset for ${accountId}`);
   } catch (err) {
