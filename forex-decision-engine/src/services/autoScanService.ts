@@ -244,11 +244,6 @@ let accountSettings = {
   riskPercent: 0.5,
 };
 
-const DEFAULT_SETTINGS: UserSettings = {
-  accountSize: accountSettings.accountSize,
-  riskPercent: accountSettings.riskPercent,
-  style: 'intraday',
-};
 
 const GRADE_ORDER: SignalGrade[] = ['A+', 'A', 'B+', 'B', 'C', 'no-trade'];
 
@@ -921,9 +916,9 @@ class AutoScanService {
   }
   
   updateAccountSettings(settings: { accountPreset?: string; accountSize?: number; riskPercent?: number }): void {
-    if (settings.accountPreset) accountSettings.accountPreset = settings.accountPreset;
-    if (settings.accountSize) accountSettings.accountSize = settings.accountSize;
-    if (settings.riskPercent) accountSettings.riskPercent = settings.riskPercent;
+    if (settings.accountPreset !== undefined) accountSettings.accountPreset = settings.accountPreset;
+    if (settings.accountSize !== undefined && settings.accountSize > 0) accountSettings.accountSize = settings.accountSize;
+    if (settings.riskPercent !== undefined && settings.riskPercent > 0) accountSettings.riskPercent = settings.riskPercent;
     
     logger.info(`AUTO_SCAN: Account settings updated - $${accountSettings.accountSize}, ${accountSettings.riskPercent}% risk`);
   }

@@ -62,8 +62,8 @@ import {
 import { z } from 'zod';
 import * as detectionService from './services/detectionService.js';
 import { DetectionFilters } from './types/detection.js';
-import { findActiveDetection as detectionStoreFindActive } from './storage/detectionStore.js';
-import { initDb, runMigrations, isDbAvailable, loadAccountSettings, saveAccountSettings } from './db/client.js';
+import { findActiveDetection as detectionStoreFindActive, stopInMemoryCleanup as stopDetectionCleanup } from './storage/detectionStore.js';
+import { initDb, runMigrations, isDbAvailable, loadAccountSettings, saveAccountSettings, closeDb } from './db/client.js';
 import { signalCooldown } from './services/signalCooldown.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -1331,11 +1331,16 @@ startServer().catch(err => {
 });
 
 // Graceful shutdown
-function gracefulShutdown(signal: string) {
+async function gracefulShutdown(signal: string) {
   logger.info(`${signal} received, shutting down...`);
+  signalCooldown.shutdown();
+  detectionService.stopCooldownChecker();
+  stopDetectionCleanup();
+  autoScanService.stop();
   signalStore.close();
   journalStore.close();
   cache.close();
+  await closeDb();
   process.exit(0);
 }
 
