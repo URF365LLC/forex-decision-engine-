@@ -89,6 +89,7 @@ export async function createDetection(input: CreateDetectionInput): Promise<Dete
     status: 'cooling_down',
     reason: input.reason,
     triggers: input.triggers,
+    fvg: input.fvg ?? null,
     createdAt: now,
     updatedAt: now,
   };
@@ -119,6 +120,7 @@ export async function createDetection(input: CreateDetectionInput): Promise<Dete
           detection_count: detection.detectionCount,
           cooldown_ends_at: detection.cooldownEndsAt,
           bar_expires_at: detection.barExpiresAt,
+          fvg_data: detection.fvg ? JSON.stringify(detection.fvg) : null,
           status: detection.status,
         })
         .execute();
@@ -500,6 +502,7 @@ function rowToDetection(row: Record<string, unknown>): DetectedTrade {
     status: row.status as DetectionStatus,
     reason: String(row.reason || ''),
     triggers: safeJsonParse(row.triggers, []),
+    fvg: safeJsonParse(row.fvg_data, null),
     createdAt: String(row.created_at),
     updatedAt: String(row.updated_at),
   };

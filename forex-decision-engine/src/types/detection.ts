@@ -83,6 +83,15 @@ export interface DetectedTrade {
   reason: string;
   triggers: string[];
 
+  // FVG confluence
+  fvg?: {
+    status: 'pro' | 'against' | 'none';
+    summary: string;
+    tpAdjusted: boolean;
+    tpAdjustmentNote?: string;
+    confidenceAdjustment: number;
+  } | null;
+
   // Metadata
   createdAt: string;
   updatedAt: string;
@@ -115,6 +124,14 @@ export interface CreateDetectionInput {
   tieredExits?: TieredExitInfo[] | null;
   // Data freshness
   barExpiresAt?: string | null;
+  // FVG confluence
+  fvg?: {
+    status: 'pro' | 'against' | 'none';
+    summary: string;
+    tpAdjusted: boolean;
+    tpAdjustmentNote?: string;
+    confidenceAdjustment: number;
+  } | null;
 }
 
 export interface UpdateDetectionInput {
@@ -187,6 +204,14 @@ export function convertDecisionToDetection(
     tieredExits,
     // Bar expiration for data freshness
     barExpiresAt,
+    // FVG confluence
+    fvg: decision.fvg ? {
+      status: decision.fvg.status,
+      summary: decision.fvg.summary,
+      tpAdjusted: decision.fvg.tpAdjusted,
+      tpAdjustmentNote: decision.fvg.tpAdjustmentNote,
+      confidenceAdjustment: decision.fvg.confidenceAdjustment,
+    } : null,
   };
 }
 

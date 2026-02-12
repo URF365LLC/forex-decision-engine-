@@ -284,6 +284,32 @@ export interface Decision {
     rrMultiplier: number;
     description: string;
   };
+  fvg?: FVGConfluence;
+}
+
+export interface FVGConfluence {
+  status: 'pro' | 'against' | 'none';
+  confidenceAdjustment: number;
+  supportiveFVG?: {
+    type: 'bullish' | 'bearish';
+    high: number;
+    low: number;
+    midpoint: number;
+    gapSizePercent: number;
+    fillPercent: number;
+  };
+  counterFVG?: {
+    type: 'bullish' | 'bearish';
+    high: number;
+    low: number;
+    midpoint: number;
+    gapSizePercent: number;
+    fillPercent: number;
+    distanceFromEntry: number;
+  };
+  tpAdjusted: boolean;
+  tpAdjustmentNote?: string;
+  summary: string;
 }
 
 export interface IStrategy {

@@ -221,6 +221,7 @@ export async function runMigrations(): Promise<void> {
   await addColumnIfNotExists('detections', 'risk_amount', 'numeric');
   await addColumnIfNotExists('detections', 'tiered_exits', 'jsonb');
   await addColumnIfNotExists('detections', 'bar_expires_at', 'timestamptz');
+  await addColumnIfNotExists('detections', 'fvg_data', 'jsonb');
 
   // Create cooldowns table
   await database.schema

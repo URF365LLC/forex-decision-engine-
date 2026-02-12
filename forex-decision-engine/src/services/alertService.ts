@@ -4,7 +4,7 @@
  */
 
 import { createLogger } from './logger.js';
-import { Decision, SignalGrade } from '../strategies/types.js';
+import { Decision, SignalGrade, FVGConfluence } from '../strategies/types.js';
 
 const logger = createLogger('AlertService');
 
@@ -130,6 +130,34 @@ class AlertService {
     }
 
     const gatingSummary = gatingNotes.length > 0 ? gatingNotes.join(' | ') : 'Clear: no gating blocks';
+
+    const fvg = decision.fvg;
+    let fvgHtml = '';
+    if (fvg && fvg.status !== 'none') {
+      const fvgColor = fvg.status === 'pro' ? '#22c55e' : '#ef4444';
+      const fvgLabel = fvg.status === 'pro' ? 'PRO' : 'AGAINST';
+      const fvgIcon = fvg.status === 'pro' ? '✅' : '⚠️';
+      const confAdj = fvg.confidenceAdjustment > 0 ? `+${fvg.confidenceAdjustment}` : `${fvg.confidenceAdjustment}`;
+      const tpNote = fvg.tpAdjusted && fvg.tpAdjustmentNote ? `<br><span style="color: #fbbf24;">TP Adjusted: ${fvg.tpAdjustmentNote}</span>` : '';
+
+      fvgHtml = `
+      <tr>
+        <td style="padding: 12px 0; border-bottom: 1px solid #334155; color: #94a3b8;">FVG Confluence</td>
+        <td style="padding: 12px 0; border-bottom: 1px solid #334155; text-align: right;">
+          <span style="background: ${fvgColor}; color: white; padding: 4px 10px; border-radius: 4px; font-weight: bold; font-size: 12px;">
+            ${fvgIcon} ${fvgLabel}
+          </span>
+          <span style="color: #94a3b8; font-size: 11px; margin-left: 6px;">(${confAdj} conf)</span>
+          ${tpNote}
+        </td>
+      </tr>
+      <tr>
+        <td colspan="2" style="padding: 8px 0; border-bottom: 1px solid #334155; color: #94a3b8; font-size: 12px;">
+          ${fvg.summary}
+        </td>
+      </tr>`;
+    }
+
     const eventLabel = isNew
       ? 'New A-grade signal'
       : decision.upgrade
@@ -193,9 +221,10 @@ class AlertService {
         <td style="padding: 12px 0; border-bottom: 1px solid #334155; text-align: right; color: #f1f5f9;">${validity}</td>
       </tr>
       <tr>
-        <td style="padding: 12px 0; color: #94a3b8;">Gating</td>
-        <td style="padding: 12px 0; text-align: right; color: #e2e8f0;">${gatingSummary}</td>
+        <td style="padding: 12px 0; ${fvgHtml ? 'border-bottom: 1px solid #334155; ' : ''}color: #94a3b8;">Gating</td>
+        <td style="padding: 12px 0; ${fvgHtml ? 'border-bottom: 1px solid #334155; ' : ''}text-align: right; color: #e2e8f0;">${gatingSummary}</td>
       </tr>
+      ${fvgHtml}
     </table>
     
     <div style="margin-top: 20px; padding: 12px; background: #0f172a; border-radius: 8px;">

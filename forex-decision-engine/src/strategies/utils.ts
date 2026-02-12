@@ -15,6 +15,7 @@ import {
   RequiredIndicator,
   ReasonCode,
   TradingStyle,
+  FVGConfluence,
   getPipInfo, 
   formatPrice, 
   calculatePips,
@@ -23,6 +24,8 @@ import {
   ExitManagement,
   TieredExit
 } from './types.js';
+import { findFairValueGaps, findNearestFVG, isPriceInFVG } from '../modules/smartMoney/fairValueGaps.js';
+import type { FairValueGap } from '../modules/smartMoney/types.js';
 import { createLogger } from '../services/logger.js';
 import { getCryptoContractSize, DEFAULTS, LOT_SIZES } from '../config/defaults.js';
 import { trackSignal } from '../storage/signalFreshnessTracker.js';
@@ -617,6 +620,172 @@ function buildTieredExitPlan(
   };
 }
 
+function analyzeFVGConfluence(
+  bars: Bar[] | undefined,
+  direction: SignalDirection,
+  entryPrice: number,
+  takeProfitPrice: number,
+  pipSize: number,
+): FVGConfluence {
+  const noFvg: FVGConfluence = {
+    status: 'none',
+    confidenceAdjustment: 0,
+    tpAdjusted: false,
+    summary: 'No FVG confluence detected',
+  };
+
+  if (!bars || bars.length < 10) return noFvg;
+
+  const smcBars = bars as Array<{ timestamp: string; open: number; high: number; low: number; close: number; volume: number }>;
+  const allFVGs = findFairValueGaps(smcBars, 'both', { maxFVGAge: 80, lookbackBars: 60 });
+
+  if (allFVGs.length === 0) return noFvg;
+
+  const supportiveType: 'bullish' | 'bearish' = direction === 'long' ? 'bullish' : 'bearish';
+  const counterType: 'bullish' | 'bearish' = direction === 'long' ? 'bearish' : 'bullish';
+
+  let supportiveFVG: FairValueGap | null = null;
+  let counterFVG: FairValueGap | null = null;
+  let confidenceAdj = 0;
+
+  const supportiveFVGs = allFVGs.filter(f => f.type === supportiveType && !f.filled);
+  if (supportiveFVGs.length > 0) {
+    const entryZoneRadius = Math.abs(takeProfitPrice - entryPrice) * 0.5;
+
+    for (const fvg of supportiveFVGs) {
+      const isNearEntry = direction === 'long'
+        ? fvg.high >= entryPrice - entryZoneRadius && fvg.low <= entryPrice
+        : fvg.low <= entryPrice + entryZoneRadius && fvg.high >= entryPrice;
+
+      const isPriceInGap = isPriceInFVG(entryPrice, fvg);
+
+      if (isNearEntry || isPriceInGap) {
+        supportiveFVG = fvg;
+        confidenceAdj += fvg.gapSizePercent >= 0.15 ? 10 : 5;
+        break;
+      }
+    }
+  }
+
+  const counterFVGs = allFVGs.filter(f => f.type === counterType && !f.filled);
+  if (counterFVGs.length > 0) {
+    for (const fvg of counterFVGs) {
+      const isBetweenEntryAndTp = direction === 'long'
+        ? fvg.midpoint > entryPrice && fvg.midpoint < takeProfitPrice
+        : fvg.midpoint < entryPrice && fvg.midpoint > takeProfitPrice;
+
+      if (isBetweenEntryAndTp) {
+        counterFVG = fvg;
+        confidenceAdj -= fvg.gapSizePercent >= 0.15 ? 10 : 5;
+        break;
+      }
+    }
+  }
+
+  if (!supportiveFVG && !counterFVG) return noFvg;
+
+  let status: FVGConfluence['status'] = 'none';
+  const summaryParts: string[] = [];
+
+  if (supportiveFVG && !counterFVG) {
+    status = 'pro';
+    summaryParts.push(`Supportive ${supportiveFVG.type} FVG at ${supportiveFVG.low.toFixed(5)}-${supportiveFVG.high.toFixed(5)} (${supportiveFVG.gapSizePercent.toFixed(2)}% gap)`);
+  } else if (counterFVG && !supportiveFVG) {
+    status = 'against';
+    summaryParts.push(`Counter ${counterFVG.type} FVG wall at ${counterFVG.low.toFixed(5)}-${counterFVG.high.toFixed(5)} between entry and TP`);
+  } else if (supportiveFVG && counterFVG) {
+    status = supportiveFVG.gapSizePercent >= counterFVG.gapSizePercent ? 'pro' : 'against';
+    summaryParts.push(`Supportive FVG at ${supportiveFVG.low.toFixed(5)}-${supportiveFVG.high.toFixed(5)}`);
+    summaryParts.push(`Counter FVG wall at ${counterFVG.low.toFixed(5)}-${counterFVG.high.toFixed(5)}`);
+  }
+
+  const result: FVGConfluence = {
+    status,
+    confidenceAdjustment: confidenceAdj,
+    tpAdjusted: false,
+    summary: summaryParts.join(' | '),
+  };
+
+  if (supportiveFVG) {
+    result.supportiveFVG = {
+      type: supportiveFVG.type,
+      high: supportiveFVG.high,
+      low: supportiveFVG.low,
+      midpoint: supportiveFVG.midpoint,
+      gapSizePercent: supportiveFVG.gapSizePercent,
+      fillPercent: supportiveFVG.fillPercent,
+    };
+  }
+
+  if (counterFVG) {
+    const dist = Math.abs(counterFVG.midpoint - entryPrice) / pipSize;
+    result.counterFVG = {
+      type: counterFVG.type,
+      high: counterFVG.high,
+      low: counterFVG.low,
+      midpoint: counterFVG.midpoint,
+      gapSizePercent: counterFVG.gapSizePercent,
+      fillPercent: counterFVG.fillPercent,
+      distanceFromEntry: Math.round(dist * 10) / 10,
+    };
+  }
+
+  return result;
+}
+
+function applyFVGTpAdjustment(
+  fvgAnalysis: FVGConfluence,
+  direction: SignalDirection,
+  entryPrice: number,
+  currentTpPrice: number,
+  stopLoss: number,
+  pipSize: number,
+): { adjustedTp: number; adjusted: boolean; note: string } {
+  if (fvgAnalysis.status === 'none') {
+    return { adjustedTp: currentTpPrice, adjusted: false, note: '' };
+  }
+
+  const riskPips = Math.abs(entryPrice - stopLoss) / pipSize;
+
+  if (fvgAnalysis.counterFVG) {
+    const wallEdge = direction === 'long'
+      ? fvgAnalysis.counterFVG.low
+      : fvgAnalysis.counterFVG.high;
+
+    const wallDistancePips = Math.abs(wallEdge - entryPrice) / pipSize;
+
+    if (wallDistancePips >= riskPips * 1.0) {
+      const pullbackBuffer = direction === 'long'
+        ? wallEdge - (pipSize * 2)
+        : wallEdge + (pipSize * 2);
+
+      const pullbackPips = Math.abs(pullbackBuffer - entryPrice) / pipSize;
+      const pullbackRr = safeDiv(pullbackPips, riskPips, 0);
+
+      if (pullbackRr >= 1.0 && Math.abs(pullbackBuffer - entryPrice) < Math.abs(currentTpPrice - entryPrice)) {
+        return {
+          adjustedTp: pullbackBuffer,
+          adjusted: true,
+          note: `TP pulled back to avoid FVG wall at ${wallEdge.toFixed(5)} (${pullbackRr.toFixed(1)}R)`,
+        };
+      }
+    }
+  }
+
+  if (fvgAnalysis.supportiveFVG && fvgAnalysis.status === 'pro') {
+    const fvgMid = fvgAnalysis.supportiveFVG.midpoint;
+    const isBetween = direction === 'long'
+      ? fvgMid > entryPrice && fvgMid < currentTpPrice
+      : fvgMid < entryPrice && fvgMid > currentTpPrice;
+
+    if (!isBetween) {
+      return { adjustedTp: currentTpPrice, adjusted: false, note: '' };
+    }
+  }
+
+  return { adjustedTp: currentTpPrice, adjusted: false, note: '' };
+}
+
 export function buildDecision(params: DecisionParams): Decision {
   const {
     symbol,
@@ -636,7 +805,6 @@ export function buildDecision(params: DecisionParams): Decision {
     takeProfitConfig,
   } = params;
 
-  const grade = calculateGrade(confidence);
   const { pipSize, digits } = getPipInfo(symbol);
   
   const stopLossPips = Math.abs(entryPrice - stopLoss) / pipSize;
@@ -662,10 +830,44 @@ export function buildDecision(params: DecisionParams): Decision {
         notes: [] as string[],
       };
   
-  const takeProfitPrice = adaptiveTp.price;
-  const takeProfitPips = adaptiveTp.pips;
-  const rr = adaptiveTp.rr;
-  
+  let takeProfitPrice = adaptiveTp.price;
+  let takeProfitPips = adaptiveTp.pips;
+  let rr = adaptiveTp.rr;
+
+  const strategyAlreadyUsesFVG = reasonCodes.some(rc =>
+    rc === 'FVG_TARGET' || rc === 'CONFLUENCE_ZONE' || rc === 'FVG_CONFLUENCE'
+  );
+
+  const fvgAnalysis = analyzeFVGConfluence(bars, direction, entryPrice, takeProfitPrice, pipSize);
+
+  let adjustedConfidence = confidence;
+  if (!strategyAlreadyUsesFVG) {
+    adjustedConfidence += fvgAnalysis.confidenceAdjustment;
+    adjustedConfidence = Math.max(0, Math.min(100, adjustedConfidence));
+
+    if (fvgAnalysis.confidenceAdjustment > 0) {
+      triggers.push(`FVG confluence: ${fvgAnalysis.summary}`);
+      reasonCodes.push('FVG_CONFLUENCE' as ReasonCode);
+    } else if (fvgAnalysis.confidenceAdjustment < 0) {
+      triggers.push(`FVG wall warning: ${fvgAnalysis.summary}`);
+      reasonCodes.push('FVG_WALL' as ReasonCode);
+    }
+  }
+
+  const fvgTpResult = strategyAlreadyUsesFVG
+    ? { adjustedTp: takeProfitPrice, adjusted: false, note: '' }
+    : applyFVGTpAdjustment(fvgAnalysis, direction, entryPrice, takeProfitPrice, stopLoss, pipSize);
+  if (fvgTpResult.adjusted) {
+    takeProfitPrice = fvgTpResult.adjustedTp;
+    takeProfitPips = Math.abs(takeProfitPrice - entryPrice) / pipSize;
+    rr = safeDiv(takeProfitPips, stopLossPips, 0);
+    fvgAnalysis.tpAdjusted = true;
+    fvgAnalysis.tpAdjustmentNote = fvgTpResult.note;
+    triggers.push(fvgTpResult.note);
+  }
+
+  const grade = calculateGrade(adjustedConfidence);
+
   const position = calculatePositionSize(
     symbol,
     settings.accountSize,
@@ -743,7 +945,7 @@ export function buildDecision(params: DecisionParams): Decision {
     strategyName,
     direction,
     grade,
-    confidence,
+    confidence: adjustedConfidence,
     entryPrice,
     entry: {
       price: entryPrice,
@@ -786,5 +988,6 @@ export function buildDecision(params: DecisionParams): Decision {
     },
     exitPlan: tieredPlan,
     exitManagement,
+    fvg: fvgAnalysis.status !== 'none' ? fvgAnalysis : undefined,
   };
 }

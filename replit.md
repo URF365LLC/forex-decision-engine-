@@ -73,6 +73,17 @@ Cross-validated audit by Claude and ChatGPT Codex to reduce false signals by 30-
 
 **Documentation:** Full audit in CROSS_VALIDATION_REPORT.md
 
+### FVG Confluence Gate (Feb 2026)
+Added Fair Value Gap (FVG) analysis to the shared `buildDecision` pipeline, giving all 10 strategies institutional-level FVG awareness:
+- **Supportive FVG**: Unfilled FVG aligned with trade direction near entry → +5 to +10 confidence bonus
+- **Counter FVG Wall**: Unfilled FVG opposing trade direction between entry and TP → -5 to -10 confidence penalty
+- **TP Adjustment**: When counter-FVG wall exists, TP pulls back to wall edge (maintaining min 1R) to avoid running into reversal zone
+- **Double-count guard**: Strategies that already use FVG internally (LiquiditySweep) are excluded from global FVG adjustments
+- **Email alerts**: FVG status (PRO/AGAINST) displayed in detection alert emails with color-coded badge, summary, and TP adjustment notes
+- **Frontend**: Detection cards show FVG PRO (green) or FVG AGAINST (red) badge with summary text
+- **Database**: FVG data persisted in `detections.fvg_data` JSONB column
+- **Decision type**: New optional `fvg?: FVGConfluence` field on Decision interface
+
 ## External Dependencies
 
 -   **Twelve Data API**: Provides unified market data and technical indicators. Requires `TWELVE_DATA_API_KEY` and optionally `TWELVE_DATA_CRYPTO_EXCHANGE`.

@@ -2880,6 +2880,53 @@ textarea:focus {
 }
 
 /* Detection meta */
+.detection-fvg {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  margin: var(--spacing-xs) 0;
+  background: var(--bg-tertiary);
+  border-radius: var(--border-radius);
+  font-size: 0.75rem;
+}
+
+.fvg-badge {
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-weight: 700;
+  font-size: 0.7rem;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.fvg-pro {
+  background: rgba(34, 197, 94, 0.2);
+  color: #22c55e;
+  border: 1px solid rgba(34, 197, 94, 0.3);
+}
+
+.fvg-against {
+  background: rgba(239, 68, 68, 0.2);
+  color: #ef4444;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.fvg-summary {
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 200px;
+}
+
+.fvg-tp-note {
+  color: #fbbf24;
+  font-size: 0.7rem;
+  width: 100%;
+}
+
 .detection-meta {
   display: flex;
   justify-content: space-between;

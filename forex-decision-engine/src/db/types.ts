@@ -46,6 +46,7 @@ export interface DetectionsTable {
   detection_count: Generated<number>;
   cooldown_ends_at: string | null;
   bar_expires_at: string | null;  // When current candle closes
+  fvg_data: string | null;  // JSON FVG confluence data
   status: Generated<string>;
 
   // Metadata

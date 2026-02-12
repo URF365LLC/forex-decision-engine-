@@ -2102,6 +2102,18 @@ const App = {
         </div>
         ` : ''}
 
+        ${detection.fvg && detection.fvg.status !== 'none' ? `
+        <div class="detection-fvg">
+          <span class="fvg-badge ${detection.fvg.status === 'pro' ? 'fvg-pro' : 'fvg-against'}">
+            ${detection.fvg.status === 'pro' ? 'FVG PRO' : 'FVG AGAINST'}
+          </span>
+          <span class="fvg-summary" title="${detection.fvg.summary}">${detection.fvg.summary}</span>
+          ${detection.fvg.tpAdjusted && detection.fvg.tpAdjustmentNote ? `
+          <span class="fvg-tp-note">${detection.fvg.tpAdjustmentNote}</span>
+          ` : ''}
+        </div>
+        ` : ''}
+
         <div class="detection-meta">
           <span title="First detected">First: ${new Date(detection.firstDetectedAt).toLocaleTimeString()}</span>
           <span title="Confirmation count">Confirmations: ${detection.detectionCount}</span>
