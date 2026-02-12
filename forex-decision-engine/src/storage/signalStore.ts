@@ -458,20 +458,32 @@ class SignalStore {
         const db = getDb();
         const rows = await db
           .selectFrom('signals')
-          .select(['grade'])
+          .select(['grade', 'decision_data'])
           .execute();
 
         const byGrade: Record<string, number> = {};
+        const byResult: Record<string, number> = {};
         for (const row of rows) {
           const grade = String(row.grade);
           byGrade[grade] = (byGrade[grade] || 0) + 1;
+
+          const decisionData = row.decision_data
+            ? (typeof row.decision_data === 'string' ? JSON.parse(row.decision_data as string) : row.decision_data)
+            : {};
+          if (decisionData.result) {
+            byResult[decisionData.result] = (byResult[decisionData.result] || 0) + 1;
+          }
         }
+
+        const wins = byResult['win'] || 0;
+        const losses = byResult['loss'] || 0;
+        const winRate = wins + losses > 0 ? wins / (wins + losses) : 0;
 
         return {
           total: rows.length,
           byGrade,
-          byResult: {},
-          winRate: 0,
+          byResult,
+          winRate,
         };
       } catch (error) {
         logger.error('Failed to get signal stats from database', { error });

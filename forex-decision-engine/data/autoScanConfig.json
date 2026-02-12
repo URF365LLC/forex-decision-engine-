@@ -1,45 +1,15 @@
 {
-  "enabled": true,
-  "intervalMs": 300000,
+  "enabled": false,
+  "intervalMs": 600000,
   "symbols": [
     "EURUSD",
     "GBPUSD",
+    "USDJPY",
+    "USDCHF",
     "AUDUSD",
     "NZDUSD",
-    "USDJPY",
-    "EURJPY",
-    "GBPJPY",
-    "AUDJPY",
-    "NZDJPY",
-    "CADJPY",
-    "CHFJPY",
     "USDCAD",
-    "EURCAD",
-    "GBPCAD",
-    "AUDCAD",
-    "NZDCAD",
-    "USDCHF",
-    "EURCHF",
-    "GBPCHF",
-    "AUDCHF",
-    "NZDCHF",
-    "CADCHF",
-    "EURGBP",
-    "EURAUD",
-    "GBPAUD",
-    "AUDNZD",
-    "EURNZD",
-    "GBPNZD",
-    "XAUUSD",
-    "XAGUSD",
-    "BTCUSD",
-    "ETHUSD",
-    "XRPUSD",
-    "ADAUSD",
-    "SOLUSD",
-    "LTCUSD",
-    "BCHUSD",
-    "BNBUSD"
+    "XAUUSD"
   ],
   "strategies": [
     {
@@ -81,11 +51,14 @@
     {
       "strategyId": "liquidity-sweep",
       "intervalMs": 600000
+    },
+    {
+      "strategyId": "ema-pullback-swing",
+      "intervalMs": 600000
     }
   ],
-  "minGrade": "A+",
-  "email": "ing.logixtics24@gmail.com",
-  "watchlistPreset": "all",
+  "minGrade": "B",
+  "watchlistPreset": "majors-gold",
   "customSymbols": [],
   "respectMarketHours": true
 }

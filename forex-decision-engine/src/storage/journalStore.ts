@@ -454,6 +454,12 @@ class JournalStore {
         if (filters?.dateTo) {
           query = query.where('created_at', '<=', filters.dateTo);
         }
+        if (filters?.action) {
+          query = query.where('action', '=', filters.action);
+        }
+        if (filters?.tradeType) {
+          query = query.where('trade_type', '=', filters.tradeType);
+        }
 
         const rows = await query.execute();
         return rows.map(row => this.rowToJournalEntry(row as Record<string, unknown>));

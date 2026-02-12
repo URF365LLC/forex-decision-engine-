@@ -454,7 +454,7 @@ function safeJsonParse<T>(value: unknown, defaultValue: T): T {
     try {
       return JSON.parse(value) as T;
     } catch (parseErr) {
-      console.warn(`[DetectionStore] Failed to parse JSON value: ${parseErr}`);
+      logger.warn(`Failed to parse JSON value: ${parseErr}`);
       return defaultValue;
     }
   }
