@@ -915,7 +915,7 @@ const App = {
     try {
       const trades = this.results.filter(d => d.grade !== 'no-trade');
       const summary = trades.map(d => {
-        const dir = d.direction.toUpperCase();
+        const dir = (d.direction || '').toUpperCase();
         return `${d.displayName}: ${dir} ${d.grade}`;
       }).join('\n');
 
@@ -1099,7 +1099,7 @@ const App = {
     const takeProfitEl = UI.$('trade-take-profit');
     const notesEl = UI.$('trade-notes');
 
-    if (titleEl) titleEl.textContent = `Log Trade: ${decision.displayName} ${decision.direction.toUpperCase()}`;
+    if (titleEl) titleEl.textContent = `Log Trade: ${decision.displayName} ${(decision.direction || '').toUpperCase()}`;
     if (symbolEl) symbolEl.value = decision.symbol;
     if (actionEl) actionEl.value = 'taken';
     
@@ -1242,7 +1242,7 @@ const App = {
   createJournalEntryCard(entry) {
     const date = new Date(entry.createdAt).toLocaleDateString();
     const dirClass = entry.direction === 'long' ? 'long' : 'short';
-    const dirText = entry.direction.toUpperCase();
+    const dirText = (entry.direction || '').toUpperCase();
     const isRunning = entry.status === 'running';
     const isPending = entry.status === 'pending';
     
@@ -1420,10 +1420,12 @@ const App = {
       if (!entry) return;
 
       const exitPrice = type === 'tp' ? entry.takeProfit : entry.stopLoss;
+      const result = type === 'tp' ? 'win' : 'loss';
       
       await API.updateJournalEntry(id, {
         status: 'closed',
         exitPrice: exitPrice,
+        result: result,
       });
 
       UI.toast(`Trade closed at ${type.toUpperCase()}`, 'success');
@@ -1481,7 +1483,7 @@ const App = {
       await API.updateJournalEntry(id, {
         status: 'closed',
         exitPrice: exitPrice,
-        outcome: outcome,
+        result: outcome,
         closedAt: new Date().toISOString()
       });
 
