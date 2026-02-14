@@ -128,6 +128,12 @@ const App = {
     };
     
     this.upgradeEventSource.onerror = () => {
+      // Clear heartbeat timer to prevent overlapping reconnects
+      if (this.sseHeartbeatTimeout) {
+        clearTimeout(this.sseHeartbeatTimeout);
+        this.sseHeartbeatTimeout = null;
+      }
+      
       // Close the connection
       this.upgradeEventSource.close();
       

@@ -1339,6 +1339,7 @@ async function gracefulShutdown(signal: string) {
   detectionService.stopCooldownChecker();
   stopDetectionCleanup();
   autoScanService.stop();
+  alertService.close();
   signalStore.close();
   journalStore.close();
   cache.close();

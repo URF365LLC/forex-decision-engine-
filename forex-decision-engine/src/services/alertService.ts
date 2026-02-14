@@ -16,6 +16,7 @@ class AlertService {
   private sendQueue: Array<{ decision: Decision; toEmail: string; isNew: boolean; resolve: (v: boolean) => void }> = [];
   private isProcessingQueue: boolean = false;
   private readonly SEND_INTERVAL_MS = 600;
+  private cleanupIntervalId: NodeJS.Timeout | null = null;
   
   constructor() {
     this.resendApiKey = process.env.RESEND_API_KEY || null;
@@ -24,7 +25,14 @@ class AlertService {
       logger.warn('RESEND_API_KEY not configured - email alerts disabled');
     }
 
-    setInterval(() => this.cleanup(), 5 * 60 * 1000);
+    this.cleanupIntervalId = setInterval(() => this.cleanup(), 5 * 60 * 1000);
+  }
+  
+  close(): void {
+    if (this.cleanupIntervalId) {
+      clearInterval(this.cleanupIntervalId);
+      this.cleanupIntervalId = null;
+    }
   }
   
   async sendTradeAlert(decision: Decision, toEmail: string, context: { isNew?: boolean } = {}): Promise<boolean> {
@@ -65,6 +73,11 @@ class AlertService {
   private async sendEmailDirect(decision: Decision, toEmail: string, isNew: boolean): Promise<boolean> {
     const key = this.makeKey(decision);
     const sendCheck = this.shouldSend(decision, isNew);
+    
+    if (!sendCheck.allowed) {
+      logger.debug(`Email skipped (dedup check failed at send time): ${decision.symbol} ${decision.grade}`);
+      return false;
+    }
     
     try {
       const subject = `🎯 ${decision.grade} Signal: ${decision.symbol} ${decision.direction.toUpperCase()}`;
