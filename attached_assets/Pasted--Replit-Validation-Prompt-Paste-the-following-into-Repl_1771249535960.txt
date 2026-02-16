@@ -1,0 +1,125 @@
+# Replit Validation Prompt
+ 
+Paste the following into Replit Agent. It gives Replit the exact files, claims, and verification steps needed to cross-validate the audit.
+ 
+---
+ 
+## PROMPT START
+ 
+You have full access to this Forex Decision Engine codebase. A multi-AI forensic audit has been conducted. Your job is to **independently verify or refute** each claim below by reading the actual source code. Do NOT trust the claims — read the code yourself.
+ 
+For each claim, respond with:
+- **CONFIRMED** (with file:line evidence)
+- **REFUTED** (with what the code actually shows)
+- **PARTIALLY CORRECT** (with nuance)
+ 
+---
+ 
+### CLAIM 1: JPY pipValue Override Bug (Tier-0)
+**Claim**: `src/strategies/utils.ts` line ~284 hardcodes JPY `effectivePipValue = 8.5`, overriding the instrument spec value of `6.41`. This is the position sizing path used by all strategies via `buildDecision()`.
+ 
+**Verify**:
+1. Read `src/strategies/utils.ts` — find the `calculatePositionSize` function. Does it override JPY pipValue?
+2. Read `src/config/e8InstrumentSpecs.ts` — what is `pipValue` for USDJPY?
+3. Read `src/strategies/utils.ts` — does `buildDecision()` call the local `calculatePositionSize` or the one in `positionSizer.ts`?
+4. Confirm: is the 8.5 override in the LIVE path that all strategies use?
+ 
+---
+ 
+### CLAIM 2: H1 Entry Indicators Lack Timestamp Alignment
+**Claim**: D1 and H4 indicators go through `alignIndicatorToBars()` (timestamp-matched via Map lookup), but H1 entry indicators (EMA20, RSI, ATR, Stoch, etc.) are only length-padded via `padIndicatorToBarsLength()` without timestamp verification.
+ 
+**Verify**:
+1. Read `src/engine/indicatorService.ts` — find where H4/D1 indicators call `alignIndicatorToBars()`.
+2. Read `src/engine/indicatorService.ts` lines ~354-467 — are H1 indicators (ema20, rsi, atr, etc.) ever passed through `alignIndicatorToBars()`?
+3. Read `src/engine/strategyAnalyzer.ts` — find `convertToStrategyIndicatorData()` and `extractAndPad()`. Do these align by timestamp or only by array length?
+4. What happens if Twelve Data returns 500 H1 bars but only 497 RSI values?
+ 
+---
+ 
+### CLAIM 3: `data.adx` Is D1 ADX Padded Into H1 Array
+**Claim**: `data.adx` is fetched at `'daily'` interval (not H1), aligned to D1 trendBars, then padded to H1 bars length. It's NOT H1 ADX.
+ 
+**Verify**:
+1. Read `src/engine/indicatorService.ts` line ~317-323 — what interval is used for the ADX fetch?
+2. Read line ~337 — what bars array is it aligned to?
+3. Read line ~473 — where is it assigned?
+4. Read `src/engine/strategyAnalyzer.ts` `extractAndPad` — does it strip timestamps and pad to H1 length?
+5. Which strategies actually READ `data.adx` (not `data.adxH4`)? Is it used for gating decisions or just display?
+ 
+---
+ 
+### CLAIM 4: Timezone Ambiguity in `new Date()` Parsing
+**Claim**: Twelve Data returns timestamps like `"2026-02-15 10:00:00"` without timezone suffix. Node.js `new Date("YYYY-MM-DD HH:mm:ss")` treats this as local time, not UTC. If the server runs on a non-UTC timezone, bar-close detection and freshness checks would be shifted.
+ 
+**Verify**:
+1. Read `src/services/twelveDataClient.ts` — what format are timestamps in? Do they include `Z` or timezone offset?
+2. Read `src/engine/strategyAnalyzer.ts` `getLastClosedBar()` — does it use `new Date(timestamp)`?
+3. Read `src/strategies/SignalQualityGate.ts` `checkBarClosure()` and `checkBarDataFreshness()` — same question.
+4. In Node.js, what does `new Date("2026-02-15 10:00:00")` return? Is it UTC or local? (Test: `new Date("2026-02-15 10:00:00").toISOString()`)
+ 
+---
+ 
+### CLAIM 5: RSI Oversold Strategy Has No ATR Buffer on Swing Stop
+**Claim**: Every other strategy adds 0.3-0.5x ATR buffer beyond the swing level for stops. RSI Oversold uses the raw swing level with no buffer.
+ 
+**Verify**:
+1. Read `src/strategies/intraday/RsiOversold.ts` lines ~155-164 — does the swing stop include an ATR buffer?
+2. Compare with `StochasticOversold.ts` lines ~160-166 and `BollingerMR.ts` lines ~149-155 — do those have ATR buffers?
+ 
+---
+ 
+### CLAIM 6: Duplicate Regime Detection
+**Claim**: The market regime is classified twice per signal — once in `SignalQualityGate.ts` (ADX+ATR%-based) and again in `strategyAnalyzer.ts` using `calculateATRPercentile()` from `regimeDetector.ts`. Both apply confidence adjustments, potentially double-penalizing.
+ 
+**Verify**:
+1. Read `src/strategies/SignalQualityGate.ts` — find the regime detection logic. What does it check? What adjustments does it apply?
+2. Read `src/modules/regimeDetector.ts` — find `shouldTradeInRegime()`. What adjustments does it apply?
+3. Read `src/engine/strategyAnalyzer.ts` — does it call BOTH? Are both confidence adjustments applied to the same signal?
+ 
+---
+ 
+### CLAIM 7: All Strategies Use Consistent NEXT_OPEN Model
+**Claim**: All 11 intraday strategies compute signals on `bars[length-2]` (closed bar) and enter at `bars[length-1].open` (next bar open).
+ 
+**Verify**:
+1. For each file in `src/strategies/intraday/*.ts`, check: does it set `signalIdx = bars.length - 2` and `entryPrice = entryBar.open`?
+2. Are there ANY exceptions?
+ 
+---
+ 
+### CLAIM 8: Triple Position Sizing Implementations
+**Claim**: Three separate `calculatePositionSize` functions exist: in `src/strategies/utils.ts`, `src/engine/positionSizer.ts`, and `src/config/e8InstrumentSpecs.ts`. Only the one in `utils.ts` is in the live path.
+ 
+**Verify**:
+1. Search for all functions named `calculatePositionSize` across the codebase.
+2. Which one does `buildDecision()` call?
+3. Are the other two dead code or used elsewhere?
+ 
+---
+ 
+### CLAIM 9: Execution Endpoint Does Not Revalidate Entry Price
+**Claim**: If there is an execution/trade endpoint, it uses the stored `detection.entry.price` without fetching live price or computing drift.
+ 
+**Verify**:
+1. Search for any execute/trade endpoint in `src/server.ts` or similar.
+2. Does it fetch live price data before executing?
+3. Does it compare the stored entry price to current market?
+ 
+---
+ 
+### CLAIM 10: Only BollingerMR Has Structured Signal Logging
+**Claim**: Only `BollingerMR.ts` logs a `PHASE1_SIGNAL` structured object with indicator snapshots. The other 10 strategies do not log indicator values at signal time.
+ 
+**Verify**:
+1. Search for `PHASE1_SIGNAL` across all strategy files.
+2. Search for any equivalent structured logging in other strategy files.
+ 
+---
+ 
+## After verifying all 10 claims, provide:
+1. A summary table: Claim # | Status (Confirmed/Refuted/Partial) | Evidence
+2. Any NEW findings you discover while reading the code that none of the claims cover.
+3. Your independent assessment of the top 3 priority fixes.
+ 
+## PROMPT END
